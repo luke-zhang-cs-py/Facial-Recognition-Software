@@ -1,0 +1,3 @@
+opencv-python==4.13.0.88
+opencv-contrib-python==4.13.0.88
+numpy

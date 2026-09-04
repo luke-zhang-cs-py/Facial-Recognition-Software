@@ -1,0 +1,12 @@
+# Runtime artifacts produced by the pipeline.
+# dataset/ holds captured webcam images of real people and attendance.db
+# holds their attendance records -- neither belongs in a public repo.
+dataset/
+attendance.db
+trainer.yml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

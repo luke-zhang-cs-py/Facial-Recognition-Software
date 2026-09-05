@@ -90,9 +90,30 @@ def video_feed():
                     mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
+def json_safe(obj):
+    """Coerce numpy scalars/arrays so one stray value cannot 500 the response.
+
+    A single numpy float32 in the trait payload took the entire /api/status
+    endpoint down with a 500, which from the browser looked exactly like the
+    camera having stopped working -- the page just stopped receiving anything.
+    The values are coerced at source now; this is the backstop so a future one
+    degrades a field instead of the whole page.
+    """
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return json_safe(obj.tolist())
+    return obj
+
+
 @app.route("/api/status")
 def api_status():
-    status = camera.status()
+    status = json_safe(camera.status())
     status["users"] = [{"id": uid, "name": name} for uid, name in db.get_all_users()]
     status["today"] = [
         {"name": name, "timestamp": ts, "confidence": conf}

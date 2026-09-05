@@ -174,8 +174,23 @@ def _aspect(pts):
     return (a + b) / (2.0 * width)
 
 
+def _f(value, places=3):
+    """Round to a plain Python float.
+
+    numpy scalars survive round() as numpy scalars, and Flask's JSON encoder
+    refuses them -- one float32 in this dict returned HTTP 500 for the whole
+    /api/status response, so the page saw nothing at exactly the moment a face
+    was found. Every number leaving this module goes through here.
+    """
+    return round(float(value), places)
+
+
 def metrics(points):
-    """Per-feature measurements plus the flags they imply."""
+    """Per-feature measurements plus the flags they imply.
+
+    Every value is a plain Python float via _f(); this dict is serialised
+    straight to JSON.
+    """
     if points is None or len(points) < 68:
         return None
     p = parts(points)
@@ -227,19 +242,19 @@ def metrics(points):
         flags.append("face partly obscured")
 
     return {
-        "eyeOpenRight": round(ear_r, 3),
-        "eyeOpenLeft": round(ear_l, 3),
-        "mouthOpen": round(mar, 3),
-        "browRaiseRight": round(brow_r, 3),
-        "browRaiseLeft": round(brow_l, 3),
-        "interocularPx": round(interocular, 1),
-        "jawWidthRatio": round(jaw_width, 3),
-        "cheekWidthRatio": round(cheek_width, 3),
-        "cheekProminence": round(cheek_prominence, 3),
-        "faceHeightRatio": round(face_height, 3),
-        "centreOffset": round(centre_offset, 3),
-        "eyeMismatch": round(eye_mismatch, 3),
-        "flags": flags,
+        "eyeOpenRight": _f(ear_r),
+        "eyeOpenLeft": _f(ear_l),
+        "mouthOpen": _f(mar),
+        "browRaiseRight": _f(brow_r),
+        "browRaiseLeft": _f(brow_l),
+        "interocularPx": _f(interocular, 1),
+        "jawWidthRatio": _f(jaw_width),
+        "cheekWidthRatio": _f(cheek_width),
+        "cheekProminence": _f(cheek_prominence),
+        "faceHeightRatio": _f(face_height),
+        "centreOffset": _f(centre_offset),
+        "eyeMismatch": _f(eye_mismatch),
+        "flags": [str(f) for f in flags],
     }
 
 

@@ -65,6 +65,7 @@ def too_large(_):
                     "error": f"Image is larger than "
                              f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB."}), 413
 
+
 # A full dataset scan runs five networks over every stored sample, so it is
 # seconds-to-minutes of work, not a request. Run it on a worker thread and let
 # the page poll for progress.
@@ -105,23 +106,37 @@ def video_feed():
 
 
 def json_safe(obj):
-    """Coerce numpy scalars/arrays so one stray value cannot 500 the response.
+    """Coerce values so one stray number cannot break the response.
 
-    A single numpy float32 in the trait payload took the entire /api/status
-    endpoint down with a 500, which from the browser looked exactly like the
-    camera having stopped working -- the page just stopped receiving anything.
-    The values are coerced at source now; this is the backstop so a future one
-    degrades a field instead of the whole page.
+    Two failure modes, both seen here:
+
+    * A single numpy float32 in the trait payload took the entire /api/status
+      endpoint down with a 500, which from the browser looked exactly like the
+      camera having stopped working -- the page just stopped receiving
+      anything.
+    * A float that is not finite serialises as a bare NaN or -Infinity token.
+      Python's json module writes those happily and reads them back, so it
+      looks fine from the server side; the browser's JSON.parse rejects them,
+      so the page fails with a parse error that says nothing about which
+      field was wrong. sface_analysis produced -Infinity whenever somebody had
+      only one usable image.
+
+    Values are coerced at source too. This is the backstop, so a future one
+    degrades a single field to null instead of taking the whole page with it.
     """
+    import math
+
     import numpy as np
     if isinstance(obj, dict):
         return {k: json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [json_safe(v) for v in obj]
     if isinstance(obj, np.generic):
-        return obj.item()
+        return json_safe(obj.item())
     if isinstance(obj, np.ndarray):
         return json_safe(obj.tolist())
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
     return obj
 
 
@@ -222,13 +237,16 @@ def api_analysis_start():
 @app.route("/api/analysis")
 def api_analysis():
     with _analysis_lock:
-        return jsonify({
+        # json_safe, like every other endpoint that returns measured numbers.
+        # This one did not have it, and it is the endpoint that carries the
+        # most of them.
+        return jsonify(json_safe({
             "running": _analysis["running"],
             "done": _analysis["done"],
             "total": _analysis["total"],
             "error": _analysis["error"],
             "report": _analysis["report"],
-        })
+        }))
 
 
 @app.route("/api/identify", methods=["POST"])
@@ -263,17 +281,7 @@ def api_identify():
 
 @app.route("/api/report")
 def api_report():
-    conn = db.get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT u.name, a.timestamp, a.confidence
-        FROM attendance a
-        JOIN users u ON u.id = a.user_id
-        ORDER BY a.timestamp DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
-
+    rows = db.get_all_attendance()
     return jsonify({
         "users": [{"id": uid, "name": name} for uid, name in db.get_all_users()],
         "all": [{"name": n, "timestamp": t, "confidence": c} for n, t, c in rows],

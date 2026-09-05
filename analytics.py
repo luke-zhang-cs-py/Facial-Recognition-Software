@@ -246,10 +246,12 @@ def summarize_user(user_id, name, records):
         recommendations.append(
             f"{soft} samples are noticeably softer than the rest — hold still, or add "
             f"light so the camera picks a shorter exposure.")
-    if flags.get("too dark", 0) > len(records) * DARK_FRACTION             or flags.get("flat contrast", 0):
+    if (flags.get("too dark", 0) > len(records) * DARK_FRACTION
+            or flags.get("flat contrast", 0)):
         recommendations.append("Add light in front of the face, not behind it.")
     if yaw_spread is not None and yaw_spread < FLAT_POSE_DEGREES:
-        recommendations.append("Every sample is the same angle — turn your head a little while capturing.")
+        recommendations.append("Every sample is the same angle — turn your head "
+                               "a little while capturing.")
     if len(records) < EXPECTED_SAMPLES:
         recommendations.append(f"Only {len(records)} samples; 30 is the intended count.")
 
@@ -298,21 +300,39 @@ def sface_analysis(records):
     sims = mat @ mat.T
     np.fill_diagonal(sims, -np.inf)  # leave-one-out: never match against yourself
 
-    genuine_best, impostor_best, correct = [], [], 0
+    # A sample whose owner has no *other* usable image cannot be matched to
+    # anything under leave-one-out: there is nothing left to match it to. That
+    # used to be recorded as a similarity of -inf and averaged in with the
+    # rest, which dragged the whole genuine distribution to -inf -- and -inf
+    # is not valid JSON, so the report reached the browser as a parse error
+    # rather than as a number. It is a property of the dataset, not a score,
+    # so it is counted and reported separately.
+    genuine_best, impostor_best, correct, unmatchable = [], [], 0, 0
     for i in range(len(usable)):
         same = labels == labels[i]
         same[i] = False
         other = labels != labels[i]
 
-        g = float(sims[i][same].max()) if same.any() else -np.inf
-        m = float(sims[i][other].max()) if other.any() else -np.inf
-        genuine_best.append(g)
-        impostor_best.append(m)
-        if g > m:
+        g = float(sims[i][same].max()) if same.any() else None
+        m = float(sims[i][other].max()) if other.any() else None
+
+        if g is None:
+            unmatchable += 1
+        else:
+            genuine_best.append(g)
+        if m is not None:
+            impostor_best.append(m)
+        if g is not None and m is not None and g > m:
             correct += 1
+
+    if not genuine_best:
+        return {"available": False,
+                "reason": f"Every person has only one usable image, so there is "
+                          f"nothing to match against ({len(usable)} samples)."}
 
     genuine = np.array(genuine_best)
     impostor = np.array(impostor_best)
+    evaluated = len(genuine_best)
 
     sweep = []
     for t in SFACE_SWEEP:
@@ -354,9 +374,13 @@ def sface_analysis(records):
     return {
         "available": True,
         "protocol": "leave-one-out 1-NN over SFace cosine similarity",
-        "samples": len(usable),
+        # Over the samples that could be evaluated. Counting the unmatchable
+        # ones as failures would deflate the figure for a reason that has
+        # nothing to do with the model, and would not say so.
+        "samples": evaluated,
+        "unmatchableSamples": unmatchable,
         "users": len(by_user),
-        "accuracy": round(100.0 * correct / len(usable), 1),
+        "accuracy": round(100.0 * correct / evaluated, 1),
         "genuine": {"mean": round(float(genuine.mean()), 3),
                     "min": round(float(genuine.min()), 3)},
         "impostor": {"mean": round(float(impostor.mean()), 3),
@@ -403,8 +427,11 @@ def lbph_analysis(records, folds=KFOLDS):
 
     # Stratified folds: each person's samples spread evenly across folds.
     assignment = []
-    for user_id, paths in by_user.items():
-        for i, path in enumerate(sorted(paths)):
+    # Not `paths`: that is the name of an imported module in this file, and a
+    # loop variable shadowing it means the next person to reach for
+    # paths.DATASET inside this function gets an AttributeError on a list.
+    for user_id, sample_paths in by_user.items():
+        for i, path in enumerate(sorted(sample_paths)):
             assignment.append((i % folds, user_id, path))
 
     usable_folds = sorted({f for f, _, _ in assignment})

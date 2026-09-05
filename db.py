@@ -174,6 +174,26 @@ def log_attendance(user_id, confidence):
         return True
 
 
+def get_all_attendance():
+    """Every attendance row, newest first.
+
+    Lives here rather than in the two callers that had it inline. Both of them
+    opened a raw connection and closed it on the success path only -- the
+    exact leak the connection() context manager above exists to prevent, in
+    the two places the fix never reached. The same SQL in two files was how
+    that happened.
+    """
+    with connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT u.name, a.timestamp, a.confidence
+               FROM attendance a
+               JOIN users u ON u.id = a.user_id
+               ORDER BY a.timestamp DESC"""
+        )
+        return cur.fetchall()
+
+
 def get_attendance_for_today():
     with connection() as conn:
         cur = conn.cursor()

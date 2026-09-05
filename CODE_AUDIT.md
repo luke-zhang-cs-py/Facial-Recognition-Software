@@ -1,10 +1,10 @@
 # Code audit
 
-Static analysis (flake8, radon), an 84-test suite, and a coverage report.
+Static analysis (flake8, radon), a 162-test suite, and a coverage report.
 
 ```bash
 python -m pytest tests/ --cov=. --cov-report=term-missing
-python -m flake8 . --select=E9,F63,F7,F82,F401,F811,F841,E722 --exclude=dataset,models
+python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722 --exclude=dataset,models
 python -m radon cc . -s -n C --exclude "dataset/*,models/*"
 ```
 
@@ -174,3 +174,38 @@ Deliberately not changed, with reasons:
 - **`camera._build_report` feature envy.** Moving it into `analytics` is
   right, but it is live code with no coverage of its own; it should move
   after it has tests, not before.
+
+## Second pass
+
+Three more, found by widening the net rather than by re-reading.
+
+**A person with one usable image broke the whole analysis report.**
+Leave-one-out has nothing to match a lone sample against, and that was
+recorded as a similarity of `-inf` and averaged into the genuine
+distribution, taking its mean and minimum with it. `-Infinity` is not valid
+JSON: Python writes it and reads it back without complaint, so it looks fine
+from the server, and the browser's `JSON.parse` rejects it -- the report
+simply never appeared, with no field named. The unmatchable samples are now
+counted and reported separately, since it is a fact about the dataset rather
+than a score, and accuracy is measured over what could actually be
+evaluated.
+
+**`json_safe` did not catch it, and `/api/analysis` was not using it.**
+The helper coerced numpy types and passed non-finite floats straight
+through, and the one endpoint carrying the most measured numbers on it was
+the one endpoint not calling the helper at all. Both fixed; a non-finite
+value now degrades one field to `null` instead of the page.
+
+**Two callers leaked a database connection.** `db.connection()` was added in
+the first pass precisely because closing on the success path only turned any
+single error into "database is locked" for the rest of the process.
+`app.api_report` and `view_report` still opened a raw `get_connection()` and
+closed it on the success path only -- running the same query, inline, in both
+files, which is how the fix failed to reach them. Now one `db.get_all_attendance()`,
+and a test asserts no module outside `db.py` opens a raw connection.
+
+Also: a loop variable named `paths` shadowed the imported `paths` module
+inside `lbph_analysis`. Nothing used the module after it, so nothing was
+broken -- but the next person to reach for `paths.DATASET` in that function
+would have got an `AttributeError` on a list. `F402` is in the flake8
+selection above now, which is what found it.

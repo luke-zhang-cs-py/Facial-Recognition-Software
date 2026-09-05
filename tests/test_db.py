@@ -77,3 +77,37 @@ def test_delete_user_clears_everything(isolated_db):
     isolated_db.delete_user(uid)
     assert isolated_db.get_user_name(uid) is None
     assert isolated_db.get_attendance_for_today() == []
+
+
+def test_get_all_attendance_returns_newest_first(isolated_db):
+    """Two callers had this query inline. Now there is one of it."""
+    uid = isolated_db.add_user("Ivan")
+    isolated_db.log_attendance(uid, 30.0)
+    rows = isolated_db.get_all_attendance()
+    assert rows and rows[0][0] == "Ivan"
+    timestamps = [t for _n, t, _c in rows]
+    assert timestamps == sorted(timestamps, reverse=True)
+
+
+def test_no_module_opens_a_raw_connection():
+    """The structural half of the leak fix.
+
+    db.connection() closes on every path; get_connection() closes on none,
+    because closing is the caller's job and two callers forgot. Both of them
+    ran the same query with the same missing close, which is how a fix to
+    db.py failed to reach the code that needed it. Anything outside db.py
+    reaching for the raw one is that bug coming back.
+    """
+    import os
+    import re
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    offenders = []
+    for name in sorted(os.listdir(root)):
+        if not name.endswith(".py") or name == "db.py":
+            continue
+        text = open(os.path.join(root, name), encoding="utf-8").read()
+        if re.search(r"get_connection\s*\(", text):
+            offenders.append(name)
+    assert not offenders, f"use db.connection() instead: {offenders}"
+

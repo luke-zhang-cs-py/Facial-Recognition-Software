@@ -22,16 +22,7 @@ def main():
         print(f"  [{user_id}] {name}")
 
     print("\n=== All Attendance Records ===")
-    conn = db.get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT u.name, a.timestamp, a.confidence
-        FROM attendance a
-        JOIN users u ON u.id = a.user_id
-        ORDER BY a.timestamp DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
+    rows = db.get_all_attendance()
 
     if not rows:
         print("  (no attendance logged yet)")

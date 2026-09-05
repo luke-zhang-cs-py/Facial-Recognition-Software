@@ -45,6 +45,66 @@ Webcam frame → Haar cascade (face detection) → LBPH recognizer (face ID)
 | `calibration.py` | False-match rates measured on ~98k identities, and gallery-size maths |
 | `fairness_benchmark.py` | Stratified benchmark: does the quality gate treat groups equally? |
 | `guidance.py` | Turns a live trait read into one instruction to act on |
+| `liveness.py` | Presentation-attack detection (is this a person or a photo) |
+| `recognition.py` | Identification via SFace embeddings + gallery-size threshold |
+| `seed_demo.py` | Enrolls well-known faces from LFW so recognition can be tested |
+
+## Testing recognition without registering anyone
+
+```bash
+python seed_demo.py --people 40 --samples 10   # enroll from LFW
+python seed_demo.py --list
+python seed_demo.py --remove                   # take them all out again
+```
+
+LFW is the standard academic face-recognition benchmark, built from press
+photographs of public figures and published for this kind of evaluation.
+Entries are prefixed `[demo]` so they can never be mistaken for a real
+person, and `--remove` deletes the database rows and the image folders.
+
+Identify a still through the **Identify from an image** panel, or:
+
+```bash
+curl -X POST -F "image=@someone.jpg" http://127.0.0.1:5001/api/identify
+```
+
+That path is deliberately separate from the camera and is not liveness-gated.
+Holding a photo up to the webcam is refused as a presentation attack, which is
+correct — but it would also make still images impossible to test. Nothing in
+the identify path writes to the attendance table.
+
+### Measured effectiveness (40 enrolled, held-out LFW images)
+
+| | |
+|---|---|
+| Correct identification | **92.9%** (223/240) |
+| Rejected as unknown | 6.7% |
+| **Misidentified** | **0.4%** (1/240) |
+| Impostor rejection (300 non-enrolled) | **100%**, zero false accepts |
+
+The failure mode is the safe one: it far more often declines to answer than
+names the wrong person. Correct matches average 0.677 similarity against an
+impostor mean of 0.231, so the two populations barely overlap.
+
+### Operating range
+
+Video-like degradations applied to held-out stills — a controlled sweep
+answers "where does it stop working" better than a handful of clips. Face
+*detection* held at 100% throughout; it is recognition that degrades.
+
+| Condition | Holds until | Breaks at |
+|---|---|---|
+| Distance (downscale) | 0.25x (83%) | 0.15x (23%) |
+| Motion blur | 9 px (83%) | 13 px (47%) |
+| Lighting (gamma 0.4–2.2) | **no measurable loss** | — |
+| In-plane rotation | 15° (80%) | 30° (37%) |
+| JPEG compression | q20 (83%) | q10 (77%) |
+
+Lighting invariance is the standout — the embeddings are essentially
+unaffected across a five-fold gamma range. Rotation is the weakest axis, so a
+tilted camera costs more than a dim room.
+
+
 
 ## Positioning guidance
 

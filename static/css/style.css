@@ -170,3 +170,15 @@
   .placeholder{flex-direction:column;gap:12px;display:flex;align-items:center;
     padding-bottom:44px;}
   .placeholder button{width:auto;padding:9px 18px;margin-top:0;}
+
+  /* file input styled as one of the existing secondary buttons */
+  .btnlike{background:transparent;border:1px solid var(--hair);color:var(--ink);
+    padding:7px 13px;border-radius:7px;font-weight:600;font-size:12.5px;
+    cursor:pointer;font-family:inherit;display:inline-block;}
+  .btnlike:hover{border-color:var(--muted);}
+  .idrow{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;
+    padding:7px 0;border-top:1px solid var(--hair);}
+  .idrow span{color:var(--muted);}
+  .idrow b{font-family:'IBM Plex Mono',monospace;font-weight:500;}
+  .idrow.hit b{color:var(--good);}
+  .idrow.miss b{color:var(--muted);}

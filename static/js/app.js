@@ -565,3 +565,63 @@ $('analyzeFreshBtn').onclick = () => startAnalysis(true);
 refresh();
 pollAnalysis();
 setInterval(refresh, 1000);
+
+
+/* ------------------------------------------------------------- identify */
+
+/* Recognition against a still image. Kept away from the camera path on
+ * purpose: the webcam refuses photographs as spoofs, which is right, and
+ * would otherwise make still images untestable. */
+$('idFile').onchange = async (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const body = new FormData();
+  body.append('image', file);
+  const out = $('identifyBody');
+  out.innerHTML = '<div class="note">Identifying…</div>';
+  try {
+    const res = await fetch('/api/identify', { method: 'POST', body });
+    const d = await res.json();
+    if (!res.ok || d.ok === false) throw new Error(d.error || 'Failed');
+    renderIdentify(d);
+  } catch (e) {
+    out.innerHTML = `<div class="err">${e.message}</div>`;
+  }
+  ev.target.value = '';
+};
+
+function renderIdentify(d) {
+  const m = d.match;
+  const rows = d.candidates.map((c, i) => `
+    <div class="idrow ${i === 0 && m ? 'hit' : (i === 0 ? 'miss' : '')}">
+      <span>${i === 0 ? 'best match' : 'also considered'}</span>
+      <b>${c.name} &nbsp; ${c.similarity.toFixed(3)}</b>
+    </div>`).join('');
+
+  $('identifyBody').innerHTML = `
+    <div class="agrid">
+      <div class="card">
+        <div class="who"><h3>${m ? m.name : 'No confident match'}</h3>
+          <span class="pill ${m ? 'good' : 'warn'}">${m ? 'identified' : 'below threshold'}</span></div>
+        <div class="metrics">
+          ${stat('similarity', d.best.similarity.toFixed(3))}
+          ${stat('threshold', d.threshold)}
+          ${stat('margin over 2nd', d.margin != null ? d.margin.toFixed(3) : '—')}
+          ${stat('gallery', d.gallerySize + ' enrolled')}
+        </div>
+        <div class="note">${m
+          ? `Above the threshold for a gallery of ${d.gallerySize}, which carries a
+             ${(100 * d.galleryRisk).toFixed(2)}% chance of a false match.`
+          : `Best similarity ${d.best.similarity.toFixed(3)} is under the
+             ${d.threshold} threshold, so this is reported as unknown rather than
+             guessed at.`}</div>
+      </div>
+      <div class="card">
+        <div class="who"><h3>Ranking</h3><span class="pill warn">top ${d.candidates.length}</span></div>
+        ${rows}
+        <div class="note">The gap to the runner-up matters as much as the top
+          score: 0.62 means very different things when the next best is 0.20
+          versus 0.61.</div>
+      </div>
+    </div>`;
+}

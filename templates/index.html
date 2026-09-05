@@ -118,6 +118,22 @@
     <div id="reportBody"></div>
   </div>
 
+  <div class="analysis" id="identifyPanel">
+    <div class="ahead">
+      <h2>Identify from an image</h2>
+      <div class="actions">
+        <label class="btnlike" for="idFile">Choose image</label>
+        <input type="file" id="idFile" accept="image/*" hidden>
+      </div>
+    </div>
+    <div class="asub">Matches a still against everyone enrolled, using the 128-d
+      embeddings and the gallery-size threshold. Separate from the camera and not
+      liveness-gated &mdash; a photo held to the webcam is refused as a spoof, which
+      is correct, but that would make still images impossible to test.
+      <b>Nothing here marks anyone present.</b></div>
+    <div id="identifyBody"></div>
+  </div>
+
   <div class="analysis" id="analysisPanel">
     <div class="ahead">
       <h2>Enrollment &amp; recognition analysis</h2>

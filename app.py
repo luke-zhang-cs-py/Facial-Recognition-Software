@@ -46,6 +46,7 @@ os.chdir(BASE_DIR)
 import db                                  # noqa: E402
 import train_model                         # noqa: E402
 import analytics                           # noqa: E402
+import recognition                         # noqa: E402
 import facemodels                          # noqa: E402
 from camera import camera, CameraError     # noqa: E402
 
@@ -215,6 +216,36 @@ def api_analysis():
             "error": _analysis["error"],
             "report": _analysis["report"],
         })
+
+
+@app.route("/api/identify", methods=["POST"])
+def api_identify():
+    """Identify the face in an uploaded image.
+
+    Deliberately separate from the camera path, and deliberately not gated on
+    liveness. Holding a photograph up to the webcam is a presentation attack
+    and is refused there, which is correct -- but it also makes it impossible
+    to test recognition against still images of anybody. This endpoint takes
+    the image directly and is honest about what it is: an identification test,
+    not an attendance mark. Nothing here writes to the attendance table.
+    """
+    import numpy as np
+    import cv2
+
+    upload = request.files.get("image")
+    if upload is None:
+        return fail("No image uploaded.")
+    data = np.frombuffer(upload.read(), np.uint8)
+    if data.size == 0:
+        return fail("That file was empty.")
+    bgr = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if bgr is None:
+        return fail("Could not read that as an image.")
+
+    result = recognition.identify(bgr)
+    if not result.get("ok"):
+        return fail(result.get("error", "Identification failed."))
+    return jsonify(json_safe(result))
 
 
 @app.route("/api/report")

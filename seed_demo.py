@@ -63,7 +63,7 @@ def remove_all():
     return removed
 
 
-def load_lfw(min_images, wanted):
+def load_lfw(min_images, wanted, requested=None):
     import pyarrow.parquet as pq
     import json
     from PIL import Image
@@ -94,6 +94,20 @@ def load_lfw(min_images, wanted):
     # Most-photographed first: more images means a more stable centroid, and
     # these are the identities LFW actually supports testing on.
     ranked = sorted(by_person.items(), key=lambda kv: -len(kv[1]))
+    if requested:
+        # Explicit names take priority and ignore the min-images floor -- if
+        # somebody asked for a specific person, enroll whatever exists for them
+        # and let the report say the sample count is thin.
+        lookup = {n.lower(): i for i, n in enumerate(names)} if names else {}
+        picked = []
+        for want in requested:
+            key = want.strip().lower().replace(" ", "_")
+            lab = lookup.get(key)
+            if lab is None or lab not in by_person:
+                print(f"  !! not in LFW: {want}")
+                continue
+            picked.append((lab, by_person[lab]))
+        return names, images, picked
     picked = [(lab, idx) for lab, idx in ranked if len(idx) >= min_images][:wanted]
     return names, images, picked
 
@@ -101,6 +115,11 @@ def load_lfw(min_images, wanted):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--people", type=int, default=8)
+    ap.add_argument("--names", default="",
+                    help="comma-separated LFW names to enroll explicitly, "
+                         "e.g. LeBron_James,Yao_Ming")
+    ap.add_argument("--keep", action="store_true",
+                    help="add to the existing demo entries instead of replacing")
     ap.add_argument("--samples", type=int, default=12)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--remove", action="store_true")
@@ -119,9 +138,11 @@ def main():
         remove_all()
         return 0
 
-    remove_all()   # re-seeding replaces rather than duplicates
+    if not args.keep:
+        remove_all()   # re-seeding replaces rather than duplicates
 
-    loaded = load_lfw(args.samples, args.people)
+    loaded = load_lfw(args.samples, args.people,
+                      [n for n in args.names.split(",") if n.strip()])
     if loaded is None:
         return 1
     names, images, picked = loaded
@@ -138,9 +159,12 @@ def main():
         folder = os.path.join(DATASET_DIR, f"{user_id}_{person.replace(' ', '_')}")
         os.makedirs(folder, exist_ok=True)
 
+        # Leave one image out for testing when the person has few to begin
+        # with, so there is always something held back to identify against.
+        budget = min(args.samples, max(3, len(idxs) - 1)) if len(idxs) < args.samples             else args.samples
         kept = 0
         for i in idxs:
-            if kept >= args.samples:
+            if kept >= budget:
                 break
             raw = images[i]
             data = raw["bytes"] if isinstance(raw, dict) else raw

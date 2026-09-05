@@ -34,6 +34,14 @@ import traits
 
 DATASET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset")
 
+# Clearing the threshold is not enough on its own. If the best match beats the
+# runner-up by only a hair, the pair is being told apart by noise, and naming
+# the winner presents a coin toss as an identification. Below this margin the
+# answer is "unknown" with the tie reported, which is the honest output and
+# the safe one -- a refusal is a person swiping a badge instead, a confident
+# wrong name is somebody else's attendance record.
+MIN_MARGIN = 0.10
+
 
 def _centroid(vectors):
     if not vectors:
@@ -97,9 +105,22 @@ def identify(bgr, gal=None, max_risk=0.01):
     margin = (round(best["similarity"] - runner["similarity"], 4)
               if runner else None)
 
+    above = best["similarity"] >= threshold
+    ambiguous = above and margin is not None and margin < MIN_MARGIN
+    if not above:
+        reason = "below threshold"
+    elif ambiguous:
+        reason = "ambiguous — too close to call"
+    else:
+        reason = None
+
     return {
         "ok": True,
-        "match": best if best["similarity"] >= threshold else None,
+        "match": None if (not above or ambiguous) else best,
+        "verdict": "unknown" if (not above or ambiguous) else "identified",
+        "reason": reason,
+        "ambiguous": bool(ambiguous),
+        "minMargin": MIN_MARGIN,
         "best": best,
         "runnerUp": runner,
         "margin": margin,

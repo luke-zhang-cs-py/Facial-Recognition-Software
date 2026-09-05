@@ -345,7 +345,7 @@ function renderTraits(s) {
   traitsBtn.classList.toggle('active', !!s.traitsOn);
 
   if (!t || t.error) {
-    ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender', 'ltParts', 'ltSym', 'ltCheek']
+    ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender', 'ltParts', 'ltSym', 'ltCheek', 'ltLive']
       .forEach((id) => { $(id).textContent = DASH; });
     $('ltFlags').innerHTML = t && t.error
       ? `<div class="chips"><span class="chip">${t.error}</span></div>` : '';
@@ -386,6 +386,11 @@ function renderTraits(s) {
   $('ltCheek').textContent = pm && pm.cheekWidthRatio != null
     ? `width ${pm.cheekWidthRatio.toFixed(2)}  prom ${pm.cheekProminence.toFixed(2)}`
     : DASH;
+
+  const lv = s.liveness;
+  $('ltLive').textContent = (lv && lv.available)
+    ? (lv.score != null ? `${lv.verdict} ${lv.score.toFixed(2)}` : lv.verdict)
+    : 'model missing';
 
   $('ltFlags').innerHTML = (t.flags && t.flags.length)
     ? `<div class="chips">${t.flags.map((f) => `<span class="chip">${f}</span>`).join('')}</div>`

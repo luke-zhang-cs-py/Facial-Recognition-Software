@@ -31,6 +31,7 @@ import cv2
 import db
 import guidance
 import landmarks as facelandmarks
+import liveness as faceliveness
 import traits as facetraits
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -140,6 +141,11 @@ class CameraManager:
 
         self._events = deque(maxlen=40)
 
+        # presentation-attack detection
+        self._liveness = faceliveness.LivenessVote()
+        self._live_verdict = "unknown"
+        self._live_score = None
+
         # live trait readout
         self._traits_on = True
         self._live_traits = None
@@ -235,6 +241,8 @@ class CameraManager:
         self._load_recognizer()
         with self._lock:
             self._marked_session.clear()
+            self._liveness.reset()
+            self._live_verdict = "unknown"
             self._mode = MODE_ATTENDANCE
         self._log_event("info", "Attendance mode on")
 
@@ -323,6 +331,12 @@ class CameraManager:
                 "mode": self._mode,
                 "error": self._error,
                 "traitsOn": self._traits_on,
+                "liveness": {
+                    "available": faceliveness.available(),
+                    "verdict": self._live_verdict,
+                    "score": self._live_score,
+                    "samples": self._liveness.samples,
+                },
                 "liveTraits": self._live_traits,
                 "register": {
                     "name": self._reg_name,
@@ -742,21 +756,44 @@ class CameraManager:
             crop = gray[y0:y + h, x0:x + w]
             if crop.size == 0:
                 continue
+
+            # Person, or a picture of one? Scored before recognition, because
+            # how confidently we recognise a photograph does not matter.
+            live_score = faceliveness.score(frame, face["box"])
+            self._liveness.push(live_score)
+            verdict = self._liveness.verdict()
+            with self._lock:
+                self._live_verdict = verdict
+                self._live_score = (round(live_score, 3)
+                                    if live_score is not None else None)
+
             face_img = cv2.resize(crop, (200, 200))
             user_id, confidence = recognizer.predict(face_img)
 
             if confidence < CONFIDENCE_THRESHOLD:
                 name = db.get_user_name(user_id) or f"Unknown (id {user_id})"
-                colour = GREEN
-                with self._lock:
-                    already_seen = user_id in self._marked_session
+
+                if verdict == "spoof":
+                    # Recognised, but the frame looks like a presentation
+                    # attack. Name the person anyway -- somebody genuine in
+                    # bad light needs to know why they are being refused.
+                    colour = RED
+                    name = f"{name}? photo"
+                    with self._lock:
+                        self._marked_session.discard(user_id)
+                elif verdict == "unknown":
+                    colour = AMBER      # still gathering frames
+                else:
+                    colour = GREEN
+                    with self._lock:
+                        already_seen = user_id in self._marked_session
+                        if not already_seen:
+                            self._marked_session.add(user_id)
                     if not already_seen:
-                        self._marked_session.add(user_id)
-                if not already_seen:
-                    if db.log_attendance(user_id, confidence):
-                        self._log_event("success", f"Marked {name} present")
-                    else:
-                        self._log_event("info", f"{name} was already marked today")
+                        if db.log_attendance(user_id, confidence):
+                            self._log_event("success", f"Marked {name} present")
+                        else:
+                            self._log_event("info", f"{name} was already marked today")
             else:
                 name = "Unknown"
                 colour = RED

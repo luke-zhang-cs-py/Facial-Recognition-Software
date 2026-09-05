@@ -1,3 +1,7 @@
-opencv-python==4.13.0.88
-opencv-contrib-python==4.13.0.88
+# opencv-contrib-python is a superset of opencv-python and is the one that
+# actually ships cv2.face (the LBPH recogniser). Installing both side by side
+# makes the two cv2 packages shadow each other, so only list contrib here.
+# (The old pin, 4.13.0.88, was never published to PyPI.)
+opencv-contrib-python>=4.13.0.92
 numpy
+Flask>=2.3

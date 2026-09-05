@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Attendance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Face Attendance<em>OpenCV + SQLite</em></h1>
+    <div class="sub">Register a face, train the recogniser, then run live attendance.
+      Everything runs on this machine &mdash; the camera, the model, and the database.</div>
+  </header>
+
+  <div class="board">
+
+    <div class="mapcard">
+      <div class="videobox">
+        <img id="video" alt="Camera feed">
+        <div class="placeholder" id="placeholder">Camera is off</div>
+      </div>
+      <div class="modeflag" id="modeflag">
+        <span class="dot" id="modedot"></span><span id="modeflagText">Camera off</span>
+      </div>
+    </div>
+
+    <div class="side">
+
+      <div class="section">
+        <h2>Camera</h2>
+        <button id="camBtn">Start camera</button>
+        <div class="err" id="err" style="display:none;"></div>
+      </div>
+
+      <div class="section">
+        <h2>1 &middot; Register</h2>
+        <input type="text" id="nameInput" placeholder="Full name" autocomplete="off">
+        <button class="secondary" id="regBtn">Capture 30 samples</button>
+        <div class="progress" id="regProgress" style="display:none;">
+          <div class="bar"><div class="fill" id="regFill"></div></div>
+          <div class="row"><span class="label" id="regLabel">&mdash;</span>
+            <span class="val" id="regCount">0/30</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>2 &middot; Train</h2>
+        <button class="secondary" id="trainBtn">Retrain model</button>
+        <div class="stat"><span>Model</span><b id="modelState">&mdash;</b></div>
+      </div>
+
+      <div class="section">
+        <h2>3 &middot; Attendance</h2>
+        <button id="attBtn">Start attendance</button>
+        <div class="stat"><span>Marked today</span><b id="todayCount">&mdash;</b></div>
+      </div>
+
+      <div class="section">
+        <h2>Registered</h2>
+        <ul class="steps" id="userList"><li class="muted">none yet</li></ul>
+      </div>
+
+      <div class="section">
+        <h2>Today</h2>
+        <ul class="steps" id="todayList"><li class="muted">nobody yet</li></ul>
+      </div>
+
+      <div class="section">
+        <h2>Activity</h2>
+        <ul class="steps log" id="eventList"><li class="muted">&mdash;</li></ul>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>Face images in <code>dataset/</code> and the trained <code>trainer.yml</code> are
+    biometric data &mdash; they stay on this machine and are git-ignored. Delete a person's
+    folder and retrain to remove them.</footer>
+
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

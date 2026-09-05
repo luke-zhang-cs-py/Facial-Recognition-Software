@@ -27,6 +27,13 @@ Webcam frame → Haar cascade (face detection) → LBPH recognizer (face ID)
 | `train_model.py` | Train the LBPH recognizer on captured faces |
 | `attendance.py` | Live webcam recognition + attendance logging |
 | `view_report.py` | Print all users / attendance records from the DB |
+| `camera.py` | Shared webcam manager used by the web UI |
+| `app.py` | Flask web UI — all four steps in the browser |
+
+There are two ways to drive the same pipeline: the **CLI scripts** above, or
+the **web UI** (`app.py`). They share `db.py` and `train_model.py` and read
+and write the same `dataset/`, `trainer.yml`, and `attendance.db`, so you can
+mix and match. Only run one at a time — they compete for the one webcam.
 
 ## Setup
 
@@ -54,6 +61,37 @@ python attendance.py
 # 4. Check what's in the database
 python view_report.py
 ```
+
+## Web UI
+
+The same four steps, in a browser:
+
+```bash
+python app.py
+# then open http://127.0.0.1:5001
+```
+
+Start the camera, type a name and capture 30 samples, hit **Retrain model**,
+then **Start attendance**. Registered users, today's attendance, and a live
+activity log update in the sidebar once a second.
+
+The webcam is opened by the *server* process, not by the browser — OpenCV
+annotates each frame and Flask streams them out as MJPEG. That means the
+machine running `app.py` must be the machine with the camera, which is the
+same constraint the CLI scripts have. It also means this is not something to
+deploy: it binds to `127.0.0.1` on purpose, since it exposes a live camera
+feed and everyone's attendance records.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /` | dashboard |
+| `GET /video_feed` | MJPEG stream of annotated frames |
+| `GET /api/status` | camera state, mode, capture progress, recent events |
+| `POST /api/camera/start` · `/stop` | open / release the camera |
+| `POST /api/register` | `{name}` → start capturing samples |
+| `POST /api/train` | rebuild `trainer.yml` from `dataset/` |
+| `POST /api/attendance/start` · `/stop` | toggle recognition + logging |
+| `GET /api/report` | users + today's and all-time attendance |
 
 ## Database schema (SQLite, `attendance.db`)
 

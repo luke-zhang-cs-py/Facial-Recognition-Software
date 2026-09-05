@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import analytics
+import paths
 
 
 def rec(**over):
@@ -165,25 +166,39 @@ def test_lbph_needs_two_people():
 
 # ------------------------------------------------------- iter_sample_paths
 
-def test_iter_sample_paths_on_a_missing_directory(monkeypatch, tmp_path):
-    monkeypatch.setattr(analytics, "DATASET_DIR", str(tmp_path / "nope"))
+def test_iter_sample_paths_on_a_missing_directory(isolated_root):
+    """Redirected through paths.use(), which now actually reaches analytics --
+    it used to hold its own import-time copy of the dataset directory."""
     assert list(analytics.iter_sample_paths()) == []
 
 
-def test_iter_sample_paths_skips_unparseable_folders(monkeypatch, tmp_path):
-    ds = tmp_path / "dataset"
-    (ds / "7_Alice").mkdir(parents=True)
-    (ds / "7_Alice" / "1.jpg").write_bytes(b"x")
-    (ds / "notanid").mkdir()
-    (ds / "notanid" / "1.jpg").write_bytes(b"x")
-    monkeypatch.setattr(analytics, "DATASET_DIR", str(ds))
+def test_iter_sample_paths_skips_unparseable_folders(isolated_root):
+    ds = paths.dataset_dir()
+    os.makedirs(os.path.join(ds, "7_Alice"))
+    open(os.path.join(ds, "7_Alice", "1.jpg"), "wb").write(b"x")
+    os.makedirs(os.path.join(ds, "notanid"))
+    open(os.path.join(ds, "notanid", "1.jpg"), "wb").write(b"x")
     found = list(analytics.iter_sample_paths())
     assert len(found) == 1 and found[0][0] == 7
 
 
-def test_scan_of_an_empty_dataset(monkeypatch, tmp_path, isolated_db):
-    ds = tmp_path / "dataset"; ds.mkdir()
-    monkeypatch.setattr(analytics, "DATASET_DIR", str(ds))
+def test_scan_of_an_empty_dataset(isolated_root, isolated_db):
+    os.makedirs(paths.dataset_dir(), exist_ok=True)
     report = analytics.scan()
     assert report["totalSamples"] == 0
     assert report["users"] == [] and report["orphanFolders"] == []
+
+
+def test_the_intended_sample_count_matches_the_capture_plan():
+    """analytics tells people to aim for INTENDED_SAMPLES; camera decides how
+    many a full enrollment actually captures. The number lived in both files,
+    as a constant in one and a bare literal inside a sentence in the other.
+
+    Not an import at runtime -- analytics is used by scripts that never open
+    a camera -- so this is where the two are kept honest.
+    """
+    import analytics
+    from camera import CAPTURE_PLAN
+    assert analytics.INTENDED_SAMPLES == sum(p["count"] for p in CAPTURE_PLAN)
+    assert analytics.EXPECTED_SAMPLES < analytics.INTENDED_SAMPLES,         "the complain-at threshold has to be below the target"
+

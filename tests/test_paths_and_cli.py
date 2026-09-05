@@ -41,20 +41,20 @@ def test_user_folder_is_filesystem_safe():
     assert "7_Jane_Doe" in f and " " not in os.path.basename(f)
 
 
-def test_train_model_reports_nothing_to_train(monkeypatch, tmp_path, capsys):
+def test_train_model_reports_nothing_to_train(isolated_root, capsys):
+    """Redirected with paths.use() rather than by patching train_model's own
+    copy of the path -- it does not keep one any more."""
     import train_model
-    monkeypatch.setattr(train_model, "DATASET_DIR", str(tmp_path / "empty"))
+    assert not os.path.exists(paths.dataset_dir())
     faces, labels = train_model.load_training_data()
     assert faces == [] and labels == []
     train_model.train()
     assert "No training images" in capsys.readouterr().out
 
 
-def test_train_model_skips_folders_without_an_id(monkeypatch, tmp_path, capsys):
+def test_train_model_skips_folders_without_an_id(isolated_root, capsys):
     import train_model
-    ds = tmp_path / "dataset"
-    (ds / "junk").mkdir(parents=True)
-    monkeypatch.setattr(train_model, "DATASET_DIR", str(ds))
+    os.makedirs(os.path.join(paths.dataset_dir(), "junk"))
     train_model.load_training_data()
     assert "Skipping" in capsys.readouterr().out
 

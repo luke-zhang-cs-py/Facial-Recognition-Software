@@ -37,8 +37,6 @@ import traits as facetraits
 import paths
 
 BASE_DIR = paths.BASE_DIR
-DATASET_DIR = paths.dataset_dir()
-MODEL_PATH = paths.model_path()
 FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
 # Same tuning knobs as the CLI version. LBPH "confidence" is a distance,
@@ -225,7 +223,7 @@ class CameraManager:
 
         self.start()
         user_id = db.add_user(name)
-        user_dir = os.path.join(DATASET_DIR, f"{user_id}_{name.replace(' ', '_')}")
+        user_dir = os.path.join(paths.dataset_dir(), f"{user_id}_{name.replace(' ', '_')}")
         os.makedirs(user_dir, exist_ok=True)
 
         with self._lock:
@@ -248,7 +246,7 @@ class CameraManager:
         # Train on demand rather than refusing. The old behaviour told the user
         # to go and press a button that this could press itself; the only case
         # that genuinely cannot proceed is having nobody enrolled at all.
-        if not os.path.exists(MODEL_PATH):
+        if not os.path.exists(paths.model_path()):
             if not self.retrain(reason="(no model yet)"):
                 raise CameraError(
                     "Nobody is enrolled yet. Register at least one person first."
@@ -269,12 +267,12 @@ class CameraManager:
 
     def _load_recognizer(self):
         """(Re)load trainer.yml, but only when it has actually changed."""
-        mtime = os.path.getmtime(MODEL_PATH)
+        mtime = os.path.getmtime(paths.model_path())
         with self._lock:
             if self._recognizer is not None and self._model_mtime == mtime:
                 return
         recognizer = cv2.face.LBPHFaceRecognizer_create()
-        recognizer.read(MODEL_PATH)
+        recognizer.read(paths.model_path())
         with self._lock:
             self._recognizer = recognizer
             self._model_mtime = mtime
@@ -317,10 +315,10 @@ class CameraManager:
         """Train at startup if dataset/ has samples but trainer.yml is missing
         or stale. Means the app is usable straight away after a fresh clone
         with an existing dataset, instead of insisting on a manual step."""
-        if not os.path.isdir(DATASET_DIR):
+        if not os.path.isdir(paths.dataset_dir()):
             return False
         newest = 0.0
-        for root, _, files in os.walk(DATASET_DIR):
+        for root, _, files in os.walk(paths.dataset_dir()):
             for f in files:
                 try:
                     newest = max(newest, os.path.getmtime(os.path.join(root, f)))
@@ -328,7 +326,7 @@ class CameraManager:
                     pass
         if newest == 0.0:
             return False
-        if os.path.exists(MODEL_PATH) and os.path.getmtime(MODEL_PATH) >= newest:
+        if os.path.exists(paths.model_path()) and os.path.getmtime(paths.model_path()) >= newest:
             return False
         return self.retrain(reason="(dataset changed since last training)")
 
@@ -366,7 +364,7 @@ class CameraManager:
                                 "count": p["count"]} for p in CAPTURE_PLAN],
                 },
                 "report": self._reg_report,
-                "modelExists": os.path.exists(MODEL_PATH),
+                "modelExists": os.path.exists(paths.model_path()),
                 "events": list(self._events),
             }
 

@@ -41,11 +41,16 @@ import db
 import facemodels
 import traits
 
-DATASET_DIR = paths.dataset_dir()
 
 LBPH_SWEEP = list(range(30, 131, 10))
 SFACE_SWEEP = [round(x, 2) for x in np.arange(0.20, 0.71, 0.05)]
 KFOLDS = 5
+
+# LBPH is trained and queried at a fixed size; every sample is resized to it.
+# It was written out as a bare (200, 200) at the two call sites, where a
+# mismatch between the two would train on one geometry and predict on
+# another, and the only symptom would be worse numbers.
+LBPH_INPUT_SIZE = (200, 200)
 
 # SFace's own documented operating point for "same person" on cosine.
 SFACE_REFERENCE = calibration.SFACE_REFERENCE
@@ -65,15 +70,23 @@ UNDETECTED_FRACTION = 0.30  # share that will not re-detect before warning
 FLAT_POSE_DEGREES = 5.0     # yaw spread below this is one angle repeated
 EXPECTED_SAMPLES = 20       # fewer than this is a thin enrollment
 
+# What a completed enrollment actually produces: the sum of camera.py's
+# CAPTURE_PLAN counts. Not imported from there -- analytics is used by
+# scripts that never touch a camera -- so a test asserts the two agree.
+# The advice below used to say "30" as a bare number in a sentence, three
+# hundred lines from the constant that decides when to show it, and nothing
+# connected the two.
+INTENDED_SAMPLES = 30
+
 
 # --------------------------------------------------------------- collecting
 
 def iter_sample_paths():
     """Yield (user_id, folder_label, path) for every image under dataset/."""
-    if not os.path.isdir(DATASET_DIR):
+    if not os.path.isdir(paths.dataset_dir()):
         return
-    for folder in sorted(os.listdir(DATASET_DIR)):
-        full = os.path.join(DATASET_DIR, folder)
+    for folder in sorted(os.listdir(paths.dataset_dir())):
+        full = os.path.join(paths.dataset_dir(), folder)
         if not os.path.isdir(full):
             continue
         try:
@@ -225,6 +238,49 @@ def _worst_samples(records, limit=5):
             for r in flagged[:limit]]
 
 
+def _recommendations(records, flags, usable, yaw_spread):
+    """What to tell somebody about their captured samples, worst first.
+
+    Each rule is here because it names something the person can actually do
+    differently next time. A summary that only reports numbers leaves the
+    reader to work out what a yaw spread of 1.2 degrees is supposed to mean
+    to them.
+    """
+    total = len(records)
+    if not total:
+        return []
+
+    advice = []
+    if usable / total < USABLE_FRACTION:
+        advice.append("More than a quarter of samples are flagged — recapture.")
+
+    soft = flags.get("blurry", 0) + flags.get("soft focus", 0)
+    if soft > total * SOFT_FRACTION:
+        advice.append(
+            f"{soft} samples are noticeably softer than the rest — hold still, or add "
+            f"light so the camera picks a shorter exposure.")
+
+    if flags.get("too dark", 0) > total * DARK_FRACTION or flags.get("flat contrast", 0):
+        advice.append("Add light in front of the face, not behind it.")
+
+    if yaw_spread is not None and yaw_spread < FLAT_POSE_DEGREES:
+        advice.append("Every sample is the same angle — turn your head "
+                      "a little while capturing.")
+
+    if total < EXPECTED_SAMPLES:
+        # Two different numbers doing two different jobs: EXPECTED_SAMPLES is
+        # when to complain, INTENDED_SAMPLES is what to aim for. The sentence
+        # used to carry the second one as a bare literal.
+        advice.append(f"Only {total} samples; {INTENDED_SAMPLES} is the intended count.")
+
+    undetected = sum(1 for r in records if not r["detected"])
+    if undetected > total * UNDETECTED_FRACTION:
+        advice.append(
+            f"{undetected} samples did not re-detect as faces — the crops may be too tight.")
+
+    return advice
+
+
 def summarize_user(user_id, name, records):
     _mark_relative_blur(records)
 
@@ -238,27 +294,7 @@ def summarize_user(user_id, name, records):
     yaw_spread = round(float(np.std(yaws)), 1) if len(yaws) > 1 else None
     yaw_range = (round(float(min(yaws)), 1), round(float(max(yaws)), 1)) if yaws else None
 
-    recommendations = []
-    if records and usable / len(records) < USABLE_FRACTION:
-        recommendations.append("More than a quarter of samples are flagged — recapture.")
-    soft = flags.get("blurry", 0) + flags.get("soft focus", 0)
-    if soft > len(records) * SOFT_FRACTION:
-        recommendations.append(
-            f"{soft} samples are noticeably softer than the rest — hold still, or add "
-            f"light so the camera picks a shorter exposure.")
-    if (flags.get("too dark", 0) > len(records) * DARK_FRACTION
-            or flags.get("flat contrast", 0)):
-        recommendations.append("Add light in front of the face, not behind it.")
-    if yaw_spread is not None and yaw_spread < FLAT_POSE_DEGREES:
-        recommendations.append("Every sample is the same angle — turn your head "
-                               "a little while capturing.")
-    if len(records) < EXPECTED_SAMPLES:
-        recommendations.append(f"Only {len(records)} samples; 30 is the intended count.")
-
-    undetected = sum(1 for r in records if not r["detected"])
-    if undetected > len(records) * UNDETECTED_FRACTION:
-        recommendations.append(
-            f"{undetected} samples did not re-detect as faces — the crops may be too tight.")
+    recommendations = _recommendations(records, flags, usable, yaw_spread)
 
     return {
         "userId": user_id,
@@ -350,11 +386,7 @@ def sface_analysis(records):
     n_users = len(by_user)
     trust_local = n_users >= MIN_USERS_FOR_LOCAL_SWEEP
 
-    clean = [s for s in sweep if s["falseMatch"] == 0.0]
-    if clean:
-        best = max(clean, key=lambda s: s["accept"])
-    else:
-        best = max(sweep, key=lambda s: s["accept"] - s["falseMatch"])
+    best = best_threshold(sweep)
 
     cal_threshold, cal_risk, cal_ok = calibration.recommend_threshold(n_users)
     recommended = best["threshold"] if trust_local else cal_threshold
@@ -415,6 +447,96 @@ def sface_analysis(records):
 
 # -------------------------------------------------------- recognition (LBPH)
 
+def best_threshold(sweep):
+    """The threshold to recommend from a sweep.
+
+    Prefer the most permissive setting that lets nothing wrong through; if
+    every setting admits a false match, fall back to the best trade-off. A
+    false match is somebody being marked present as somebody else, which is
+    worse than a rejection the person can retry.
+
+    Written out twice -- once in sface_analysis and once in lbph_analysis,
+    in two different spellings of the same conditional. Same rule, so one
+    copy of it.
+    """
+    clean = [s for s in sweep if s["falseMatch"] == 0.0]
+    if clean:
+        return max(clean, key=lambda s: s["accept"])
+    return max(sweep, key=lambda s: s["accept"] - s["falseMatch"])
+
+
+def _lbph_sweep(results):
+    """Accept and false-match rates across the candidate thresholds.
+
+    LBPH confidence is a DISTANCE, not a similarity: a match is accepted when
+    it is *below* the threshold. Getting that backwards is the kind of
+    inversion that produces a plausible-looking curve pointing the wrong way.
+    """
+    total = len(results)
+    sweep = []
+    for threshold in LBPH_SWEEP:
+        accepted = [(true, pred) for true, pred, conf in results if conf < threshold]
+        n_correct = sum(1 for true, pred in accepted if true == pred)
+        n_wrong = len(accepted) - n_correct
+        sweep.append({
+            "threshold": threshold,
+            "accept": round(100.0 * n_correct / total, 1),
+            "falseMatch": round(100.0 * n_wrong / total, 1),
+        })
+    return sweep
+
+
+def _stratify(by_user, folds):
+    """Assign every sample to a fold, spreading each person evenly.
+
+    Round-robin per person rather than a global shuffle: with a handful of
+    samples each, a random split can leave a fold with nobody from a given
+    person in training, and that fold then measures nothing useful.
+    """
+    assignment = []
+    # Not `paths`: that is the name of an imported module in this file, and a
+    # loop variable shadowing it means the next person to reach for
+    # paths.DATASET inside this function gets an AttributeError on a list.
+    for user_id, sample_paths in by_user.items():
+        for i, path in enumerate(sorted(sample_paths)):
+            assignment.append((i % folds, user_id, path))
+    return assignment
+
+
+def _load_square(path):
+    """A greyscale sample at the size LBPH is trained on, or None."""
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    return None if img is None else cv2.resize(img, LBPH_INPUT_SIZE)
+
+
+def _train_lbph(train_pairs):
+    """An LBPH model over these (user, path) pairs, or None if there is not
+    enough to train on. LBPH needs at least two identities to separate."""
+    images, labels = [], []
+    for user_id, path in train_pairs:
+        img = _load_square(path)
+        if img is not None:
+            images.append(img)
+            labels.append(user_id)
+    if len(set(labels)) < 2:
+        return None
+    model = cv2.face.LBPHFaceRecognizer_create()
+    model.train(images, np.array(labels))
+    return model
+
+
+def _score_fold(model, test_pairs):
+    """(true, predicted, confidence) for every readable sample in the fold."""
+    scored = []
+    for user_id, path in test_pairs:
+        img = _load_square(path)
+        if img is None:
+            continue
+        pred, conf = model.predict(img)
+        scored.append((user_id, int(pred), float(conf)))
+    return scored
+
+
 def lbph_analysis(records, folds=KFOLDS):
     """K-fold cross-validation of the LBPH recogniser attendance.py uses."""
     by_user = defaultdict(list)
@@ -425,63 +547,25 @@ def lbph_analysis(records, folds=KFOLDS):
         return {"available": False,
                 "reason": f"Needs at least 2 registered people (found {len(by_user)})."}
 
-    # Stratified folds: each person's samples spread evenly across folds.
-    assignment = []
-    # Not `paths`: that is the name of an imported module in this file, and a
-    # loop variable shadowing it means the next person to reach for
-    # paths.DATASET inside this function gets an AttributeError on a list.
-    for user_id, sample_paths in by_user.items():
-        for i, path in enumerate(sorted(sample_paths)):
-            assignment.append((i % folds, user_id, path))
-
+    assignment = _stratify(by_user, folds)
     usable_folds = sorted({f for f, _, _ in assignment})
+
     results = []
     for fold in usable_folds:
         train = [(u, p) for f, u, p in assignment if f != fold]
         test = [(u, p) for f, u, p in assignment if f == fold]
         if not train or not test:
             continue
-        if len({u for u, _ in train}) < 2:
-            continue
-
-        images, labels = [], []
-        for user_id, path in train:
-            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            if img is not None:
-                images.append(cv2.resize(img, (200, 200)))
-                labels.append(user_id)
-        if len(set(labels)) < 2:
-            continue
-
-        model = cv2.face.LBPHFaceRecognizer_create()
-        model.train(images, np.array(labels))
-
-        for user_id, path in test:
-            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                continue
-            pred, conf = model.predict(cv2.resize(img, (200, 200)))
-            results.append((user_id, int(pred), float(conf)))
+        model = _train_lbph(train)
+        if model is not None:
+            results += _score_fold(model, test)
 
     if not results:
         return {"available": False, "reason": "Not enough samples to cross-validate."}
 
-    correct = sum(1 for t, p, _ in results if t == p)
-    sweep = []
-    for t in LBPH_SWEEP:
-        # LBPH confidence is a DISTANCE: a match is accepted when conf < t.
-        accepted = [(tr, pr) for tr, pr, c in results if c < t]
-        n_correct = sum(1 for tr, pr in accepted if tr == pr)
-        n_wrong = sum(1 for tr, pr in accepted if tr != pr)
-        sweep.append({
-            "threshold": t,
-            "accept": round(100.0 * n_correct / len(results), 1),
-            "falseMatch": round(100.0 * n_wrong / len(results), 1),
-        })
-
-    clean = [s for s in sweep if s["falseMatch"] == 0.0]
-    best = (max(clean, key=lambda s: s["accept"]) if clean
-            else max(sweep, key=lambda s: s["accept"] - s["falseMatch"]))
+    correct = sum(1 for true, pred, _ in results if true == pred)
+    sweep = _lbph_sweep(results)
+    best = best_threshold(sweep)
 
     confs = np.array([c for _, _, c in results])
     return {

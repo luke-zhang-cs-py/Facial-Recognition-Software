@@ -10,11 +10,27 @@ sys.path.insert(0, ROOT)
 
 
 @pytest.fixture
-def isolated_db(monkeypatch):
+def isolated_root():
+    """Point the whole project -- database and dataset -- at a fresh folder.
+
+    This used to monkeypatch db.DB_PATH, because the modules read their paths
+    once at import and paths.use() could not move them afterwards. That is
+    fixed, so the redirection is the one call it was always supposed to be,
+    and the database and the dataset can no longer end up in different places.
+    """
+    import paths
+    tmp = tempfile.mkdtemp()
+    previous = paths.use(tmp)
+    try:
+        yield tmp
+    finally:
+        paths.use(previous)
+
+
+@pytest.fixture
+def isolated_db(isolated_root):
     """A throwaway database, so tests never touch the real attendance.db."""
     import db
-    tmp = tempfile.mkdtemp()
-    monkeypatch.setattr(db, "DB_PATH", os.path.join(tmp, "test.db"))
     db.init_db()
     return db
 

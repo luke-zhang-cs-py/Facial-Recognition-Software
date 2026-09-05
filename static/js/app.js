@@ -18,7 +18,20 @@ const errBox = $('err');
 
 let state = { running: false, mode: 'idle' };
 
-async function post(url, body) {
+async /* Text that came from a person, on its way into innerHTML.
+ *
+ * Registered names are stored exactly as typed and rendered straight into the
+ * dashboard, so a name of `<img src=x onerror=...>` was script that ran in
+ * every browser that opened the page. That is stored XSS, and registering a
+ * name is the app's main function.
+ *
+ * Single quotes are escaped too: unlike the email templates, some attributes
+ * here are single-quoted. */
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]));
+
+function post(url, body) {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -88,7 +101,7 @@ function render(s) {
       const done = i < (r.stage || 0);
       const active = i === (r.stage || 0);
       const n = active ? (r.stageCount || 0) : (done ? st.count : 0);
-      return `<li class="${done ? 'pass' : (active ? '' : 'fail')}">${st.label}`
+      return `<li class="${done ? 'pass' : (active ? '' : 'fail')}">${esc(st.label)}`
         + `<span class="when">${n}/${st.count}</span></li>`;
     }).join('');
   }
@@ -98,11 +111,11 @@ function render(s) {
   renderGuidance(s);
   renderTraits(s);
 
-  fillList($('userList'), s.users, (u) => `[${u.id}] ${u.name}`, 'none yet');
+  fillList($('userList'), s.users, (u) => `[${esc(u.id)}] ${esc(u.name)}`, 'none yet');
   fillList($('todayList'), s.today,
-    (a) => `${a.name}<span class="when">${a.timestamp.slice(11, 19)}</span>`, 'nobody yet');
+    (a) => `${esc(a.name)}<span class="when">${esc(a.timestamp.slice(11, 19))}</span>`, 'nobody yet');
   fillList($('eventList'), s.events,
-    (e) => `${e.message}<span class="when">${e.at}</span>`, '—',
+    (e) => `${esc(e.message)}<span class="when">${esc(e.at)}</span>`, '—',
     (e) => e.kind === 'success');
 
   $('todayCount').textContent = (s.today || []).length;
@@ -112,7 +125,7 @@ function render(s) {
 
 function fillList(el, items, fmt, empty, isSuccess) {
   if (!items || !items.length) {
-    el.innerHTML = `<li class="muted">${empty}</li>`;
+    el.innerHTML = `<li class="muted">${esc(empty)}</li>`;
     return;
   }
   el.innerHTML = items
@@ -192,7 +205,7 @@ function renderReport(rep) {
   }
   panel.style.display = 'block';
   $('reportSub').textContent =
-    `${rep.samples} samples captured for ${rep.name}. What the system can now`
+    `${esc(rep.samples)} samples captured for ${esc(rep.name)}. What the system can now`
     + ` measure, and how well it should recognise them.`;
 
   const s = rep.sharpness || {}, q = rep.quality || {}, px = rep.facePx || {};
@@ -201,8 +214,8 @@ function renderReport(rep) {
     stat(k, `${poses[k]} samples`)).join('');
 
   const near = rep.nearestOther
-    ? `Closest other enrolled face is <b>${rep.nearestOther.name}</b> at
-       ${rep.nearestOther.similarity} similarity.
+    ? `Closest other enrolled face is <b>${esc(rep.nearestOther.name)}</b> at
+       ${esc(rep.nearestOther.similarity)} similarity.
        ${rep.nearestOther.similarity >= rep.threshold
          ? '<b>That is above the recommended threshold — these two could be confused.</b>'
          : 'Comfortably below the recommended threshold.'}`
@@ -212,7 +225,7 @@ function renderReport(rep) {
     <div class="agrid">
       <div class="card">
         <div class="who"><h3>Capture</h3>
-          <span class="pill ${rep.verdict === 'good' ? 'good' : 'warn'}">${rep.verdict}</span></div>
+          <span class="pill ${esc(rep.verdict === 'good' ? 'good' : 'warn')}">${esc(rep.verdict)}</span></div>
         <div class="metrics">
           ${stat('usable', `${rep.usable}/${rep.samples}`)}
           ${rep.sampleAccuracy != null
@@ -228,7 +241,7 @@ function renderReport(rep) {
               .map(([k, v]) => `<span class="chip">${k} ×${v}</span>`).join('')}</div>` : ''}
         ${rep.sampleAdvice ? `<div class="note">${rep.sampleAdvice}</div>` : ''}
         ${(rep.recommendations || []).length
-          ? `<ul class="tips">${rep.recommendations.map((r) => `<li>${r}</li>`).join('')}</ul>` : ''}
+          ? `<ul class="tips">${rep.recommendations.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
       </div>
 
       <div class="card">
@@ -264,7 +277,7 @@ function renderReport(rep) {
         <table class="sweep">
           <tr><th>check</th><th>result</th><th>disparity</th></tr>
           ${rep.fairness.checks.map((c) => `<tr class="${c.disparity > 1.25 ? 'cur' : 'rec'}">
-            <td>${c.name}</td><td>${c.value}</td><td>${c.disparity.toFixed(2)}x</td></tr>
+            <td>${esc(c.name)}</td><td>${c.value}</td><td>${c.disparity.toFixed(2)}x</td></tr>
             <tr><td colspan="3" style="color:var(--muted);font-size:10.5px;padding-top:0;">
             ${c.detail}</td></tr>`).join('')}
         </table>
@@ -351,7 +364,7 @@ function renderTraits(s) {
     ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender', 'ltParts', 'ltSym', 'ltCheek', 'ltLive']
       .forEach((id) => { $(id).textContent = DASH; });
     $('ltFlags').innerHTML = t && t.error
-      ? `<div class="chips"><span class="chip">${t.error}</span></div>` : '';
+      ? `<div class="chips"><span class="chip">${esc(t.error)}</span></div>` : '';
     return;
   }
 
@@ -376,7 +389,7 @@ function renderTraits(s) {
     $('ltAge').textContent = t.age ? t.age.label : noFace;
   }
   $('ltGender').textContent = t.gender
-    ? `${t.gender.label}  ${(t.gender.confidence * 100).toFixed(0)}%${t.gender.uncertain ? ' ?' : ''}`
+    ? `${esc(t.gender.label)}  ${(t.gender.confidence * 100).toFixed(0)}%${t.gender.uncertain ? ' ?' : ''}`
     : noFace;
 
   const pm = t.parts;
@@ -392,11 +405,11 @@ function renderTraits(s) {
 
   const lv = s.liveness;
   $('ltLive').textContent = (lv && lv.available)
-    ? (lv.score != null ? `${lv.verdict} ${lv.score.toFixed(2)}` : lv.verdict)
+    ? (lv.score != null ? `${esc(lv.verdict)} ${lv.score.toFixed(2)}` : esc(lv.verdict))
     : 'model missing';
 
   $('ltFlags').innerHTML = (t.flags && t.flags.length)
-    ? `<div class="chips">${t.flags.map((f) => `<span class="chip">${f}</span>`).join('')}</div>`
+    ? `<div class="chips">${t.flags.map((f) => `<span class="chip">${esc(f)}</span>`).join('')}</div>`
     : '';
 }
 
@@ -473,8 +486,8 @@ function userCard(u) {
   return `
     <div class="card">
       <div class="who">
-        <h3>${u.name}</h3>
-        <span class="pill ${u.verdict === 'good' ? 'good' : 'warn'}">${u.verdict}</span>
+        <h3>${esc(u.name)}</h3>
+        <span class="pill ${esc(u.verdict === 'good' ? 'good' : 'warn')}">${esc(u.verdict)}</span>
       </div>
       <div class="metrics">
         <span>usable</span><span>${u.usable}/${u.samples} (${pct}%)</span>
@@ -482,17 +495,17 @@ function userCard(u) {
         ${metric('brightness', u.brightness, 'mean')}
         ${metric('quality', u.quality, 'mean')}
         <span>pose spread</span><span>${u.yawSpread != null ? u.yawSpread + '°' : 'n/a'}</span>
-        ${u.age ? `<span>age est.</span><span>${u.age.label} (${Math.round(u.age.agreement * 100)}% agree)</span>` : ''}
-        ${u.gender ? `<span>gender est.</span><span>${u.gender.label} (${Math.round(u.gender.agreement * 100)}% agree)</span>` : ''}
+        ${u.age ? `<span>age est.</span><span>${esc(u.age.label)} (${Math.round(u.age.agreement * 100)}% agree)</span>` : ''}
+        ${u.gender ? `<span>gender est.</span><span>${esc(u.gender.label)} (${Math.round(u.gender.agreement * 100)}% agree)</span>` : ''}
       </div>
       ${Object.keys(u.flags).length
         ? `<div class="chips">${Object.entries(u.flags)
             .map(([k, v]) => `<span class="chip">${k} ×${v}</span>`).join('')}</div>` : ''}
       ${u.worstSamples.length
         ? `<div class="chips">${u.worstSamples.slice(0, 4)
-            .map((w) => `<span class="chip n">${w.file}</span>`).join('')}</div>` : ''}
+            .map((w) => `<span class="chip n">${esc(w.file)}</span>`).join('')}</div>` : ''}
       ${u.recommendations.length
-        ? `<ul class="tips">${u.recommendations.map((r) => `<li>${r}</li>`).join('')}</ul>` : ''}
+        ? `<ul class="tips">${u.recommendations.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
     </div>`;
 }
 
@@ -588,7 +601,7 @@ $('idFile').onchange = async (ev) => {
     if (!res.ok || d.ok === false) throw new Error(d.error || 'Failed');
     renderIdentify(d);
   } catch (e) {
-    out.innerHTML = `<div class="err">${e.message}</div>`;
+    out.innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
   ev.target.value = '';
 };
@@ -598,13 +611,13 @@ function renderIdentify(d) {
   const rows = d.candidates.map((c, i) => `
     <div class="idrow ${i === 0 && m ? 'hit' : (i === 0 ? 'miss' : '')}">
       <span>${i === 0 ? 'best match' : 'also considered'}</span>
-      <b>${c.name} &nbsp; ${c.similarity.toFixed(3)}</b>
+      <b>${esc(c.name)} &nbsp; ${c.similarity.toFixed(3)}</b>
     </div>`).join('');
 
   $('identifyBody').innerHTML = `
     <div class="agrid">
       <div class="card">
-        <div class="who"><h3>${m ? m.name : 'No confident match'}</h3>
+        <div class="who"><h3>${esc(m ? m.name : 'No confident match')}</h3>
           <span class="pill ${m ? 'good' : 'warn'}">${m ? 'identified' : 'below threshold'}</span></div>
         <div class="metrics">
           ${stat('similarity', d.best.similarity.toFixed(3))}

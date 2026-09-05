@@ -32,14 +32,13 @@ import sys
 import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, BASE_DIR)
-os.chdir(BASE_DIR)
+sys.path.insert(0, BASE_DIR)   # importable when run as a script from anywhere
 
 import cv2                       # noqa: E402
 import db                        # noqa: E402
+import paths                     # noqa: E402
 import traits                    # noqa: E402
 
-DATASET_DIR = os.path.join(BASE_DIR, "dataset")
 PREFIX = "[demo] "
 LFW = os.path.join(os.environ.get("TEMP", "."), "lfw", "lfw.parquet")
 
@@ -53,9 +52,9 @@ def remove_all():
     removed = 0
     for uid, name in demo_users():
         db.delete_user(uid)
-        for folder in os.listdir(DATASET_DIR) if os.path.isdir(DATASET_DIR) else []:
+        for folder in os.listdir(paths.dataset_dir()) if os.path.isdir(paths.dataset_dir()) else []:
             if folder.startswith(f"{uid}_"):
-                shutil.rmtree(os.path.join(DATASET_DIR, folder), ignore_errors=True)
+                shutil.rmtree(os.path.join(paths.dataset_dir(), folder), ignore_errors=True)
         print(f"  removed {name}")
         removed += 1
     if not removed:
@@ -157,7 +156,7 @@ def main():
     names, images, picked = loaded
 
     from PIL import Image
-    os.makedirs(DATASET_DIR, exist_ok=True)
+    os.makedirs(paths.dataset_dir(), exist_ok=True)
     print(f"enrolling {len(picked)} people, up to {args.samples} samples each")
 
     total = 0
@@ -165,7 +164,7 @@ def main():
         person = (names[label] if names else str(label)).replace("_", " ")
         display = PREFIX + person
         user_id = db.add_user(display)
-        folder = os.path.join(DATASET_DIR, f"{user_id}_{person.replace(' ', '_')}")
+        folder = os.path.join(paths.dataset_dir(), f"{user_id}_{person.replace(' ', '_')}")
         os.makedirs(folder, exist_ok=True)
 
         # Leave one image out for testing when the person has few to begin

@@ -16,19 +16,17 @@ import paths
 import cv2
 import numpy as np
 
-DATASET_DIR = paths.dataset_dir()
-MODEL_PATH = paths.model_path()
 
 
 def load_training_data():
     faces = []
     labels = []
 
-    if not os.path.isdir(DATASET_DIR):
+    if not os.path.isdir(paths.dataset_dir()):
         return faces, labels
 
-    for folder_name in os.listdir(DATASET_DIR):
-        folder_path = os.path.join(DATASET_DIR, folder_name)
+    for folder_name in os.listdir(paths.dataset_dir()):
+        folder_path = os.path.join(paths.dataset_dir(), folder_name)
         if not os.path.isdir(folder_path):
             continue
 
@@ -59,11 +57,11 @@ def train():
 
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     recognizer.train(faces, np.array(labels))
-    recognizer.save(MODEL_PATH)
+    recognizer.save(paths.model_path())
 
     unique_users = len(set(labels))
     print(f"Trained on {len(faces)} images across {unique_users} user(s).")
-    print(f"Model saved to {MODEL_PATH}")
+    print(f"Model saved to {paths.model_path()}")
 
 
 if __name__ == "__main__":

@@ -6,22 +6,20 @@ import pytest
 
 
 @pytest.fixture
-def client(monkeypatch, tmp_path):
+def client(isolated_root, tmp_path):
     """Isolate BOTH the database and the dataset directory.
 
     Isolating only the database is not enough, and finding that out was the
-    point: train_model and analytics resolve DATASET_DIR at module level, so a
-    fresh database still reads the real dataset/ off disk. That is the same
-    split-brain that let a dataset/ folder reference a user id with no row --
-    the two stores are independently redirectable and nothing keeps them in
-    step.
+    point: a fresh database with the real dataset/ still on disk is the
+    split-brain that let a dataset folder reference a user id with no row.
+
+    This used to patch db.DB_PATH, train_model.DATASET_DIR and
+    analytics.DATASET_DIR one at a time -- three attributes, because each
+    module had read its path at import and paths.use() could not reach them.
+    Fixing that at the source turned three patches into one redirect, which
+    is what paths.use() was written to be.
     """
-    import db, train_model, analytics
-    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
-    empty = tmp_path / "dataset"
-    empty.mkdir()
-    monkeypatch.setattr(train_model, "DATASET_DIR", str(empty))
-    monkeypatch.setattr(analytics, "DATASET_DIR", str(empty))
+    import db
     db.init_db()
     import app as flask_app
     flask_app.app.config["TESTING"] = True

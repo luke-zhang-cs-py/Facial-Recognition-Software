@@ -23,7 +23,6 @@ A person is represented by the mean of their sample embeddings, re-normalised
 point of capturing 30 of them across different poses.
 """
 
-import paths
 
 import numpy as np
 
@@ -31,7 +30,6 @@ import calibration
 import db
 import traits
 
-DATASET_DIR = paths.dataset_dir()
 
 # Clearing the threshold is not enough on its own. If the best match beats the
 # runner-up by only a hair, the pair is being told apart by noise, and naming

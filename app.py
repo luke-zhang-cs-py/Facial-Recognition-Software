@@ -37,13 +37,18 @@ import threading
 
 from flask import Flask, jsonify, render_template, request, Response
 
-# Every sibling module (db.py in particular) resolves its paths relative to
-# the working directory, exactly as the CLI scripts assumed. Pin the cwd to
-# this file's folder so `python app.py` works from anywhere.
+# Every path resolves through paths.py, against this file's folder, so this
+# works from any directory without moving the process.
+#
+# There used to be an os.chdir(BASE_DIR) here, with a comment explaining that
+# sibling modules resolved their paths relative to the working directory.
+# That stopped being true when paths.py was introduced, and the workaround
+# outlived the problem -- changing the process's working directory as a side
+# effect of an import moves the ground under everything else in it.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-os.chdir(BASE_DIR)
 
 import db                                  # noqa: E402
+import paths                               # noqa: E402
 import train_model                         # noqa: E402
 import analytics                           # noqa: E402
 import recognition                         # noqa: E402
@@ -298,7 +303,7 @@ if __name__ == "__main__":
     # the app comes up ready to recognise instead of requiring a manual step.
     if camera.ensure_trained():
         print("Model retrained from dataset/ (it was missing or out of date).")
-    elif os.path.exists(os.path.join(BASE_DIR, "trainer.yml")):
+    elif os.path.exists(paths.model_path()):
         print("Model is up to date.")
     print("Open http://127.0.0.1:5001")
     # threaded=True matters: the MJPEG stream holds a request open indefinitely,

@@ -12,13 +12,14 @@ Usage:
 Press 'q' to quit.
 """
 
-import cv2
 import os
 
+import cv2
+
 import db
+import paths
 
 FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-MODEL_PATH = "trainer.yml"
 
 # LBPH "confidence" is actually a distance: LOWER means more confident.
 # Tune this based on your lighting/camera. 60-80 is a reasonable range.
@@ -26,14 +27,15 @@ CONFIDENCE_THRESHOLD = 70
 
 
 def run_attendance():
-    if not os.path.exists(MODEL_PATH):
+    model_path = paths.model_path()
+    if not os.path.exists(model_path):
         print("No trained model found. Run register_user.py then train_model.py first.")
         return
 
     db.init_db()
 
     recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read(MODEL_PATH)
+    recognizer.read(model_path)
 
     face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
     cap = cv2.VideoCapture(0)

@@ -14,14 +14,21 @@ from datetime import datetime, date
 
 import paths
 
+# Resolved per call, not captured at import.
+#
+# paths.use() exists so a script or a test can point the whole set at another
+# root and have the database and the dataset move together. A module-level
+# `X = paths.x()` reads the root once, at import, and then never moves --
+# which reintroduces exactly the split paths.py was written to prevent: after
+# use(), the dataset is the copy and the database is still the real one.
+
 # Kept as a module attribute because tests and the CLI scripts patch it, but
 # the default now comes from paths so it moves with dataset/ rather than
 # being separately redirectable.
-DB_PATH = paths.db_path()
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn = sqlite3.connect(paths.db_path(), timeout=10.0)
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
@@ -285,4 +292,4 @@ def delete_user(user_id):
 
 if __name__ == "__main__":
     init_db()
-    print(f"Database initialized at {DB_PATH}")
+    print(f"Database initialized at {paths.db_path()}")

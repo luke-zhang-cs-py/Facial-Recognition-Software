@@ -10,14 +10,15 @@ Usage:
     python register_user.py "Jane Doe"
 """
 
-import sys
 import os
+import sys
+
 import cv2
 
 import db
+import paths
 
 FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-DATASET_DIR = "dataset"
 SAMPLES_TO_CAPTURE = 30
 
 
@@ -26,7 +27,10 @@ def register_user(name):
     user_id = db.add_user(name)
     print(f"Created user '{name}' with id={user_id}")
 
-    user_dir = os.path.join(DATASET_DIR, f"{user_id}_{name.replace(' ', '_')}")
+    # paths.user_folder, not the same join written out again -- the folder
+    # naming rule lived in two places, and a dataset folder the rest of the
+    # project cannot find is a user who silently never gets recognised.
+    user_dir = paths.user_folder(user_id, name)
     os.makedirs(user_dir, exist_ok=True)
 
     face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)

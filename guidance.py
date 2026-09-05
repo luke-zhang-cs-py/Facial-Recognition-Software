@@ -63,101 +63,185 @@ def _face_fraction(traits, frame_area):
     return (px * px) / float(frame_area)
 
 
+def _out(sev, msg, detail=None, ready=False):
+    return {"severity": sev, "message": msg, "detail": detail, "ready": ready}
+
+
+class Reading:
+    """One trait read, with the derived numbers the rules ask about.
+
+    A small object rather than passing `traits`, `frame_shape` and four
+    recomputed values to every rule: the rules below read like sentences
+    about a reading, and adding a derived quantity is one property here
+    instead of an argument threaded through eighteen places.
+    """
+
+    def __init__(self, traits, frame_shape=None):
+        self.traits = traits
+        self.frame_area = (frame_shape[0] * frame_shape[1]) if frame_shape else None
+        self.faces = traits.get("faces", 0)
+        self.detected = traits.get("detected", False)
+        self.face_px = traits.get("facePx") or 0
+        self.yaw = traits.get("yaw")
+        self.roll = traits.get("roll")
+        self.part_flags = (traits.get("parts") or {}).get("flags") or []
+
+    def get(self, key, default=None):
+        return self.traits.get(key, default)
+
+    def face_fraction(self):
+        return _face_fraction(self.traits, self.frame_area)
+
+
+# ---------------------------------------------------------------------------
+# The rules, in priority order
+# ---------------------------------------------------------------------------
+# Each returns a verdict or None. RULES below is the order, and the order is
+# the whole design: one instruction at a time, and the first thing that is
+# actually blocking is the one worth saying.
+#
+# This was written as eighteen sequential `if ... return` statements in one
+# function. It worked, and the priority order was invisible -- to see it you
+# had to read the whole body, and to change it you had to move blocks of code
+# past each other. Now the order is a list you can read in one glance.
+
+def _rule_no_face(r):
+    if not r.detected or r.faces == 0:
+        return _out("block", "Look at the centre of the camera",
+                    "No face detected — take off sunglasses, or a cap or hood "
+                    "with a brim shading your eyes.")
+
+
+def _rule_crowd(r):
+    if r.faces > 1:
+        return _out("block", "One person only",
+                    f"{r.faces} faces in view — others should step out of frame.")
+
+
+def _rule_too_far(r):
+    if r.face_px and r.face_px < MIN_FACE_PX:
+        return _out("block", "Move closer",
+                    "Your face is too small in the frame to capture detail.")
+
+
+def _rule_too_close(r):
+    if r.frame_area and r.face_fraction() > MAX_FACE_FRACTION:
+        return _out("warn", "Move back", "Your face is filling the frame.")
+
+
+def _rule_yaw(r):
+    """Yaw before roll: turning away hides half the face, tilt only rotates it.
+
+    Same headline as the no-face case on purpose. From the user's side both
+    are the same problem -- the camera cannot see their face properly -- and
+    one consistent instruction is easier to act on than two that mean nearly
+    the same thing. The eyewear reminder rides along because a brim shading
+    the eyes is a common reason the pose never reads as frontal however far
+    someone turns.
+    """
+    if r.yaw is not None and abs(r.yaw) > MAX_YAW:
+        side = "left" if r.yaw > 0 else "right"
+        return _out("block", "Look at the centre of the camera",
+                    f"Turn slightly to the {side}. If it still will not lock on, "
+                    f"take off sunglasses or a brim shading your eyes.")
+
+
+def _rule_roll(r):
+    if r.roll is not None and abs(r.roll) > MAX_ROLL:
+        return _out("warn", "Head upright", "Your head is tilted.")
+
+
+def _rule_eyes_closed(r):
+    if "eyes closed" in r.part_flags:
+        return _out("block", "Open your eyes",
+                    "Both eyes read as closed — the sample would be unusable.")
+
+
+def _rule_one_eye_closed(r):
+    if "one eye closed" in r.part_flags:
+        return _out("warn", "Open both eyes", "One eye reads as closed.")
+
+
+def _rule_obscured(r):
+    if "face partly obscured" in r.part_flags:
+        return _out("block", "Uncover your face",
+                    "One side is measuring very differently from the other — "
+                    "something may be covering it, or the light is only hitting "
+                    "one side.")
+
+
+def _rule_mouth_open(r):
+    if "mouth open" in r.part_flags:
+        return _out("warn", "Neutral expression",
+                    "An open mouth changes the shape of the lower face.")
+
+
+def _rule_shadow(r):
+    if (r.get("shadowClip") or 0) > MAX_SHADOW_CLIP:
+        return _out("warn", "More light in front", "Detail is being lost in shadow.")
+
+
+def _rule_highlight(r):
+    if (r.get("highlightClip") or 0) > MAX_HIGHLIGHT_CLIP:
+        return _out("warn", "Less light behind",
+                    "Move away from the window, or turn to face the light.")
+
+
+def _rule_blur(r):
+    sharp = r.get("sharpness")
+    if sharp is not None and sharp < MIN_SHARPNESS:
+        return _out("warn", "Hold still", "The image is blurred.")
+
+
+def _rule_quality(r):
+    q = r.get("qualityScore")
+    if q is not None and q < MIN_QUALITY:
+        return _out("warn", "Improve lighting",
+                    "Image quality is low. Try more even light, or clean the lens.")
+
+
+# Read this top to bottom and you have read the design: a face at all, then
+# how many, then framing, then pose, then the face itself, then exposure,
+# then general quality. Telling somebody their lighting is poor while the
+# camera cannot see them is noise.
+RULES = (
+    _rule_no_face,
+    _rule_crowd,
+    _rule_too_far,
+    _rule_too_close,
+    _rule_yaw,
+    _rule_roll,
+    _rule_eyes_closed,
+    _rule_one_eye_closed,
+    _rule_obscured,
+    _rule_mouth_open,
+    _rule_shadow,
+    _rule_highlight,
+    _rule_blur,
+    _rule_quality,
+)
+
+
 def instruction(traits, frame_shape=None, mode="idle"):
     """Return a dict describing the single most important thing to fix.
 
     Keys: severity ('block' | 'warn' | 'ok'), message (terse), detail (the
     why, or None), ready (bool -- nothing is wrong).
     """
-    def out(sev, msg, detail=None, ready=False):
-        return {"severity": sev, "message": msg, "detail": detail, "ready": ready}
-
     if not traits:
-        return out("block", "Starting camera")
-
+        return _out("block", "Starting camera")
     if traits.get("error"):
-        return out("block", "Camera error", str(traits["error"]))
+        return _out("block", "Camera error", str(traits["error"]))
 
-    faces = traits.get("faces", 0)
-    detected = traits.get("detected", False)
-
-    # 1. Is there a face at all? Nothing else is measurable until there is.
-    if not detected or faces == 0:
-        return out("block", "Look at the centre of the camera",
-                   "No face detected — take off sunglasses, or a cap or hood "
-                   "with a brim shading your eyes.")
-
-    if faces > 1:
-        return out("block", "One person only",
-                   f"{faces} faces in view — others should step out of frame.")
-
-    # 2. Framing.
-    px = traits.get("facePx") or 0
-    frame_area = (frame_shape[0] * frame_shape[1]) if frame_shape else None
-    if px and px < MIN_FACE_PX:
-        return out("block", "Move closer",
-                   "Your face is too small in the frame to capture detail.")
-    if frame_area and _face_fraction(traits, frame_area) > MAX_FACE_FRACTION:
-        return out("warn", "Move back", "Your face is filling the frame.")
-
-    # 3. Pose. Yaw first: turning away hides half the face, tilt only rotates it.
-    yaw = traits.get("yaw")
-    if yaw is not None and abs(yaw) > MAX_YAW:
-        side = "left" if yaw > 0 else "right"
-        # Same headline as the no-face case on purpose. From the user's side
-        # both are the same problem -- the camera cannot see their face
-        # properly -- and a single consistent instruction is easier to act on
-        # than two that mean nearly the same thing. The eyewear reminder rides
-        # along because a brim shading the eyes is a common reason the pose
-        # never reads as frontal however far someone turns.
-        return out("block", "Look at the centre of the camera",
-                   f"Turn slightly to the {side}. If it still will not lock on, "
-                   f"take off sunglasses or a brim shading your eyes.")
-
-    roll = traits.get("roll")
-    if roll is not None and abs(roll) > MAX_ROLL:
-        return out("warn", "Head upright", "Your head is tilted.")
-
-    # 4. The face itself, from the 68-point fit. These sit above exposure
-    # because a blink ruins a sample no matter how well lit it is, and unlike
-    # lighting the person can fix them instantly.
-    parts = traits.get("parts") or {}
-    pflags = parts.get("flags") or []
-    if "eyes closed" in pflags:
-        return out("block", "Open your eyes",
-                   "Both eyes read as closed — the sample would be unusable.")
-    if "one eye closed" in pflags:
-        return out("warn", "Open both eyes", "One eye reads as closed.")
-    if "face partly obscured" in pflags:
-        return out("block", "Uncover your face",
-                   "One side is measuring very differently from the other — "
-                   "something may be covering it, or the light is only hitting "
-                   "one side.")
-    if "mouth open" in pflags:
-        return out("warn", "Neutral expression",
-                   "An open mouth changes the shape of the lower face.")
-
-    # 5. Exposure, by clipping only -- never by average level.
-    if (traits.get("shadowClip") or 0) > MAX_SHADOW_CLIP:
-        return out("warn", "More light in front",
-                   "Detail is being lost in shadow.")
-    if (traits.get("highlightClip") or 0) > MAX_HIGHLIGHT_CLIP:
-        return out("warn", "Less light behind",
-                   "Move away from the window, or turn to face the light.")
-
-    # 6. General image quality, last because it is the least specific.
-    sharp = traits.get("sharpness")
-    if sharp is not None and sharp < MIN_SHARPNESS:
-        return out("warn", "Hold still", "The image is blurred.")
-
-    q = traits.get("qualityScore")
-    if q is not None and q < MIN_QUALITY:
-        return out("warn", "Improve lighting",
-                   "Image quality is low. Try more even light, or clean the lens.")
+    reading = Reading(traits, frame_shape)
+    for rule in RULES:
+        verdict = rule(reading)
+        if verdict is not None:
+            return verdict
 
     if mode == "register":
-        return out("ok", "Hold still", "Capturing samples.", ready=True)
-    return out("ok", READY, None, ready=True)
+        return _out("ok", "Hold still", "Capturing samples.", ready=True)
+    return _out("ok", READY, None, ready=True)
 
 
 def checklist(traits, frame_shape=None):
@@ -194,4 +278,5 @@ def checklist(traits, frame_shape=None):
         ("Sharp", sharp is None or sharp >= MIN_SHARPNESS, "Hold still"),
         ("Good quality", q is None or q >= MIN_QUALITY, "Improve lighting"),
     ]
-    return [{"label": l, "ok": bool(ok), "fix": fix} for l, ok, fix in items]
+    return [{"label": label, "ok": bool(ok), "fix": fix}
+            for label, ok, fix in items]

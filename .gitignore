@@ -19,3 +19,8 @@ venv/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Benchmark output. The runner appends forever by design, so the logs are
+# a local artifact of however long it was left running, not source.
+logs/
+STOP_BENCHMARK

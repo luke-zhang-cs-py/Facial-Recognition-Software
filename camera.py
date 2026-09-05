@@ -630,7 +630,8 @@ class CameraManager:
 
         pts68 = face.get("points68")
         if pts68 is not None:
-            facelandmarks.draw(frame, pts68)
+            # One colour for the whole mesh; which colour is the capture state.
+            facelandmarks.draw(frame, pts68, colour)
         elif pts:
             p = [(int(round(a)), int(round(b))) for a, b in pts]
             right_eye, left_eye, nose, mouth_r, mouth_l = p

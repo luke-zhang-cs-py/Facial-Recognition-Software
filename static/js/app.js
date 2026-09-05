@@ -337,7 +337,7 @@ function renderTraits(s) {
   traitsBtn.classList.toggle('active', !!s.traitsOn);
 
   if (!t || t.error) {
-    ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender', 'ltParts', 'ltSym']
+    ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender', 'ltParts', 'ltSym', 'ltCheek']
       .forEach((id) => { $(id).textContent = DASH; });
     $('ltFlags').innerHTML = t && t.error
       ? `<div class="chips"><span class="chip">${t.error}</span></div>` : '';
@@ -374,6 +374,9 @@ function renderTraits(s) {
     : DASH;
   $('ltSym').textContent = pm
     ? `offset ${pm.centreOffset.toFixed(2)}  eyes ${pm.eyeMismatch.toFixed(2)}`
+    : DASH;
+  $('ltCheek').textContent = pm && pm.cheekWidthRatio != null
+    ? `width ${pm.cheekWidthRatio.toFixed(2)}  prom ${pm.cheekProminence.toFixed(2)}`
     : DASH;
 
   $('ltFlags').innerHTML = (t.flags && t.flags.length)

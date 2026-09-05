@@ -83,9 +83,9 @@ def instruction(traits, frame_shape=None, mode="idle"):
 
     # 1. Is there a face at all? Nothing else is measurable until there is.
     if not detected or faces == 0:
-        return out("block", "Look at the camera",
-                   "No face detected. Take off sunglasses or anything with a "
-                   "brim shading your eyes.")
+        return out("block", "Look at the centre of the camera",
+                   "No face detected — take off sunglasses, or a cap or hood "
+                   "with a brim shading your eyes.")
 
     if faces > 1:
         return out("block", "One person only",
@@ -104,8 +104,15 @@ def instruction(traits, frame_shape=None, mode="idle"):
     yaw = traits.get("yaw")
     if yaw is not None and abs(yaw) > MAX_YAW:
         side = "left" if yaw > 0 else "right"
-        return out("block", "Face forward",
-                   f"Turn slightly to the {side} and look straight at the lens.")
+        # Same headline as the no-face case on purpose. From the user's side
+        # both are the same problem -- the camera cannot see their face
+        # properly -- and a single consistent instruction is easier to act on
+        # than two that mean nearly the same thing. The eyewear reminder rides
+        # along because a brim shading the eyes is a common reason the pose
+        # never reads as frontal however far someone turns.
+        return out("block", "Look at the centre of the camera",
+                   f"Turn slightly to the {side}. If it still will not lock on, "
+                   f"take off sunglasses or a brim shading your eyes.")
 
     roll = traits.get("roll")
     if roll is not None and abs(roll) > MAX_ROLL:

@@ -134,23 +134,31 @@
   footer code{font-family:'IBM Plex Mono',monospace;color:var(--ink);font-size:11px;}
 
   /* ---- instruction bar ----
-     Its own bar under the video, built like .modeflag and the .side panel:
-     same panel fill, same hairline border, same radius, dot on the left.
-     It used to be painted into the video frame, which meant it inherited
-     whatever was behind it and matched nothing else on the page. */
-  .instrbar{display:flex;align-items:center;gap:9px;margin-top:10px;
-    background:var(--panel);border:1px solid var(--hair);border-radius:10px;
-    padding:11px 14px;font-size:13px;font-weight:500;color:var(--ink);
+     Sits on the bottom edge of the camera view, the mirror of .modeflag at the
+     top: same translucent panel fill, blur, hairline and type. Anchored to the
+     video rather than floating under it, because it is telling you about what
+     the camera is seeing right now, and the eyes reading it are already on the
+     picture. Still real DOM, so it is styled by the same rules as everything
+     else instead of being painted into the pixels. */
+  .instrbar{position:absolute;left:0;right:0;bottom:0;z-index:5;
+    display:flex;align-items:baseline;gap:10px;
+    background:rgba(13,17,23,.9);backdrop-filter:blur(4px);
+    border-top:1px solid var(--hair);
+    padding:11px 15px;font-size:13px;font-weight:600;color:var(--ink);
     min-height:44px;}
   .instrbar .dot{width:6px;height:6px;border-radius:50%;flex:none;
-    background:var(--muted);}
-  .instrbar .right{margin-left:auto;font-family:'IBM Plex Mono',monospace;
-    font-size:11.5px;color:var(--muted);font-weight:400;}
-  .instrbar.block{border-color:rgba(223,106,94,.35);color:var(--bad);}
+    background:var(--muted);align-self:center;}
+  .instrbar .msg{flex:none;}
+  .instrbar .detail{color:var(--muted);font-weight:400;font-size:11.5px;
+    line-height:1.4;overflow:hidden;}
+  .instrbar .right{margin-left:auto;flex:none;
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted);
+    font-weight:400;}
+  .instrbar.block{color:var(--bad);}
   .instrbar.block .dot{background:var(--bad);animation:pulse 1.2s ease-in-out infinite;}
-  .instrbar.warn{border-color:rgba(224,192,74,.35);color:var(--warn);}
+  .instrbar.warn{color:var(--warn);}
   .instrbar.warn .dot{background:var(--warn);}
-  .instrbar.ok{border-color:rgba(94,201,138,.35);color:var(--good);}
+  .instrbar.ok{color:var(--good);}
   .instrbar.ok .dot{background:var(--good);}
 
   /* .checks rides on .steps -- same padding, dividers and dot bullets. */
@@ -159,5 +167,6 @@
   .checks li::before{top:12px;background:var(--bad);}
   .checks li.muted::before{background:var(--hair);}
 
-  .placeholder{flex-direction:column;gap:12px;display:flex;align-items:center;}
+  .placeholder{flex-direction:column;gap:12px;display:flex;align-items:center;
+    padding-bottom:44px;}
   .placeholder button{width:auto;padding:9px 18px;margin-top:0;}

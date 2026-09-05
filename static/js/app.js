@@ -289,9 +289,12 @@ function renderGuidance(s) {
   const list = $('checkList');
   const idle = '<li class="muted">—</li>';
 
+  const detail = $('guideDetail');
+
   if (!s.running) {
     bar.className = 'instrbar';
     msg.textContent = 'Camera off';
+    detail.textContent = '';
     count.textContent = '';
     list.innerHTML = idle;
     return;
@@ -302,6 +305,7 @@ function renderGuidance(s) {
   if (!g) {
     bar.className = 'instrbar';
     msg.textContent = 'Reading…';
+    detail.textContent = '';
     count.textContent = '';
     list.innerHTML = idle;
     return;
@@ -309,6 +313,10 @@ function renderGuidance(s) {
 
   bar.className = 'instrbar ' + g.severity;
   msg.textContent = g.message;
+  /* The bar spans the width of the video, so the sentence explaining the
+   * instruction fits beside it — no need to make people look elsewhere for
+   * why they are being asked to move. */
+  detail.textContent = g.detail || '';
 
   /* During capture the bar doubles as the progress readout, so the person
    * never has to look away from the lens to know how far along they are. */

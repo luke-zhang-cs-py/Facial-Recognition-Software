@@ -572,43 +572,30 @@ class CameraManager:
             self._log_event("error", f"Could not build report: {exc}")
 
     def _detect(self, frame):
-        """Detect faces, preferring YuNet because it returns landmarks.
+        """Detect faces via traits.detect, so this and the guidance panel
+        always agree about whether somebody is there.
 
-        The Haar cascade only ever produced a rectangle, which is why every
-        overlay in this file used to be a box. YuNet gives five points -- both
-        eyes, the nose tip and both mouth corners -- so the overlay can show
-        what is actually being measured rather than a shape drawn around it.
-
-        Returns (gray, faces) where each face is a dict with `box` and, when
-        YuNet is available, `landmarks`. Falls back to Haar with landmarks
-        None so the app still works without the downloaded weights.
+        This used to run its own YuNet call with its own Haar fallback while
+        traits.analyze ran a different one without a fallback, which meant the
+        overlay could be tracking a face the sidebar was calling absent.
         """
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
         rows = facetraits.detect(frame)
-        if rows:
-            faces = []
-            for row in rows:
-                g = facetraits.geometry(row)
-                face = {"box": tuple(g["box"]), "landmarks": g["landmarks"],
-                        "yaw": g["yaw"], "roll": g["roll"],
-                        "pitch": g["pitchRatio"], "score": g["score"],
-                        "points68": None}
-                # ~5 ms on top of detection, and it is what turns "a face is
-                # here" into "the eyes are open and nothing is covering it".
-                try:
-                    face["points68"] = facelandmarks.fit(gray, face["box"])
-                except Exception:
-                    pass
-                faces.append(face)
-            return gray, faces
-
-        boxes = self._cascade.detectMultiScale(
-            gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80)
-        )
-        return gray, [{"box": (int(x), int(y), int(w), int(h)), "landmarks": None,
-                       "yaw": None, "roll": None, "pitch": None, "score": None}
-                      for (x, y, w, h) in boxes]
+        faces = []
+        for row in rows:
+            g = facetraits.geometry(row)
+            face = {"box": tuple(g["box"]), "landmarks": g["landmarks"],
+                    "yaw": g["yaw"], "roll": g["roll"],
+                    "pitch": g["pitchRatio"], "score": g["score"],
+                    "points68": None}
+            # ~5 ms on top of detection, and it is what turns "a face is
+            # here" into "the eyes are open and nothing is covering it".
+            try:
+                face["points68"] = facelandmarks.fit(gray, face["box"])
+            except Exception:
+                pass
+            faces.append(face)
+        return gray, faces
 
     def _draw_face(self, frame, face, colour, label=None):
         """Mark the measured points on the face instead of boxing it.

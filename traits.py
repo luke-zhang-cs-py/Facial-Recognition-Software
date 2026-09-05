@@ -86,6 +86,25 @@ MIN_FACE_PX = 90
 MAX_YAW = 30.0            # degrees off-centre before it stops being frontal
 MAX_ROLL = 20.0
 
+# YuNet detection thresholds.
+#
+# These are two numbers because they answer two different questions, and
+# using one for both was a bug. DETECT_SCORE decides "is there a face here to
+# measure"; PERSON_SCORE decides "is that another human being in the room".
+#
+# It shipped at 0.6 for both, tuned against FairFace where faces score high
+# (5th percentile 0.885). A real webcam frame is nothing like a curated
+# photograph: a face sitting plainly in frame scored 0.575 and was thrown
+# away, so the app insisted there was nobody there while Haar found the face
+# on the identical frame.
+#
+# Dropping to 0.30 costs nothing on FairFace (99.8% detected either way) but
+# it does surface weak background detections -- the multi-face rate goes from
+# 29% to 41%. Those must not block enrollment by being counted as extra
+# people, hence the separate, much stricter PERSON_SCORE.
+DETECT_SCORE = 0.30
+PERSON_SCORE = 0.70
+
 # Reported but no longer used for gating -- see the note above.
 BRIGHT_RANGE = (75.0, 180.0)
 MIN_CONTRAST = 25.0
@@ -125,18 +144,58 @@ def to_gray(img):
 
 # ----------------------------------------------------------------- geometry
 
-def detect(bgr):
-    """Run YuNet. Returns a list of 15-element rows, best score first."""
+_cascade = None
+
+
+def _haar_rows(bgr):
+    """Haar fallback shaped like YuNet rows, with landmarks left at zero.
+
+    Exists so the two callers of detect() cannot disagree. camera.py used to
+    fall back to Haar while traits.analyze did not, so the overlay could be
+    tracking a face that the guidance panel was simultaneously reporting as
+    absent.
+    """
+    global _cascade
+    if _cascade is None:
+        _cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    if _cascade.empty():
+        return []
+    gray = to_gray(bgr)
+    out = []
+    for (x, y, w, h) in _cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80)):
+        row = np.zeros(15, dtype=np.float32)
+        row[:4] = (x, y, w, h)
+        row[14] = 0.0          # unknown confidence; never counts as a person
+        out.append(row)
+    return out
+
+
+def detect(bgr, score=None):
+    """Run YuNet, falling back to Haar. Rows sorted best score first."""
     net = facemodels.get("yunet")
     if net is None:
-        return []
+        return _haar_rows(bgr)
+
     h, w = bgr.shape[:2]
     with facemodels.lock_for("yunet"):
+        net.setScoreThreshold(float(score if score is not None else DETECT_SCORE))
         net.setInputSize((w, h))
         _, faces = net.detect(bgr)
-    if faces is None:
-        return []
+    if faces is None or not len(faces):
+        return _haar_rows(bgr)
     return sorted([f for f in faces], key=lambda r: -float(r[14]))
+
+
+def count_people(rows):
+    """How many detections are confident enough to be treated as people.
+
+    A weak background detection should not stop somebody enrolling, so the
+    bar for "another person is in shot" is far higher than the bar for
+    "there is a face here worth measuring". Haar rows carry score 0 and are
+    deliberately never counted.
+    """
+    return sum(1 for r in rows if float(r[14]) >= PERSON_SCORE)
 
 
 def geometry(row):
@@ -423,7 +482,7 @@ def analyze(img, want_embedding=True, want_demographics=True,
     result = {
         "detected": row is not None,
         "grayscaleSource": is_grey,
-        "faces": len(rows),
+        "faces": max(count_people(rows), 1 if row is not None else 0),
         "geometry": geom,
         **metrics,
         "flags": quality_flags(metrics, geom, is_grey),

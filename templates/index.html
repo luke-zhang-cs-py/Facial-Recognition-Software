@@ -41,32 +41,29 @@
         <h2>Position yourself</h2>
         <div class="guide" id="guideBox">
           <span class="dot" id="guideDot"></span>
-          <span id="guideMsg">Start the camera to begin.</span>
+          <span id="guideMsg">Camera off</span>
         </div>
-        <ul class="steps checks" id="checkList"></ul>
+        <div class="note" id="guideDetail" style="display:none;"></div>
+        <ul class="steps checks" id="checkList" style="display:none;"></ul>
       </div>
 
       <div class="section">
         <h2>1 &middot; Register</h2>
         <input type="text" id="nameInput" placeholder="Full name" autocomplete="off">
-        <button class="secondary" id="regBtn">Capture 30 samples</button>
+        <button class="secondary" id="regBtn">Start capture</button>
         <div class="progress" id="regProgress" style="display:none;">
           <div class="bar"><div class="fill" id="regFill"></div></div>
           <div class="row"><span class="label" id="regLabel">&mdash;</span>
             <span class="val" id="regCount">0/30</span></div>
+          <ul class="steps checks" id="stageList"></ul>
         </div>
+        <div class="note">Captures across several head positions, prompting you
+          to move &mdash; a set taken at one angle only recognises that angle.
+          The model retrains itself when capture finishes.</div>
       </div>
 
       <div class="section">
-        <h2>2 &middot; Model</h2>
-        <div class="stat"><span>Status</span><b id="modelState">&mdash;</b></div>
-        <div class="note">Trains automatically after each registration and on
-          startup &mdash; you should not need this button.</div>
-        <button class="secondary" id="trainBtn">Retrain anyway</button>
-      </div>
-
-      <div class="section">
-        <h2>3 &middot; Attendance</h2>
+        <h2>2 &middot; Attendance</h2>
         <button id="attBtn">Start attendance</button>
         <div class="stat"><span>Marked today</span><b id="todayCount">&mdash;</b></div>
       </div>
@@ -100,6 +97,15 @@
       </div>
 
     </div>
+  </div>
+
+  <div class="analysis" id="reportPanel" style="display:none;">
+    <div class="ahead">
+      <h2>Enrollment report</h2>
+      <div class="actions"><button class="secondary" id="reportClose">Dismiss</button></div>
+    </div>
+    <div class="asub" id="reportSub">&mdash;</div>
+    <div id="reportBody"></div>
   </div>
 
   <div class="analysis" id="analysisPanel">

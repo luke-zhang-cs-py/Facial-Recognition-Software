@@ -12,7 +12,6 @@ const video = $('video');
 const placeholder = $('placeholder');
 const camBtn = $('camBtn');
 const regBtn = $('regBtn');
-const trainBtn = $('trainBtn');
 const attBtn = $('attBtn');
 const nameInput = $('nameInput');
 const errBox = $('err');
@@ -68,13 +67,12 @@ function render(s) {
 
   const busy = s.mode === 'register';
   regBtn.disabled = busy;
-  regBtn.textContent = busy ? 'Capturing…' : 'Capture 30 samples';
+  regBtn.textContent = busy ? 'Capturing…' : 'Start capture';
 
   attBtn.textContent = s.mode === 'attendance' ? 'Stop attendance' : 'Start attendance';
   attBtn.classList.toggle('active', s.mode === 'attendance');
   attBtn.disabled = !s.modelExists && s.mode !== 'attendance';
 
-  $('modelState').textContent = s.modelExists ? 'trained' : 'not trained yet';
 
   // registration progress
   const r = s.register || {};
@@ -84,7 +82,18 @@ function render(s) {
     $('regFill').style.width = (100 * (r.captured || 0) / (r.target || 30)) + '%';
     $('regLabel').textContent = r.name || '—';
     $('regCount').textContent = `${r.captured || 0}/${r.target || 30}`;
+    /* Which pose is being captured, which are done, which are still to come. */
+    const stages = r.stages || [];
+    $('stageList').innerHTML = stages.map((st, i) => {
+      const done = i < (r.stage || 0);
+      const active = i === (r.stage || 0);
+      const n = active ? (r.stageCount || 0) : (done ? st.count : 0);
+      return `<li class="${done ? 'pass' : (active ? '' : 'fail')}">${st.label}`
+        + `<span class="when">${n}/${st.count}</span></li>`;
+    }).join('');
   }
+
+  renderReport(s.report);
 
   renderGuidance(s);
   renderTraits(s);
@@ -137,22 +146,6 @@ regBtn.onclick = async () => {
   refresh();
 };
 
-trainBtn.onclick = async () => {
-  showError('');
-  trainBtn.disabled = true;
-  trainBtn.textContent = 'Training…';
-  try {
-    const r = await post('/api/train');
-    trainBtn.textContent = `Trained on ${r.images} images`;
-    setTimeout(() => { trainBtn.textContent = 'Retrain anyway'; }, 2500);
-  } catch (e) {
-    showError(e.message);
-    trainBtn.textContent = 'Retrain anyway';
-  }
-  trainBtn.disabled = false;
-  refresh();
-};
-
 attBtn.onclick = async () => {
   showError('');
   const stopping = state.mode === 'attendance';
@@ -163,6 +156,91 @@ attBtn.onclick = async () => {
 };
 
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') regBtn.click(); });
+
+/* ------------------------------------------------------------- report */
+
+let reportDismissed = null;
+
+function stat(label, value) {
+  return `<span>${label}</span><span>${value}</span>`;
+}
+
+/* A report on the enrollment, not a reading of the person. Everything here
+ * is measured from the samples that were just written to disk. */
+function renderReport(rep) {
+  const panel = $('reportPanel');
+  if (!rep || reportDismissed === rep.userId) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  $('reportSub').textContent =
+    `${rep.samples} samples captured for ${rep.name}. What the system can now`
+    + ` measure, and how well it should recognise them.`;
+
+  const s = rep.sharpness || {}, q = rep.quality || {}, px = rep.facePx || {};
+  const poses = rep.poseStages || {};
+  const poseRows = Object.keys(poses).map((k) =>
+    stat(k, `${poses[k]} samples`)).join('');
+
+  const near = rep.nearestOther
+    ? `Closest other enrolled face is <b>${rep.nearestOther.name}</b> at
+       ${rep.nearestOther.similarity} similarity.
+       ${rep.nearestOther.similarity >= rep.threshold
+         ? '<b>That is above the recommended threshold — these two could be confused.</b>'
+         : 'Comfortably below the recommended threshold.'}`
+    : 'Nobody else is enrolled yet, so there is nothing to be confused with.';
+
+  panel.querySelector('#reportBody').innerHTML = `
+    <div class="agrid">
+      <div class="card">
+        <div class="who"><h3>Capture</h3>
+          <span class="pill ${rep.verdict === 'good' ? 'good' : 'warn'}">${rep.verdict}</span></div>
+        <div class="metrics">
+          ${stat('usable', `${rep.usable}/${rep.samples}`)}
+          ${stat('face size', px.mean != null ? px.mean + ' px' : '—')}
+          ${stat('sharpness', s.mean != null ? s.mean : '—')}
+          ${stat('quality', q.mean != null ? q.mean : '—')}
+          ${stat('yaw spread', rep.yawSpread != null ? rep.yawSpread + '°' : '—')}
+          ${stat('yaw range', rep.yawRange ? rep.yawRange[0] + '° to ' + rep.yawRange[1] + '°' : '—')}
+        </div>
+        ${Object.keys(rep.flags || {}).length
+          ? `<div class="chips">${Object.entries(rep.flags)
+              .map(([k, v]) => `<span class="chip">${k} ×${v}</span>`).join('')}</div>` : ''}
+        ${(rep.recommendations || []).length
+          ? `<ul class="tips">${rep.recommendations.map((r) => `<li>${r}</li>`).join('')}</ul>` : ''}
+      </div>
+
+      <div class="card">
+        <div class="who"><h3>Pose coverage</h3>
+          <span class="pill good">${Object.keys(poses).length} angles</span></div>
+        <div class="metrics">${poseRows}</div>
+        <div class="note">Samples spread across angles generalise; thirty frames
+          of one angle only recognise that angle.</div>
+      </div>
+
+      <div class="card">
+        <div class="who"><h3>Recognition</h3>
+          <span class="pill ${rep.thresholdReachable ? 'good' : 'warn'}">${rep.gallerySize} enrolled</span></div>
+        <div class="metrics">
+          ${stat('threshold', rep.threshold)}
+          ${stat('false-match risk', (100 * rep.thresholdRisk).toFixed(2) + '%')}
+        </div>
+        <div class="note">${near}</div>
+        ${!rep.thresholdReachable
+          ? `<div class="note"><b>At this gallery size no measured threshold holds
+             the risk under 1%.</b> Add a second factor.</div>` : ''}
+      </div>
+    </div>
+    <div class="caveat">Measured from the ${rep.samples} images just captured.
+      These describe image quality and separability &mdash; how well this
+      enrollment will work &mdash; not attributes of the person.</div>`;
+
+  $('reportClose').onclick = () => {
+    reportDismissed = rep.userId;
+    panel.style.display = 'none';
+  };
+}
 
 /* ---------------------------------------------------------- guidance */
 
@@ -176,7 +254,8 @@ function renderGuidance(s) {
 
   if (!s.running) {
     box.className = 'guide';
-    msg.textContent = 'Start the camera to begin.';
+    msg.textContent = 'Camera off';
+    $('guideDetail').style.display = 'none';
     list.innerHTML = '';
     return;
   }
@@ -185,19 +264,28 @@ function renderGuidance(s) {
   const g = t && t.guidance;
   if (!g) {
     box.className = 'guide';
-    msg.textContent = 'Reading the camera…';
+    msg.textContent = 'Reading…';
+    $('guideDetail').style.display = 'none';
     list.innerHTML = '';
     return;
   }
 
+  /* Headline is two or three words; the sentence explaining it sits under
+   * the instruction in smaller muted type, the same relationship .note has
+   * to the controls above it elsewhere on the page. */
   box.className = 'guide ' + g.severity;
   msg.textContent = g.message;
+  const det = $('guideDetail');
+  det.textContent = g.detail || '';
+  det.style.display = g.detail ? 'block' : 'none';
 
   /* The dot bullet .steps already provides carries pass/fail, so no glyph
    * column is needed — same shape as the Activity and Today lists. */
   const checks = (t && t.checklist) || [];
-  list.innerHTML = checks.map((c) => `<li class="${c.ok ? 'pass' : 'fail'}">${c.label}`
-    + (c.ok ? '' : ` <span class="fix">— ${c.fix}</span>`) + '</li>').join('');
+  list.innerHTML = checks
+    .filter((c) => !c.ok)
+    .map((c) => `<li class="fail">${c.fix}</li>`).join('');
+  list.style.display = list.innerHTML ? 'block' : 'none';
 }
 
 /* ------------------------------------------------------------ live traits */

@@ -49,7 +49,11 @@ MIN_SHARPNESS = 25.0
 MAX_SHADOW_CLIP = 0.45
 MAX_HIGHLIGHT_CLIP = 0.30
 
-READY = "Hold still — you're framed correctly."
+# Instructions are two or three words. A 300px sidebar and a bar burned into a
+# 640px frame are both too narrow for a sentence, and someone squinting at a
+# webcam does not read prose -- they read a verb. The longer explanation goes
+# in `detail`, which the checklist shows underneath, so nothing is lost.
+READY = "Ready"
 
 
 def _face_fraction(traits, frame_area):
@@ -60,72 +64,74 @@ def _face_fraction(traits, frame_area):
 
 
 def instruction(traits, frame_shape=None, mode="idle"):
-    """Return (severity, message, ready) for the current frame.
+    """Return a dict describing the single most important thing to fix.
 
-    severity is 'block' (cannot proceed), 'warn' (will work but poorly), or
-    'ok'. `ready` is True only when nothing is wrong, which is what the UI
-    uses to decide whether capture may start.
+    Keys: severity ('block' | 'warn' | 'ok'), message (terse), detail (the
+    why, or None), ready (bool -- nothing is wrong).
     """
+    def out(sev, msg, detail=None, ready=False):
+        return {"severity": sev, "message": msg, "detail": detail, "ready": ready}
+
     if not traits:
-        return "block", "Starting the camera…", False
+        return out("block", "Starting camera")
 
     if traits.get("error"):
-        return "block", f"Camera problem: {traits['error']}", False
+        return out("block", "Camera error", str(traits["error"]))
 
     faces = traits.get("faces", 0)
     detected = traits.get("detected", False)
 
     # 1. Is there a face at all? Nothing else is measurable until there is.
     if not detected or faces == 0:
-        return "block", (
-            "No face detected. Look straight into the camera and make sure "
-            "your whole face is visible — take off sunglasses or anything with "
-            "a brim that shades your eyes."), False
+        return out("block", "Look at the camera",
+                   "No face detected. Take off sunglasses or anything with a "
+                   "brim shading your eyes.")
 
     if faces > 1:
-        return "block", (
-            f"{faces} faces in view. Only the person being registered should "
-            "be in frame."), False
+        return out("block", "One person only",
+                   f"{faces} faces in view — others should step out of frame.")
 
     # 2. Framing.
     px = traits.get("facePx") or 0
     frame_area = (frame_shape[0] * frame_shape[1]) if frame_shape else None
     if px and px < MIN_FACE_PX:
-        return "block", "Move closer to the camera.", False
+        return out("block", "Move closer",
+                   "Your face is too small in the frame to capture detail.")
     if frame_area and _face_fraction(traits, frame_area) > MAX_FACE_FRACTION:
-        return "warn", "Move back slightly — your face fills the frame.", False
+        return out("warn", "Move back", "Your face is filling the frame.")
 
     # 3. Pose. Yaw first: turning away hides half the face, tilt only rotates it.
     yaw = traits.get("yaw")
     if yaw is not None and abs(yaw) > MAX_YAW:
         side = "left" if yaw > 0 else "right"
-        return "block", f"Turn your head slightly to the {side} — look straight at the camera.", False
+        return out("block", "Face forward",
+                   f"Turn slightly to the {side} and look straight at the lens.")
 
     roll = traits.get("roll")
     if roll is not None and abs(roll) > MAX_ROLL:
-        return "warn", "Straighten your head — it's tilted.", False
+        return out("warn", "Head upright", "Your head is tilted.")
 
-    # 4. Exposure, by clipping only.
+    # 4. Exposure, by clipping only -- never by average level.
     if (traits.get("shadowClip") or 0) > MAX_SHADOW_CLIP:
-        return "warn", ("Add light in front of you — the camera is losing "
-                        "detail in shadow."), False
+        return out("warn", "More light in front",
+                   "Detail is being lost in shadow.")
     if (traits.get("highlightClip") or 0) > MAX_HIGHLIGHT_CLIP:
-        return "warn", ("Too much light behind you — move away from the window "
-                        "or turn to face the light."), False
+        return out("warn", "Less light behind",
+                   "Move away from the window, or turn to face the light.")
 
     # 5. General image quality, last because it is the least specific.
     sharp = traits.get("sharpness")
     if sharp is not None and sharp < MIN_SHARPNESS:
-        return "warn", "Hold still — the image is blurred.", False
+        return out("warn", "Hold still", "The image is blurred.")
 
     q = traits.get("qualityScore")
     if q is not None and q < MIN_QUALITY:
-        return "warn", ("Image quality is low. Try better lighting, or clean "
-                        "the camera lens."), False
+        return out("warn", "Improve lighting",
+                   "Image quality is low. Try more even light, or clean the lens.")
 
     if mode == "register":
-        return "ok", "Looking good — keep still while samples are captured.", True
-    return "ok", READY, True
+        return out("ok", "Hold still", "Capturing samples.", ready=True)
+    return out("ok", READY, None, ready=True)
 
 
 def checklist(traits, frame_shape=None):

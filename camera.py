@@ -42,6 +42,48 @@ FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml
 CONFIDENCE_THRESHOLD = 70
 SAMPLES_TO_CAPTURE = 30
 
+# Registration walks through poses instead of taking 30 frames of somebody
+# holding still. Thirty near-identical shots teach the recogniser one angle,
+# which is exactly what analytics.summarize_user complains about ("every
+# sample is the same angle"); a face turned ten degrees at the door then fails
+# to match. Each stage is a pose, an instruction, and a quota.
+#
+# Yaw and roll are absolute (degrees, from YuNet's landmarks). Pitch is
+# relative to the person's own neutral, measured during the first stage --
+# necessary because pitchRatio depends on face proportions, so one person's
+# level head reads differently from another's. Same reasoning as the relative
+# blur check.
+PITCH_DELTA = 0.055
+
+CAPTURE_PLAN = [
+    {"key": "front", "label": "Look straight at the camera", "count": 10},
+    {"key": "left", "label": "Turn your head slightly left", "count": 5},
+    {"key": "right", "label": "Turn your head slightly right", "count": 5},
+    {"key": "up", "label": "Lift your chin slightly", "count": 5},
+    {"key": "down", "label": "Lower your chin slightly", "count": 5},
+]
+
+
+def pose_matches(key, yaw, roll, pitch, baseline_pitch):
+    """Is the current head pose the one this stage is asking for?"""
+    if yaw is None:
+        return False
+    if key == "front":
+        return abs(yaw) <= 12 and (roll is None or abs(roll) <= 12)
+    if key == "left":
+        return -38 <= yaw <= -13
+    if key == "right":
+        return 13 <= yaw <= 38
+    if pitch is None or baseline_pitch is None:
+        return False
+    # Looking down foreshortens the lower face, so the nose sits further down
+    # between the eyes and the mouth: pitchRatio rises. Looking up lowers it.
+    if key == "up":
+        return pitch <= baseline_pitch - PITCH_DELTA and abs(yaw) <= 22
+    if key == "down":
+        return pitch >= baseline_pitch + PITCH_DELTA and abs(yaw) <= 22
+    return False
+
 # A full trait read runs five networks and costs ~130 ms, so it cannot go on
 # every frame without collapsing the frame rate. Once a second is plenty for
 # a readout a human is looking at.
@@ -83,6 +125,12 @@ class CameraManager:
         self._reg_dir = None
         self._reg_count = 0
         self._reg_finished = False
+        self._reg_stage = 0
+        self._reg_stage_count = 0
+        self._reg_baseline_pitch = None
+        self._reg_front_pitches = []
+        self._reg_poses = []          # yaw/roll/pitch actually captured
+        self._reg_report = None
 
         # attendance-mode state
         self._marked_session = set()
@@ -163,6 +211,12 @@ class CameraManager:
             self._reg_dir = user_dir
             self._reg_count = 0
             self._reg_finished = False
+            self._reg_stage = 0
+            self._reg_stage_count = 0
+            self._reg_baseline_pitch = None
+            self._reg_front_pitches = []
+            self._reg_poses = []
+            self._reg_report = None
             self._mode = MODE_REGISTER
         self._log_event("info", f"Registering '{name}' (id {user_id})")
         return user_id
@@ -273,9 +327,14 @@ class CameraManager:
                     "name": self._reg_name,
                     "userId": self._reg_user_id,
                     "captured": self._reg_count,
-                    "target": SAMPLES_TO_CAPTURE,
+                    "target": sum(p["count"] for p in CAPTURE_PLAN),
                     "finished": self._reg_finished,
+                    "stage": self._reg_stage,
+                    "stageCount": self._reg_stage_count,
+                    "stages": [{"key": p["key"], "label": p["label"],
+                                "count": p["count"]} for p in CAPTURE_PLAN],
                 },
+                "report": self._reg_report,
                 "modelExists": os.path.exists(MODEL_PATH),
                 "events": list(self._events),
             }
@@ -383,10 +442,8 @@ class CameraManager:
 
         with self._lock:
             mode = self._mode
-        severity, message, ready = guidance.instruction(
+        summary["guidance"] = guidance.instruction(
             summary, frame_shape=frame.shape[:2], mode=mode)
-        summary["guidance"] = {"severity": severity, "message": message,
-                               "ready": ready}
         summary["checklist"] = guidance.checklist(
             summary, frame_shape=frame.shape[:2])
         if t.get("demographicsSkipped"):
@@ -405,6 +462,97 @@ class CameraManager:
 
         with self._lock:
             self._live_traits = summary
+
+    def _build_report(self):
+        """Summarise the enrollment that just finished.
+
+        Everything here is measured from the samples on disk -- pose coverage,
+        image quality, how distinctive the face is against everyone already
+        enrolled, and what that implies for the recognition threshold. It is a
+        report on the *enrollment*, not a reading of the person.
+        """
+        import analytics
+        import calibration
+
+        with self._lock:
+            user_id = self._reg_user_id
+            name = self._reg_name
+            poses = list(self._reg_poses)
+            folder = self._reg_dir
+
+        try:
+            records = []
+            if folder and os.path.isdir(folder):
+                for fn in sorted(os.listdir(folder)):
+                    path = os.path.join(folder, fn)
+                    if os.path.isfile(path):
+                        rec = analytics.analyze_sample(user_id, path, use_cache=False)
+                        if rec:
+                            records.append(rec)
+            if not records:
+                return
+
+            summary = analytics.summarize_user(user_id, name, records)
+
+            # Pose coverage: what the staged capture was for.
+            yaws = [p["yaw"] for p in poses if p.get("yaw") is not None]
+            stages = {}
+            for p in poses:
+                stages[p["stage"]] = stages.get(p["stage"], 0) + 1
+
+            # How separable is this person from everyone already enrolled?
+            import numpy as np
+            mine = [r["embedding"] for r in records if r["embedding"] is not None]
+            nearest = None
+            if mine:
+                centroid = np.mean(np.vstack(mine), axis=0)
+                n = float(np.linalg.norm(centroid)) or 1.0
+                centroid = centroid / n
+                best = None
+                for other_id, other_name in db.get_all_users():
+                    if other_id == user_id:
+                        continue
+                    rows = db.get_traits_for_user(other_id)
+                    vecs = [np.frombuffer(r["embedding"], dtype=np.float32)
+                            for r in rows if r["embedding"]]
+                    if not vecs:
+                        continue
+                    sim = float(np.max(np.vstack(vecs) @ centroid))
+                    if best is None or sim > best[1]:
+                        best = (other_name, sim)
+                nearest = ({"name": best[0], "similarity": round(best[1], 3)}
+                           if best else None)
+
+            gallery = len(db.get_all_users())
+            thr, risk, ok = calibration.recommend_threshold(max(gallery, 2))
+
+            report = {
+                "userId": user_id,
+                "name": name,
+                "samples": len(records),
+                "usable": summary["usable"],
+                "verdict": summary["verdict"],
+                "flags": summary["flags"],
+                "recommendations": summary["recommendations"],
+                "sharpness": summary["sharpness"],
+                "quality": summary["quality"],
+                "facePx": summary["facePx"],
+                "poseStages": stages,
+                "yawSpread": round(float(np.std(yaws)), 1) if len(yaws) > 1 else None,
+                "yawRange": ([round(min(yaws), 1), round(max(yaws), 1)]
+                             if yaws else None),
+                "nearestOther": nearest,
+                "gallerySize": gallery,
+                "threshold": thr,
+                "thresholdRisk": round(risk, 5),
+                "thresholdReachable": ok,
+                "age": summary.get("age"),
+            }
+            with self._lock:
+                self._reg_report = report
+            self._log_event("success", f"Enrollment report ready for {name}.")
+        except Exception as exc:
+            self._log_event("error", f"Could not build report: {exc}")
 
     def _draw_guidance(self, frame):
         """Burn the current instruction into the frame.
@@ -442,53 +590,154 @@ class CameraManager:
                     scale, colour, thick, cv2.LINE_AA)
 
     def _detect(self, frame):
+        """Detect faces, preferring YuNet because it returns landmarks.
+
+        The Haar cascade only ever produced a rectangle, which is why every
+        overlay in this file used to be a box. YuNet gives five points -- both
+        eyes, the nose tip and both mouth corners -- so the overlay can show
+        what is actually being measured rather than a shape drawn around it.
+
+        Returns (gray, faces) where each face is a dict with `box` and, when
+        YuNet is available, `landmarks`. Falls back to Haar with landmarks
+        None so the app still works without the downloaded weights.
+        """
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self._cascade.detectMultiScale(
+
+        rows = facetraits.detect(frame)
+        if rows:
+            faces = []
+            for row in rows:
+                g = facetraits.geometry(row)
+                faces.append({"box": tuple(g["box"]), "landmarks": g["landmarks"],
+                              "yaw": g["yaw"], "roll": g["roll"],
+                              "pitch": g["pitchRatio"], "score": g["score"]})
+            return gray, faces
+
+        boxes = self._cascade.detectMultiScale(
             gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80)
         )
-        return gray, faces
+        return gray, [{"box": (int(x), int(y), int(w), int(h)), "landmarks": None,
+                       "yaw": None, "roll": None, "pitch": None, "score": None}
+                      for (x, y, w, h) in boxes]
+
+    def _draw_face(self, frame, face, colour, label=None):
+        """Mark the measured points on the face instead of boxing it.
+
+        Five dots where the detector actually found features, joined by a few
+        hairlines: eye to eye, the bridge down to the nose, and the mouth
+        line. Corner ticks stand in for the bounding box so framing is still
+        legible without a solid rectangle around someone's head.
+        """
+        x, y, w, h = face["box"]
+        pts = face.get("landmarks")
+
+        # Corner ticks -- framing without the full box.
+        t = max(8, int(0.16 * max(w, h)))
+        for cx, cy, dx, dy in ((x, y, 1, 1), (x + w, y, -1, 1),
+                               (x, y + h, 1, -1), (x + w, y + h, -1, -1)):
+            cv2.line(frame, (cx, cy), (cx + dx * t, cy), colour, 1, cv2.LINE_AA)
+            cv2.line(frame, (cx, cy), (cx, cy + dy * t), colour, 1, cv2.LINE_AA)
+
+        if pts:
+            p = [(int(round(a)), int(round(b))) for a, b in pts]
+            right_eye, left_eye, nose, mouth_r, mouth_l = p
+            eye_mid = ((right_eye[0] + left_eye[0]) // 2,
+                       (right_eye[1] + left_eye[1]) // 2)
+
+            for a, b in ((right_eye, left_eye), (eye_mid, nose),
+                         (nose, mouth_r), (nose, mouth_l), (mouth_r, mouth_l)):
+                cv2.line(frame, a, b, colour, 1, cv2.LINE_AA)
+
+            for q in p:
+                cv2.circle(frame, q, 3, colour, -1, cv2.LINE_AA)
+                cv2.circle(frame, q, 5, colour, 1, cv2.LINE_AA)
+
+        if label:
+            cv2.putText(frame, label, (x, max(16, y - 9)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, colour, 1, cv2.LINE_AA)
 
     def _handle_idle(self, frame):
         _, faces = self._detect(frame)
-        for (x, y, w, h) in faces:
-            cv2.rectangle(frame, (x, y), (x + w, y + h), BLUE, 2)
+        for face in faces:
+            self._draw_face(frame, face, BLUE)
 
     def _handle_register(self, frame):
+        """Walk the person through CAPTURE_PLAN, one pose at a time.
+
+        A sample is only written when the head is actually in the pose the
+        current stage asked for, so the resulting set spans angles instead of
+        being thirty copies of one. Frames in the wrong pose are ignored
+        rather than rejected -- the instruction on screen already says what to
+        do, and counting failures at somebody is not useful feedback.
+        """
         gray, faces = self._detect(frame)
+        if not faces:
+            return
 
-        for (x, y, w, h) in faces:
-            with self._lock:
-                count = self._reg_count
-                user_dir = self._reg_dir
-            if count >= SAMPLES_TO_CAPTURE:
-                break
-
-            face_img = cv2.resize(gray[y:y + h, x:x + w], (200, 200))
-            cv2.imwrite(os.path.join(user_dir, f"{count + 1}.jpg"), face_img)
-
-            with self._lock:
-                self._reg_count += 1
-                count = self._reg_count
-
-            cv2.rectangle(frame, (x, y), (x + w, y + h), GREEN, 2)
-            cv2.putText(frame, f"Captured {count}/{SAMPLES_TO_CAPTURE}", (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, GREEN, 2)
-            break  # one face per frame, same as register_user.py
+        face = faces[0]
+        yaw, roll, pitch = face.get("yaw"), face.get("roll"), face.get("pitch")
 
         with self._lock:
-            done = self._reg_count >= SAMPLES_TO_CAPTURE
-            name = self._reg_name
-        if done:
+            stage_idx = self._reg_stage
+            stage_count = self._reg_stage_count
+            user_dir = self._reg_dir
+            count = self._reg_count
+            baseline = self._reg_baseline_pitch
+
+        if stage_idx >= len(CAPTURE_PLAN):
+            return
+        stage = CAPTURE_PLAN[stage_idx]
+
+        matched = pose_matches(stage["key"], yaw, roll, pitch, baseline)
+        colour = GREEN if matched else AMBER
+        self._draw_face(frame, face, colour,
+                        label=f"{stage['label']}  {stage_count}/{stage['count']}")
+
+        if not matched:
+            return
+
+        x, y, w, h = face["box"]
+        x0, y0 = max(0, x), max(0, y)
+        crop = gray[y0:y + h, x0:x + w]
+        if crop.size == 0:
+            return
+        cv2.imwrite(os.path.join(user_dir, f"{count + 1}.jpg"),
+                    cv2.resize(crop, (200, 200)))
+
+        with self._lock:
+            self._reg_count += 1
+            self._reg_stage_count += 1
+            self._reg_poses.append({"stage": stage["key"], "yaw": yaw,
+                                    "roll": roll, "pitch": pitch})
+            if stage["key"] == "front" and pitch is not None:
+                self._reg_front_pitches.append(pitch)
+            stage_count = self._reg_stage_count
+            total = self._reg_count
+
+        if stage_count >= stage["count"]:
             with self._lock:
-                self._reg_finished = True
-                self._mode = MODE_IDLE
-            self._log_event("success",
-                            f"Captured {SAMPLES_TO_CAPTURE} samples for '{name}'.")
-            # Train immediately rather than leaving a "now retrain" instruction
-            # the user has to act on. A model that silently lags behind the
-            # dataset is the same failure as no model: the person is enrolled,
-            # the system does not know them, and nothing says why.
-            self.retrain(reason=f"after registering {name}")
+                # The neutral pitch measured during the front stage is what the
+                # up/down stages are compared against.
+                if stage["key"] == "front" and self._reg_front_pitches:
+                    vals = sorted(self._reg_front_pitches)
+                    self._reg_baseline_pitch = vals[len(vals) // 2]
+                self._reg_stage += 1
+                self._reg_stage_count = 0
+                done = self._reg_stage >= len(CAPTURE_PLAN)
+                name = self._reg_name
+            if done:
+                with self._lock:
+                    self._reg_finished = True
+                    self._mode = MODE_IDLE
+                self._log_event("success",
+                                f"Captured {total} samples for '{name}' across "
+                                f"{len(CAPTURE_PLAN)} poses.")
+                self.retrain(reason=f"after registering {name}")
+                self._build_report()
+            else:
+                self._log_event("info",
+                                f"Pose done — next: "
+                                f"{CAPTURE_PLAN[stage_idx + 1]['label'].lower()}")
 
     def _handle_attendance(self, frame):
         gray, faces = self._detect(frame)
@@ -497,8 +746,13 @@ class CameraManager:
         if recognizer is None:
             return
 
-        for (x, y, w, h) in faces:
-            face_img = cv2.resize(gray[y:y + h, x:x + w], (200, 200))
+        for face in faces:
+            x, y, w, h = face["box"]
+            x0, y0 = max(0, x), max(0, y)
+            crop = gray[y0:y + h, x0:x + w]
+            if crop.size == 0:
+                continue
+            face_img = cv2.resize(crop, (200, 200))
             user_id, confidence = recognizer.predict(face_img)
 
             if confidence < CONFIDENCE_THRESHOLD:
@@ -517,9 +771,8 @@ class CameraManager:
                 name = "Unknown"
                 colour = RED
 
-            cv2.rectangle(frame, (x, y), (x + w, y + h), colour, 2)
-            cv2.putText(frame, f"{name} ({confidence:.0f})", (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, colour, 2)
+            self._draw_face(frame, face, colour,
+                            label=f"{name} ({confidence:.0f})")
 
     # ------------------------------------------------------------- streaming
 

@@ -139,3 +139,67 @@ Running at scale broke things that a 45-image test never would:
   detection gap is an infinite ratio and means nothing. Verdicts now require
   both an effect over budget and non-overlapping confidence intervals,
   otherwise they read INCONCLUSIVE.
+
+
+# Recognition at scale
+
+Identification uses SFace embeddings (`recognition.py`) with the gallery-size
+threshold from `calibration.py`. Two questions matter: how often is it right,
+and does that hold as more people enroll.
+
+Reproduce with `tools_trials.py` (robustness) and `tools_build_gallery.py` +
+`tools_scale_test.py` (scale).
+
+## 4,500 randomised trials, 45 enrolled people
+
+100 trials each. Every trial randomises distance, motion blur, rotation,
+gamma, sensor noise and JPEG quality together, so the run samples the
+operating space rather than one clean point in it.
+
+| | |
+|---|---|
+| Correct | **82.2%** |
+| Unknown (declined) | 17.7% |
+| **Misidentified** | **0.0%** — 1 in 4,500 |
+
+That distribution is the design working. Under degradation it gives up rather
+than guesses. A refusal costs somebody a badge swipe; a confident wrong name
+puts them in another person's attendance record.
+
+Best: Roh Moo-hyun 99%, Ricardo Lagos 97%, Yao Ming 94%, Michael Jordan 93%.
+Worst: LeBron James 72%, Laura Bush 57%, Jennifer Capriati 45% — all enrolled
+from the fewest images, which argues for capturing more, not for loosening
+the threshold.
+
+## Gallery size: 100 to 10,576 identities
+
+Built from CASIA-WebFace, 10,590 identities, embeddings only. Each person's
+centroid comes from 3 embeddings, probed with a held-out 4th.
+
+| Gallery | Threshold | Rank-1 | **Usable** | Declined | Misidentified |
+|---|---|---|---|---|---|
+| 100 | 0.525 | 89.0% | **70.0%** | 30.0% | 0.0% |
+| 500 | 0.650 | 89.0% | **40.8%** | 59.2% | 0.0% |
+| 1,000 | 0.725 | 88.6% | **23.2%** | 76.8% | 0.0% |
+| 2,500 | 0.750 | 86.6% | **16.5%** | 83.5% | 0.0% |
+| 10,576 | 0.750 | 84.2% | **16.4%** | 83.5% | 0.1% |
+
+**Rank-1 barely moves — 89% to 84% — while usable accuracy collapses from 70%
+to 16%.** Rank-1 asks only "was the right person nearest", and that is the
+number normally quoted as accuracy. It stays flat while the system becomes
+unusable underneath it, because the threshold has to keep rising to hold false
+matches down, and past a few hundred people it rises faster than the genuine
+scores do.
+
+Past 2,500 enrolled, no measured threshold keeps the false-match risk under
+1% at all. `calibration.py` predicted this arithmetically from FairFace
+impostor pairs before any of it was measured here; the measurement agrees.
+
+**What this means in practice.** The system is sound for a class, a team, an
+office floor — up to a few hundred. It is not an identification system for
+ten thousand people, and no threshold tuning makes it one. At that scale it
+needs a second factor: a badge, a PIN, a name typed in, with the face
+confirming rather than searching.
+
+The one reassurance is that it fails safely at every size. Misidentification
+never exceeds 0.1%: what grows is refusal, not error.

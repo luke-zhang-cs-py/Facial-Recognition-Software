@@ -33,6 +33,7 @@ network by default.
 """
 
 import os
+import threading
 
 from flask import Flask, jsonify, render_template, request, Response
 
@@ -44,9 +45,34 @@ os.chdir(BASE_DIR)
 
 import db                                  # noqa: E402
 import train_model                         # noqa: E402
+import analytics                           # noqa: E402
+import facemodels                          # noqa: E402
 from camera import camera, CameraError     # noqa: E402
 
 app = Flask(__name__)
+
+# A full dataset scan runs five networks over every stored sample, so it is
+# seconds-to-minutes of work, not a request. Run it on a worker thread and let
+# the page poll for progress.
+_analysis = {"running": False, "done": 0, "total": 0, "report": None, "error": None}
+_analysis_lock = threading.Lock()
+
+
+def _analysis_worker(use_cache):
+    def progress(done, total):
+        with _analysis_lock:
+            _analysis["done"], _analysis["total"] = done, total
+
+    try:
+        report = analytics.scan(progress=progress, use_cache=use_cache)
+        with _analysis_lock:
+            _analysis["report"], _analysis["error"] = report, None
+    except Exception as exc:
+        with _analysis_lock:
+            _analysis["error"] = str(exc)
+    finally:
+        with _analysis_lock:
+            _analysis["running"] = False
 
 
 def fail(exc, code=400):
@@ -128,6 +154,47 @@ def api_attendance_start():
 def api_attendance_stop():
     camera.set_idle()
     return jsonify({"ok": True})
+
+
+@app.route("/api/traits", methods=["POST"])
+def api_traits_toggle():
+    body = request.get_json(force=True, silent=True) or {}
+    camera.set_traits_enabled(body.get("enabled", True))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/models")
+def api_models():
+    return jsonify({
+        "models": facemodels.available(),
+        "missing": facemodels.missing_summary(),
+    })
+
+
+@app.route("/api/analysis/start", methods=["POST"])
+def api_analysis_start():
+    body = request.get_json(force=True, silent=True) or {}
+    with _analysis_lock:
+        if _analysis["running"]:
+            return fail("An analysis is already running.", 409)
+        _analysis.update(running=True, done=0, total=0, error=None)
+
+    # refresh=True ignores the sample_traits cache and re-reads every image.
+    use_cache = not body.get("refresh", False)
+    threading.Thread(target=_analysis_worker, args=(use_cache,), daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/analysis")
+def api_analysis():
+    with _analysis_lock:
+        return jsonify({
+            "running": _analysis["running"],
+            "done": _analysis["done"],
+            "total": _analysis["total"],
+            "error": _analysis["error"],
+            "report": _analysis["report"],
+        })
 
 
 @app.route("/api/report")

@@ -5,6 +5,10 @@ dataset/
 attendance.db
 trainer.yml
 
+# Pretrained third-party weights (~134 MB), fetched by fetch_models.py.
+# Not our source, too big for git, and reproducible on any machine.
+models/
+
 # Python
 __pycache__/
 *.py[cod]

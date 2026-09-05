@@ -86,6 +86,8 @@ function render(s) {
     $('regCount').textContent = `${r.captured || 0}/${r.target || 30}`;
   }
 
+  renderTraits(s);
+
   fillList($('userList'), s.users, (u) => `[${u.id}] ${u.name}`, 'none yet');
   fillList($('todayList'), s.today,
     (a) => `${a.name}<span class="when">${a.timestamp.slice(11, 19)}</span>`, 'nobody yet');
@@ -161,5 +163,179 @@ attBtn.onclick = async () => {
 
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') regBtn.click(); });
 
+/* ------------------------------------------------------------ live traits */
+
+const DASH = '—';
+
+function renderTraits(s) {
+  const t = s.liveTraits;
+  const traitsBtn = $('traitsBtn');
+  traitsBtn.textContent = 'Trait readout: ' + (s.traitsOn ? 'ON' : 'OFF');
+  traitsBtn.classList.toggle('active', !!s.traitsOn);
+
+  if (!t || t.error) {
+    ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender']
+      .forEach((id) => { $(id).textContent = DASH; });
+    $('ltFlags').innerHTML = t && t.error
+      ? `<div class="chips"><span class="chip">${t.error}</span></div>` : '';
+    return;
+  }
+
+  $('ltDetected').textContent = t.detected ? `yes (${t.faces})` : 'no face';
+  $('ltSharp').textContent = t.sharpness != null ? t.sharpness.toFixed(0) : DASH;
+  $('ltBright').textContent = t.brightness != null ? t.brightness.toFixed(0) : DASH;
+  $('ltQuality').textContent = t.qualityScore != null ? t.qualityScore.toFixed(2) : DASH;
+  $('ltPose').textContent = (t.yaw != null)
+    ? `yaw ${t.yaw.toFixed(0)}° roll ${t.roll.toFixed(0)}°` : DASH;
+
+  /* Both estimates carry their uncertainty in the UI, not just the JSON —
+   * a bare label reads as fact in a way the number never does. */
+  const noFace = t.demographicsSkipped ? 'no face' : DASH;
+  $('ltAge').textContent = t.age
+    ? `${t.age.label}  ${(t.age.confidence * 100).toFixed(0)}%${t.age.uncertain ? ' ?' : ''}`
+    : noFace;
+  $('ltGender').textContent = t.gender
+    ? `${t.gender.label}  ${(t.gender.confidence * 100).toFixed(0)}%${t.gender.uncertain ? ' ?' : ''}`
+    : noFace;
+
+  $('ltFlags').innerHTML = (t.flags && t.flags.length)
+    ? `<div class="chips">${t.flags.map((f) => `<span class="chip">${f}</span>`).join('')}</div>`
+    : '';
+}
+
+$('traitsBtn').onclick = async () => {
+  try {
+    await post('/api/traits', { enabled: !state.traitsOn });
+  } catch (e) { showError(e.message); }
+  refresh();
+};
+
+/* --------------------------------------------------------------- analysis */
+
+const fmt = (s, k) => (s && s[k] != null ? s[k] : DASH);
+
+function sweepTable(block) {
+  if (!block.available) return `<div class="note">${block.reason}</div>`;
+  const rows = block.sweep.map((r) => {
+    const cls = [];
+    if (r.threshold === block.recommendedThreshold) cls.push('rec');
+    if (r.threshold === block.currentThreshold) cls.push('cur');
+    return `<tr class="${cls.join(' ')}"><td>${r.threshold}</td>
+      <td>${r.accept}</td><td>${r.falseMatch}</td></tr>`;
+  }).join('');
+  return `
+    <div class="metrics">
+      <span>protocol</span><span>${block.protocol}</span>
+      <span>accuracy</span><span>${block.accuracy}% over ${block.samples}</span>
+    </div>
+    <table class="sweep">
+      <tr><th>thresh</th><th>accept %</th><th>false match %</th></tr>${rows}
+    </table>
+    <div class="note">Recommended <b>${block.recommendedThreshold}</b> &mdash;
+      ${block.recommendedAccept}% accepted, ${block.recommendedFalseMatch}% false matches.
+      ${block.currentThreshold != null && block.currentThreshold !== block.recommendedThreshold
+        ? `attendance.py currently uses ${block.currentThreshold}.` : ''}</div>`;
+}
+
+function userCard(u) {
+  const pct = u.samples ? Math.round(100 * u.usable / u.samples) : 0;
+  const metric = (label, s, key) =>
+    s ? `<span>${label}</span><span>${s[key]}</span>` : '';
+
+  return `
+    <div class="card">
+      <div class="who">
+        <h3>${u.name}</h3>
+        <span class="pill ${u.verdict === 'good' ? 'good' : 'warn'}">${u.verdict}</span>
+      </div>
+      <div class="metrics">
+        <span>usable</span><span>${u.usable}/${u.samples} (${pct}%)</span>
+        ${metric('sharpness', u.sharpness, 'mean')}
+        ${metric('brightness', u.brightness, 'mean')}
+        ${metric('quality', u.quality, 'mean')}
+        <span>pose spread</span><span>${u.yawSpread != null ? u.yawSpread + '°' : 'n/a'}</span>
+        ${u.age ? `<span>age est.</span><span>${u.age.label} (${Math.round(u.age.agreement * 100)}% agree)</span>` : ''}
+        ${u.gender ? `<span>gender est.</span><span>${u.gender.label} (${Math.round(u.gender.agreement * 100)}% agree)</span>` : ''}
+      </div>
+      ${Object.keys(u.flags).length
+        ? `<div class="chips">${Object.entries(u.flags)
+            .map(([k, v]) => `<span class="chip">${k} ×${v}</span>`).join('')}</div>` : ''}
+      ${u.worstSamples.length
+        ? `<div class="chips">${u.worstSamples.slice(0, 4)
+            .map((w) => `<span class="chip n">${w.file}</span>`).join('')}</div>` : ''}
+      ${u.recommendations.length
+        ? `<ul class="tips">${u.recommendations.map((r) => `<li>${r}</li>`).join('')}</ul>` : ''}
+    </div>`;
+}
+
+function renderAnalysis(rep) {
+  const body = $('analysisBody');
+  if (!rep) { body.innerHTML = ''; return; }
+
+  if (!rep.totalSamples) {
+    body.innerHTML = `<div class="note">No samples under dataset/ yet — register
+      someone first, then run this.</div>`;
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="agrid">${rep.users.map(userCard).join('')}</div>
+    <div class="agrid">
+      <div class="card"><div class="who"><h3>LBPH</h3>
+        <span class="pill warn">in use today</span></div>${sweepTable(rep.lbph)}</div>
+      <div class="card"><div class="who"><h3>SFace embeddings</h3>
+        <span class="pill good">128-d</span></div>${sweepTable(rep.sface)}
+        ${rep.sface.available ? `<div class="note">Genuine ${rep.sface.genuine.mean}
+          vs impostor ${rep.sface.impostor.mean} (margin ${rep.sface.margin}).
+          ${rep.sface.weakestPairs.length ? `Most confusable: user
+          ${rep.sface.weakestPairs[0].a} vs ${rep.sface.weakestPairs[0].b}
+          at ${rep.sface.weakestPairs[0].maxSimilarity}.` : ''}</div>` : ''}
+      </div>
+    </div>
+    <div class="caveat">${rep.notes.map((n) => `&bull; ${n}`).join('<br>')}</div>`;
+}
+
+let analysisTimer = null;
+
+async function pollAnalysis() {
+  let s;
+  try {
+    s = await (await fetch('/api/analysis')).json();
+  } catch (_) { return; }
+
+  const showing = s.running;
+  $('analysisProgress').style.display = showing ? 'flex' : 'none';
+  if (showing) {
+    const pct = s.total ? 100 * s.done / s.total : 0;
+    $('analysisFill').style.width = pct + '%';
+    $('analysisProgressText').textContent = `${s.done}/${s.total}`;
+  }
+
+  $('analyzeBtn').disabled = s.running;
+  $('analyzeFreshBtn').disabled = s.running;
+  $('analyzeBtn').textContent = s.running ? 'Analysing…' : 'Run analysis';
+
+  if (s.error) showError(s.error);
+  if (s.report) renderAnalysis(s.report);
+
+  if (!s.running && analysisTimer) {
+    clearInterval(analysisTimer);
+    analysisTimer = null;
+  }
+}
+
+async function startAnalysis(refreshAll) {
+  showError('');
+  try {
+    await post('/api/analysis/start', { refresh: refreshAll });
+  } catch (e) { showError(e.message); return; }
+  if (!analysisTimer) analysisTimer = setInterval(pollAnalysis, 500);
+  pollAnalysis();
+}
+
+$('analyzeBtn').onclick = () => startAnalysis(false);
+$('analyzeFreshBtn').onclick = () => startAnalysis(true);
+
 refresh();
+pollAnalysis();
 setInterval(refresh, 1000);

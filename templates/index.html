@@ -61,6 +61,19 @@
       </div>
 
       <div class="section">
+        <h2>Live face traits</h2>
+        <div class="stat"><span>Detected</span><b id="ltDetected">&mdash;</b></div>
+        <div class="stat"><span>Sharpness</span><b id="ltSharp">&mdash;</b></div>
+        <div class="stat"><span>Brightness</span><b id="ltBright">&mdash;</b></div>
+        <div class="stat"><span>Quality</span><b id="ltQuality">&mdash;</b></div>
+        <div class="stat"><span>Pose</span><b id="ltPose">&mdash;</b></div>
+        <div class="stat"><span>Age est.</span><b id="ltAge">&mdash;</b></div>
+        <div class="stat"><span>Gender est.</span><b id="ltGender">&mdash;</b></div>
+        <div id="ltFlags"></div>
+        <button class="secondary" id="traitsBtn">Trait readout: ON</button>
+      </div>
+
+      <div class="section">
         <h2>Registered</h2>
         <ul class="steps" id="userList"><li class="muted">none yet</li></ul>
       </div>
@@ -76,6 +89,24 @@
       </div>
 
     </div>
+  </div>
+
+  <div class="analysis" id="analysisPanel">
+    <div class="ahead">
+      <h2>Enrollment &amp; recognition analysis</h2>
+      <div class="actions">
+        <button class="secondary" id="analyzeBtn">Run analysis</button>
+        <button class="secondary" id="analyzeFreshBtn">Re-read all images</button>
+      </div>
+    </div>
+    <div class="asub" id="analysisHint">Analyses every stored sample: how usable each
+      person&rsquo;s enrollment is, and what confidence threshold your data actually
+      supports. Nothing leaves this machine.</div>
+    <div class="abar" id="analysisProgress" style="display:none;">
+      <div class="bar"><div class="fill" id="analysisFill"></div></div>
+      <span class="label" id="analysisProgressText">&mdash;</span>
+    </div>
+    <div id="analysisBody"></div>
   </div>
 
   <footer>Face images in <code>dataset/</code> and the trained <code>trainer.yml</code> are

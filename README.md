@@ -29,6 +29,11 @@ Webcam frame → Haar cascade (face detection) → LBPH recognizer (face ID)
 | `view_report.py` | Print all users / attendance records from the DB |
 | `camera.py` | Shared webcam manager used by the web UI |
 | `app.py` | Flask web UI — all four steps in the browser |
+| `facemodels.py` | Lazy loader for the pretrained analysis models |
+| `traits.py` | Per-face feature extraction (quality, pose, embedding, demographics) |
+| `analytics.py` | Dataset-wide enrollment quality + threshold sweeps |
+| `analyze_faces.py` | CLI report — the console version of the Analysis panel |
+| `fetch_models.py` | Downloads the pretrained weights into `models/` |
 
 There are two ways to drive the same pipeline: the **CLI scripts** above, or
 the **web UI** (`app.py`). They share `db.py` and `train_model.py` and read
@@ -92,6 +97,73 @@ feed and everyone's attendance records.
 | `POST /api/train` | rebuild `trainer.yml` from `dataset/` |
 | `POST /api/attendance/start` · `/stop` | toggle recognition + logging |
 | `GET /api/report` | users + today's and all-time attendance |
+| `GET /api/models` | which pretrained analysis models are present |
+| `POST /api/analysis/start` | kick off a dataset scan on a worker thread |
+| `GET /api/analysis` | scan progress, then the finished report |
+| `POST /api/traits` | `{enabled}` → toggle the live trait readout |
+
+## Face trait analysis
+
+Optional layer that measures what is actually in your enrolled samples, so
+enrollment problems and threshold choices stop being guesswork.
+
+```bash
+python fetch_models.py     # ~134 MB of pretrained weights, once
+python analyze_faces.py    # full report
+```
+
+Or open the **Analysis** panel in the web UI, which runs the same thing on a
+background thread with a progress bar. The **Live face traits** sidebar shows
+the same measurements for whoever is in front of the camera right now, read
+off the full-resolution colour frame.
+
+### What it measures
+
+**Enrollment quality**, per person: sharpness, brightness, contrast, face
+size in pixels, head pose, and eDifFIQA's learned 0–1 quality score. It names
+the specific files to recapture and why (`13.jpg — too dark, flat contrast`).
+
+Blur is judged *relative to that person's own samples*, not against a fixed
+number. Laplacian variance has no absolute meaning — it scales with camera,
+face, and crop — so one person's sharp sample can measure 1100 while
+another's measures 90. A fixed cutoff either misses real blur or condemns a
+whole enrollment.
+
+**Recognition analytics**: how separable the enrolled people actually are,
+and what confidence threshold your data supports. `attendance.py` ships
+`CONFIDENCE_THRESHOLD = 70` as a guess; this replaces it with a sweep of
+measured accept and false-match rates, and names the most confusable pair of
+people. Both recognisers are scored held-out — LBPH by 5-fold
+cross-validation, SFace by leave-one-out — so no image is ever scored by a
+model that already saw it.
+
+**Face embeddings** (SFace, 128-d): unlike LBPH's histogram distance, these
+live in a metric space, so cosine similarity is comparable across people and
+thresholds transfer between datasets. This is what makes the separability
+numbers meaningful.
+
+**Demographic estimates**: an 8-bucket age estimate and a gender estimate,
+both from Levi & Hassner (2015). Read the caveats below before using either.
+
+### Caveats that matter
+
+- **Age** is coarse and dated. Being off by a whole bucket is common,
+  especially outside 25–45. Reported with its full probability distribution,
+  because the margin is the interesting part — a 0.34/0.31 split is a coin
+  flip wearing a label.
+- **Gender** is a binary classifier guessing at apparent presentation from
+  pixels. It is not a statement about anyone's identity, and it is
+  materially less accurate for some groups than others. Treat it as weak
+  evidence or leave it off.
+- Both classifiers have a softmax over a fixed label set, so they return a
+  confident label for *anything* — including a black frame. The live readout
+  therefore suppresses them entirely when no face is detected.
+- `dataset/` stores greyscale crops, but all three DNN models expect colour.
+  Live camera reads are more reliable than re-analysed stored samples, and
+  anything derived from a grey source is tagged as such.
+- This measures **image and recogniser properties**. Inferring character,
+  personality, honesty, or intent from face geometry is physiognomy; it does
+  not work, and nothing here does it.
 
 ## Database schema (SQLite, `attendance.db`)
 

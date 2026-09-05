@@ -29,6 +29,7 @@ from datetime import datetime
 import cv2
 
 import db
+import traits as facetraits
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, "dataset")
@@ -39,6 +40,11 @@ FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml
 # so LOWER means a better match.
 CONFIDENCE_THRESHOLD = 70
 SAMPLES_TO_CAPTURE = 30
+
+# A full trait read runs five networks and costs ~130 ms, so it cannot go on
+# every frame without collapsing the frame rate. Once a second is plenty for
+# a readout a human is looking at.
+TRAIT_INTERVAL = 1.0
 
 MODE_IDLE = "idle"
 MODE_REGISTER = "register"
@@ -77,6 +83,11 @@ class CameraManager:
         self._recognizer = None
 
         self._events = deque(maxlen=40)
+
+        # live trait readout
+        self._traits_on = True
+        self._live_traits = None
+        self._last_trait_at = 0.0
 
         self._cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
         if self._cascade.empty():
@@ -186,12 +197,20 @@ class CameraManager:
 
     # ---------------------------------------------------------------- status
 
+    def set_traits_enabled(self, on):
+        with self._lock:
+            self._traits_on = bool(on)
+            if not on:
+                self._live_traits = None
+
     def status(self):
         with self._lock:
             return {
                 "running": self._running,
                 "mode": self._mode,
                 "error": self._error,
+                "traitsOn": self._traits_on,
+                "liveTraits": self._live_traits,
                 "register": {
                     "name": self._reg_name,
                     "userId": self._reg_user_id,
@@ -233,12 +252,70 @@ class CameraManager:
                 with self._lock:
                     self._error = str(exc)
 
+            self._maybe_traits(frame)
+
             ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if ok:
                 with self._lock:
                     self._latest_jpeg = buf.tobytes()
 
             time.sleep(0.01)
+
+    def _maybe_traits(self, frame):
+        """Refresh the live trait readout at most once every TRAIT_INTERVAL.
+
+        Reads the colour frame straight off the camera rather than a stored
+        crop, which is the best input these models ever get: full resolution,
+        in colour, before any of register_user.py's grey down-conversion.
+        """
+        now = time.monotonic()
+        with self._lock:
+            if not self._traits_on or now - self._last_trait_at < TRAIT_INTERVAL:
+                return
+            self._last_trait_at = now
+
+        try:
+            # require_detection: no face in frame means no demographic guess.
+            t = facetraits.analyze(frame.copy(), want_embedding=False,
+                                   require_detection=True)
+        except Exception as exc:
+            with self._lock:
+                self._live_traits = {"error": str(exc)}
+            return
+
+        if t is None:
+            return
+
+        geom = t.get("geometry") or {}
+        demo = t.get("demographics") or {}
+        # Keep this JSON-safe: no numpy arrays past this point.
+        summary = {
+            "detected": t["detected"],
+            "faces": t["faces"],
+            "sharpness": t["sharpness"],
+            "brightness": t["brightness"],
+            "contrast": t["contrast"],
+            "qualityScore": t["qualityScore"],
+            "facePx": t["facePx"],
+            "yaw": geom.get("yaw"),
+            "roll": geom.get("roll"),
+            "flags": t["flags"],
+            "usable": t["usable"],
+        }
+        if t.get("demographicsSkipped"):
+            summary["demographicsSkipped"] = t["demographicsSkipped"]
+        if demo:
+            for key in ("age", "gender"):
+                if demo.get(key):
+                    summary[key] = {
+                        "label": demo[key]["label"],
+                        "confidence": demo[key]["confidence"],
+                        "uncertain": demo[key]["uncertain"],
+                        "runnerUp": demo[key]["runnerUp"],
+                    }
+
+        with self._lock:
+            self._live_traits = summary
 
     def _detect(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)

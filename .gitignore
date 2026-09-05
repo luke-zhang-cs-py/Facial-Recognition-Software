@@ -14,3 +14,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/

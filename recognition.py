@@ -25,7 +25,6 @@ point of capturing 30 of them across different poses.
 
 import os
 
-import cv2
 import numpy as np
 
 import calibration

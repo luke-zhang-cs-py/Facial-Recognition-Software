@@ -17,7 +17,7 @@ from PIL import Image
 
 PROJ = r"c:\Users\justl\Facial-Recognition-Software"
 sys.path.insert(0, PROJ); os.chdir(PROJ)
-import recognition, db
+import recognition
 
 TRIALS = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 LFW = os.path.join(os.environ["TEMP"], "lfw", "lfw.parquet")

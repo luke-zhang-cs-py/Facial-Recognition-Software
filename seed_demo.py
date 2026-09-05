@@ -66,7 +66,6 @@ def remove_all():
 def load_lfw(min_images, wanted, requested=None):
     import pyarrow.parquet as pq
     import json
-    from PIL import Image
     from collections import defaultdict
 
     if not os.path.exists(LFW):

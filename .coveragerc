@@ -1,0 +1,15 @@
+[run]
+omit =
+    tests/*
+    tools_*.py
+    face_attendance.py
+    seed_demo.py
+    fetch_models.py
+    fairness_benchmark.py
+    .venv/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError

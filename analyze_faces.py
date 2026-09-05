@@ -18,6 +18,7 @@ import argparse
 import sys
 
 import analytics
+import calibration
 import facemodels
 
 
@@ -119,6 +120,32 @@ def print_thresholds(report):
             w = sface["weakestPairs"][0]
             print(f"    most confusable pair: user {w['a']} vs user {w['b']} "
                   f"(peak similarity {w['maxSimilarity']})")
+
+        cal = sface.get("calibration")
+        if cal:
+            print(f"\n    GALLERY-SIZE CALIBRATION ({cal['corpus']})")
+            if sface.get("warning"):
+                print(f"    ! {sface['warning']}")
+            print(f"    {cal['summary']}")
+            if not cal["reachable"]:
+                print("    At this scale embeddings alone are not sufficient — "
+                      "add a second factor.")
+            local = sface.get("localSweepThreshold")
+            if local is not None and not sface.get("localSweepTrusted"):
+                print(f"    For contrast, this dataset's own sweep would have said "
+                      f"{local}, which carries a "
+                      f"{100*cal['riskAtLocalChoice']:.2f}% gallery-wide false-match "
+                      f"risk at {cal['gallerySize']} enrolled.")
+            print(f"\n    {'gallery':>9}{'threshold':>11}{'risk':>9}")
+            for size in (10, 100, 1000, 10000):
+                t, r, ok = calibration.recommend_threshold(size)
+                mark = "" if ok else "   (unreachable)"
+                print(f"    {size:>9}{t:>11.3f}{100*r:>8.2f}%{mark}")
+            d = cal["disparity"]
+            print(f"\n    Risk is not evenly shared: at threshold {d['threshold']}, "
+                  f"{d['worst'][0]} faces false-match at "
+                  f"{100*d['worst'][1]:.1f}% vs {d['best'][0]} at "
+                  f"{100*d['best'][1]:.1f}% ({d['ratio']}x).")
 
 
 def main():

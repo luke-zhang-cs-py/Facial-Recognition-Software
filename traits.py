@@ -35,21 +35,59 @@ import facemodels
 from facemodels import AGE_BUCKETS, GENDER_LABELS, CAFFE_MEAN
 
 # Thresholds used to turn raw numbers into "is this sample usable?".
-# Tuned for the 200x200 crops register_user.py writes; adjust for your camera.
 #
-# MIN_SHARPNESS is only a floor for *catastrophic* blur. Laplacian variance
-# has no absolute meaning -- it scales with the camera, the face, and how
-# much the crop was resized, so one person's sharp sample can measure 1100
-# while another's measures 90. Blur is therefore caught per-person and
-# relatively, in analytics.summarize_user (SOFT_RATIO below); this constant
-# exists only to flag frames that are blurred beyond any doubt.
-MIN_SHARPNESS = 25.0
+# These were re-derived after benchmarking the engine on all 97,698 images of
+# FairFace (race-balanced, ~14k per group). The headline result: an absolute
+# threshold on any quantity that tracks skin tone measures the person, not the
+# photograph. Measured disparity between the worst- and best-affected race
+# group, at a matched 25% overall flag rate:
+#
+#     mean brightness (absolute)   2.15x     <- was shipped, now removed
+#     contrast / std  (absolute)   1.61x     <- was shipped, now removed
+#     sharpness (relative)         1.20x     <- kept
+#     eDifFIQA learned quality     1.21x     <- kept, now the main gate
+#
+# The shipped absolute brightness gate flagged 38.8% of Black faces and 18.5%
+# of White faces as "too dark" -- a 2.1x gap that is skin tone, not lighting.
+# Brightness and contrast are still measured and reported, because they are
+# genuinely useful diagnostics; they just no longer decide anything.
+#
+# What survives gating is scale-free or learned: relative sharpness, the
+# eDifFIQA score, geometry, and a clipping backstop for exposures that are
+# broken beyond argument.
+
+# Absolute floor for *catastrophic* blur only. Laplacian variance has no
+# absolute meaning -- it scales with camera, face, and crop resizing -- so
+# real blur detection is per-person and relative, in
+# analytics._mark_relative_blur (SOFT_RATIO).
+#
+# This was 25.0, which flagged 27% of a 97k-image corpus -- a real gate
+# pretending to be a backstop, and the last skin-tone-coupled check left
+# (1.32x across race groups). Against the measured distribution of face-crop
+# sharpness, p2 is 6.2, so 6.0 catches the bottom ~1.7%: frames that are
+# blurred beyond argument, which is what this constant claims to be for.
+MIN_SHARPNESS = 6.0
 SOFT_RATIO = 0.4          # flag a sample under 40% of that person's median
-BRIGHT_RANGE = (75.0, 180.0)
-MIN_CONTRAST = 25.0
+
+# Main quality gate. eDifFIQA is a learned face-image-quality model, and it
+# was the fairest signal measured (1.21x) as well as the most meaningful.
+MIN_QUALITY = 0.25
+
+# Exposure backstop. Not a brightness band -- a clipping check. A face can be
+# dark and perfectly exposed; it cannot be half crushed to pure black and
+# still carry detail. These are deliberately extreme so they fire only on
+# genuinely destroyed frames (lens cap, blown highlight, sensor failure).
+MAX_SHADOW_CLIP = 0.50    # fraction of pixels at/near 0
+MAX_HIGHLIGHT_CLIP = 0.35  # fraction of pixels at/near 255
+MIN_DYNAMIC_RANGE = 25.0   # p99 - p1; below this there is no signal at all
+
 MIN_FACE_PX = 90
 MAX_YAW = 30.0            # degrees off-centre before it stops being frontal
 MAX_ROLL = 20.0
+
+# Reported but no longer used for gating -- see the note above.
+BRIGHT_RANGE = (75.0, 180.0)
+MIN_CONTRAST = 25.0
 
 GENDER_CAVEAT = (
     "Model guess at apparent presentation from pixels, not a statement about "
@@ -154,27 +192,61 @@ def learned_quality(bgr_face):
     return round(float(np.ravel(out)[0]), 4)
 
 
+def exposure_metrics(gray):
+    """Exposure judged by clipping and usable range, not by average level.
+
+    This is the skin-tone-independent way to ask "is this photo exposed
+    properly". A dark face that is well lit still spans a wide range with
+    little clipping; an underexposed one has its shadows crushed flat
+    against zero whoever is in it.
+    """
+    total = gray.size or 1
+    p1, p99 = np.percentile(gray, [1, 99])
+    return {
+        "shadowClip": round(float((gray <= 8).sum()) / total, 4),
+        "highlightClip": round(float((gray >= 247).sum()) / total, 4),
+        "dynamicRange": round(float(p99 - p1), 1),
+    }
+
+
 def quality_metrics(bgr_face):
     gray = to_gray(bgr_face)
     return {
         "sharpness": round(sharpness(gray), 1),
+        # Reported for diagnostics; deliberately not gated on. See the note
+        # at the top of this file for the measured bias.
         "brightness": round(float(gray.mean()), 1),
         "contrast": round(float(gray.std()), 1),
         "qualityScore": learned_quality(bgr_face),
+        **exposure_metrics(gray),
     }
 
 
 def quality_flags(metrics, geom, grayscale_source):
-    """Turn raw metrics into the specific reasons a sample is weak."""
+    """Turn raw metrics into the specific reasons a sample is weak.
+
+    Every check here is either scale-free, learned, or an extreme backstop.
+    Nothing gates on absolute brightness or contrast -- benchmarking showed
+    both encode skin tone (2.15x and 1.61x disparity across race groups),
+    so gating on them rejects people rather than photographs.
+    """
     flags = []
+
     if metrics["sharpness"] < MIN_SHARPNESS:
         flags.append("blurry")
-    if metrics["brightness"] < BRIGHT_RANGE[0]:
-        flags.append("too dark")
-    elif metrics["brightness"] > BRIGHT_RANGE[1]:
-        flags.append("too bright")
-    if metrics["contrast"] < MIN_CONTRAST:
-        flags.append("flat contrast")
+
+    q = metrics.get("qualityScore")
+    if q is not None and q < MIN_QUALITY:
+        flags.append("low quality")
+
+    # Exposure backstops: broken frames, not dark ones.
+    if metrics.get("shadowClip", 0) > MAX_SHADOW_CLIP:
+        flags.append("underexposed")
+    if metrics.get("highlightClip", 0) > MAX_HIGHLIGHT_CLIP:
+        flags.append("blown highlights")
+    if metrics.get("dynamicRange", 255) < MIN_DYNAMIC_RANGE:
+        flags.append("no tonal range")
+
     if geom:
         if geom["facePx"] < MIN_FACE_PX:
             flags.append("face too small")

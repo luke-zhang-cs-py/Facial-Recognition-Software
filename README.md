@@ -34,6 +34,8 @@ Webcam frame → Haar cascade (face detection) → LBPH recognizer (face ID)
 | `analytics.py` | Dataset-wide enrollment quality + threshold sweeps |
 | `analyze_faces.py` | CLI report — the console version of the Analysis panel |
 | `fetch_models.py` | Downloads the pretrained weights into `models/` |
+| `calibration.py` | False-match rates measured on ~98k identities, and gallery-size maths |
+| `fairness_benchmark.py` | Stratified benchmark: does the quality gate treat groups equally? |
 
 There are two ways to drive the same pipeline: the **CLI scripts** above, or
 the **web UI** (`app.py`). They share `db.py` and `train_model.py` and read
@@ -119,9 +121,17 @@ off the full-resolution colour frame.
 
 ### What it measures
 
-**Enrollment quality**, per person: sharpness, brightness, contrast, face
-size in pixels, head pose, and eDifFIQA's learned 0–1 quality score. It names
-the specific files to recapture and why (`13.jpg — too dark, flat contrast`).
+**Enrollment quality**, per person: sharpness, head pose, face size, exposure
+(clipping and dynamic range), and eDifFIQA's learned 0–1 quality score. It
+names the specific files to recapture and why
+(`12.jpg — low quality, soft focus`).
+
+Nothing gates on absolute brightness or contrast. Both track skin tone, so
+thresholding them rejects people rather than photographs — measured at 2.15x
+and 1.61x disparity across race groups. They are still reported as
+diagnostics. Exposure is judged by clipping and dynamic range instead, which
+is skin-tone independent: a dark face that is well lit still spans a wide
+range; an underexposed one has its shadows crushed flat whoever is in it.
 
 Blur is judged *relative to that person's own samples*, not against a fixed
 number. Laplacian variance has no absolute meaning — it scales with camera,
@@ -164,6 +174,33 @@ both from Levi & Hassner (2015). Read the caveats below before using either.
 - This measures **image and recogniser properties**. Inferring character,
   personality, honesty, or intent from face geometry is physiognomy; it does
   not work, and nothing here does it.
+
+### Measured, not assumed
+
+Everything above was benchmarked against all 97,698 images of FairFace.
+See **[BENCHMARK.md](BENCHMARK.md)** for the full results. The short version:
+
+- **Detection is even** — 99.95%, widest race-group gap 0.08pp.
+- **The quality gate used to be biased and was fixed.** Absolute brightness
+  and contrast thresholds encoded skin tone (2.15x and 1.61x disparity) and
+  flagged 38.8% of Black faces vs 18.5% of White faces as "too dark". Gating
+  now uses scale-free and learned signals only; disparity is 1.24x.
+- **Thresholds depend on how many people are enrolled.** A threshold swept on
+  a few identities cannot see false matches. `calibration.py` carries the
+  curve measured over 4.77 billion impostor pairs, and the recommendation
+  scales with gallery size — 0.425 at 10 people, 0.725 at 1,000, and nothing
+  sufficient past ~10,000.
+- **The gender estimator fails badly for Black women (43.7%, worse than
+  chance).** Leave it off unless you have a reason not to.
+
+Re-check any of it after a change:
+
+```bash
+python fairness_benchmark.py --corpus <dir-of-parquet> --per-group 800
+```
+
+It exits non-zero if any check exceeds the disparity budget, so it works as a
+CI gate.
 
 ## Database schema (SQLite, `attendance.db`)
 

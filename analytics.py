@@ -34,6 +34,7 @@ from collections import Counter, defaultdict
 import cv2
 import numpy as np
 
+import calibration
 import db
 import facemodels
 import traits
@@ -45,7 +46,13 @@ SFACE_SWEEP = [round(x, 2) for x in np.arange(0.20, 0.71, 0.05)]
 KFOLDS = 5
 
 # SFace's own documented operating point for "same person" on cosine.
-SFACE_REFERENCE = 0.363
+SFACE_REFERENCE = calibration.SFACE_REFERENCE
+
+# Below this many enrolled people, a locally-swept threshold means nothing:
+# there are too few ways to be wrong for a 0% false-match reading to be
+# evidence of anything. The recommendation falls back to calibration.py,
+# which was measured on ~98k identities.
+MIN_USERS_FOR_LOCAL_SWEEP = 15
 
 
 # --------------------------------------------------------------- collecting
@@ -113,6 +120,9 @@ def analyze_sample(user_id, path, use_cache=True):
     gender = (demo.get("gender") or {})
     emb = t.get("embedding")
 
+    # Returns False when the folder's user id has no row in `users`; the
+    # analysis is still valid, it just is not cacheable. scan() reports those
+    # folders under "orphanFolders".
     db.save_traits({
         "path": path, "user_id": user_id, "mtime": mtime,
         "sharpness": t["sharpness"], "brightness": t["brightness"],
@@ -301,13 +311,22 @@ def sface_analysis(records):
             "falseMatch": round(100.0 * float((impostor >= t).mean()), 1),
         })
 
-    # Prefer the strictest threshold that still admits nearly everyone;
-    # fall back to best separation if nothing hits zero false matches.
+    # The local sweep can only see the impostors that exist in this dataset.
+    # With a handful of enrolled people that is a handful of chances to be
+    # wrong, so "0% false matches" is close to guaranteed and means nothing.
+    # Anything below MIN_USERS_FOR_LOCAL_SWEEP defers to the large-corpus
+    # calibration instead of trusting its own numbers.
+    n_users = len(by_user)
+    trust_local = n_users >= MIN_USERS_FOR_LOCAL_SWEEP
+
     clean = [s for s in sweep if s["falseMatch"] == 0.0]
     if clean:
         best = max(clean, key=lambda s: s["accept"])
     else:
         best = max(sweep, key=lambda s: s["accept"] - s["falseMatch"])
+
+    cal_threshold, cal_risk, cal_ok = calibration.recommend_threshold(n_users)
+    recommended = best["threshold"] if trust_local else cal_threshold
 
     # Which two people are most confusable?
     pairs = []
@@ -333,11 +352,29 @@ def sface_analysis(records):
                      "max": round(float(impostor.max()), 3)},
         "margin": round(float(genuine.mean() - impostor.mean()), 3),
         "sweep": sweep,
-        "recommendedThreshold": best["threshold"],
+        "recommendedThreshold": recommended,
         "recommendedAccept": best["accept"],
         "recommendedFalseMatch": best["falseMatch"],
         "referenceThreshold": SFACE_REFERENCE,
         "weakestPairs": pairs[:5],
+        # Gallery-size-aware guidance from the large-corpus calibration.
+        "localSweepTrusted": trust_local,
+        "localSweepThreshold": best["threshold"],
+        "calibration": {
+            "corpus": calibration.CORPUS,
+            "threshold": cal_threshold,
+            "galleryRisk": round(cal_risk, 5),
+            "reachable": cal_ok,
+            "gallerySize": n_users,
+            "summary": calibration.describe(n_users),
+            "riskAtLocalChoice": round(
+                calibration.gallery_risk(best["threshold"], n_users), 5),
+            "disparity": calibration.FALSE_MATCH_DISPARITY,
+        },
+        "warning": None if trust_local else (
+            f"Only {n_users} people enrolled. A threshold swept on this few "
+            f"identities cannot measure false matches meaningfully, so the "
+            f"recommendation comes from {calibration.CORPUS} instead."),
     }
 
 
@@ -452,11 +489,19 @@ def scan(progress=None, use_cache=True):
         for uid, recs in sorted(by_user.items())
     ]
 
+    # Folders whose id has no matching row in `users`. Their samples are still
+    # analysed, but nothing links them to a person, so attendance can never be
+    # logged for them -- worth saying out loud rather than silently ignoring.
+    orphans = [{"userId": uid, "folder": folders[uid],
+                "samples": len(by_user[uid])}
+               for uid in sorted(by_user) if uid not in names]
+
     return {
         "models": facemodels.available(),
         "totalSamples": len(records),
         "totalUsers": len(by_user),
         "users": users,
+        "orphanFolders": orphans,
         "sface": sface_analysis(records),
         "lbph": lbph_analysis(records),
         "notes": [

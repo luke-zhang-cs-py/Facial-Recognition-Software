@@ -237,6 +237,37 @@ function sweepTable(block) {
         ? `attendance.py currently uses ${block.currentThreshold}.` : ''}</div>`;
 }
 
+/* A threshold swept on a handful of enrolled people cannot see false matches,
+ * so the report also carries a recommendation calibrated on ~98k identities.
+ * Show the warning prominently when the local sweep is not trustworthy. */
+function calibrationBlock(sface) {
+  if (!sface.available || !sface.calibration) return '';
+  const c = sface.calibration;
+  const warn = sface.warning
+    ? `<div class="err" style="margin-top:10px;">${sface.warning}</div>` : '';
+  const unreachable = !c.reachable
+    ? `<div class="err" style="margin-top:8px;">At ${c.gallerySize} enrolled,
+       no measured threshold keeps the risk under 1%. Embeddings alone are not
+       enough at this scale — add a second factor.</div>` : '';
+  const contrast = (!sface.localSweepTrusted && sface.localSweepThreshold != null)
+    ? `<div class="note">This dataset's own sweep would have said
+       <b>${sface.localSweepThreshold}</b> — a
+       ${(100 * c.riskAtLocalChoice).toFixed(2)}% gallery-wide false-match risk
+       at ${c.gallerySize} enrolled.</div>` : '';
+  const d = c.disparity;
+
+  return `
+    ${warn}
+    <div class="note" style="margin-top:10px;"><b>Gallery-size calibration.</b>
+      ${c.summary}</div>
+    ${unreachable}
+    ${contrast}
+    <div class="note">Risk is not evenly shared: at threshold ${d.threshold},
+      ${d.worst[0]} faces falsely match someone
+      ${(100 * d.worst[1]).toFixed(1)}% of the time vs ${d.best[0]} at
+      ${(100 * d.best[1]).toFixed(1)}% (${d.ratio}x).</div>`;
+}
+
 function userCard(u) {
   const pct = u.samples ? Math.round(100 * u.usable / u.samples) : 0;
   const metric = (label, s, key) =>
@@ -290,6 +321,7 @@ function renderAnalysis(rep) {
           ${rep.sface.weakestPairs.length ? `Most confusable: user
           ${rep.sface.weakestPairs[0].a} vs ${rep.sface.weakestPairs[0].b}
           at ${rep.sface.weakestPairs[0].maxSimilarity}.` : ''}</div>` : ''}
+        ${calibrationBlock(rep.sface)}
       </div>
     </div>
     <div class="caveat">${rep.notes.map((n) => `&bull; ${n}`).join('<br>')}</div>`;

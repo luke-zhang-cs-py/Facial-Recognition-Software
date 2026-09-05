@@ -29,6 +29,7 @@ from datetime import datetime
 import cv2
 
 import db
+import guidance
 import traits as facetraits
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -50,9 +51,15 @@ MODE_IDLE = "idle"
 MODE_REGISTER = "register"
 MODE_ATTENDANCE = "attendance"
 
-GREEN = (0, 255, 0)
-RED = (0, 0, 255)
-GREY = (160, 160, 160)
+# BGR equivalents of the CSS custom properties in static/css/style.css, so
+# what is drawn onto the frame matches the panel around it rather than using
+# stock full-saturation OpenCV colours.
+GREEN = (138, 201, 94)    # --good    #5ec98a
+RED = (94, 106, 223)      # --bad     #df6a5e
+AMBER = (74, 192, 224)    # --warn    #e0c04a
+BLUE = (255, 163, 77)     # --accent  #4da3ff
+GREY = (165, 150, 139)    # --muted   #8b96a5
+PANEL = (26, 20, 16)      # --bg-ish, for the instruction bar fill
 
 
 class CameraError(Exception):
@@ -161,10 +168,14 @@ class CameraManager:
         return user_id
 
     def start_attendance(self):
+        # Train on demand rather than refusing. The old behaviour told the user
+        # to go and press a button that this could press itself; the only case
+        # that genuinely cannot proceed is having nobody enrolled at all.
         if not os.path.exists(MODEL_PATH):
-            raise CameraError(
-                "No trained model yet. Register at least one person, then train."
-            )
+            if not self.retrain(reason="(no model yet)"):
+                raise CameraError(
+                    "Nobody is enrolled yet. Register at least one person first."
+                )
         self.start()
         self._load_recognizer()
         with self._lock:
@@ -194,6 +205,53 @@ class CameraManager:
         with self._lock:
             self._recognizer = None
             self._model_mtime = None
+
+    def retrain(self, reason=""):
+        """Rebuild trainer.yml from dataset/ and reload it.
+
+        Runs on the capture thread, which blocks the video stream for as long
+        as training takes. LBPH on a few hundred 200x200 crops is well under a
+        second, so that is preferable to the alternative -- a background thread
+        writing trainer.yml while the recogniser is reading it.
+        """
+        import train_model
+        try:
+            faces, labels = train_model.load_training_data()
+            if not faces:
+                self._log_event("info", "Nothing to train on yet.")
+                return False
+            train_model.train()
+            self.invalidate_model()
+            n_users = len(set(labels))
+            suffix = f" {reason}" if reason else ""
+            self._log_event("success",
+                            f"Model retrained{suffix}: {len(faces)} images, "
+                            f"{n_users} {'person' if n_users == 1 else 'people'}.")
+            return True
+        except Exception as exc:
+            self._log_event("error", f"Training failed: {exc}")
+            with self._lock:
+                self._error = f"Training failed: {exc}"
+            return False
+
+    def ensure_trained(self):
+        """Train at startup if dataset/ has samples but trainer.yml is missing
+        or stale. Means the app is usable straight away after a fresh clone
+        with an existing dataset, instead of insisting on a manual step."""
+        if not os.path.isdir(DATASET_DIR):
+            return False
+        newest = 0.0
+        for root, _, files in os.walk(DATASET_DIR):
+            for f in files:
+                try:
+                    newest = max(newest, os.path.getmtime(os.path.join(root, f)))
+                except OSError:
+                    pass
+        if newest == 0.0:
+            return False
+        if os.path.exists(MODEL_PATH) and os.path.getmtime(MODEL_PATH) >= newest:
+            return False
+        return self.retrain(reason="(dataset changed since last training)")
 
     # ---------------------------------------------------------------- status
 
@@ -225,6 +283,18 @@ class CameraManager:
     # ------------------------------------------------------------ frame loop
 
     def _loop(self):
+        try:
+            self._capture_loop()
+        except Exception as exc:
+            # Last resort. A dead capture thread with running=True looks
+            # identical to a broken camera from the browser's side, so record
+            # why and mark the camera down rather than failing silently.
+            with self._lock:
+                self._error = f"Capture thread stopped: {exc}"
+                self._running = False
+            self._log_event("error", f"Capture thread stopped: {exc}")
+
+    def _capture_loop(self):
         while True:
             with self._lock:
                 if not self._running or self._cap is None:
@@ -248,11 +318,16 @@ class CameraManager:
                     self._handle_attendance(frame)
                 else:
                     self._handle_idle(frame)
+                # The readout and the overlay are cosmetic; a failure in either
+                # must not take the video feed down with it. They used to sit
+                # outside this guard, where one exception would kill the
+                # capture thread while `running` stayed True -- the stream
+                # simply stopped and nothing said why.
+                self._maybe_traits(frame)
+                self._draw_guidance(frame)
             except Exception as exc:  # keep the stream alive, surface the problem
                 with self._lock:
                     self._error = str(exc)
-
-            self._maybe_traits(frame)
 
             ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if ok:
@@ -299,9 +374,21 @@ class CameraManager:
             "facePx": t["facePx"],
             "yaw": geom.get("yaw"),
             "roll": geom.get("roll"),
+            "shadowClip": t.get("shadowClip"),
+            "highlightClip": t.get("highlightClip"),
+            "dynamicRange": t.get("dynamicRange"),
             "flags": t["flags"],
             "usable": t["usable"],
         }
+
+        with self._lock:
+            mode = self._mode
+        severity, message, ready = guidance.instruction(
+            summary, frame_shape=frame.shape[:2], mode=mode)
+        summary["guidance"] = {"severity": severity, "message": message,
+                               "ready": ready}
+        summary["checklist"] = guidance.checklist(
+            summary, frame_shape=frame.shape[:2])
         if t.get("demographicsSkipped"):
             summary["demographicsSkipped"] = t["demographicsSkipped"]
         if demo:
@@ -313,9 +400,46 @@ class CameraManager:
                         "uncertain": demo[key]["uncertain"],
                         "runnerUp": demo[key]["runnerUp"],
                     }
+            if demo.get("age", {}).get("estimate"):
+                summary["age"]["estimate"] = demo["age"]["estimate"]
 
         with self._lock:
             self._live_traits = summary
+
+    def _draw_guidance(self, frame):
+        """Burn the current instruction into the frame.
+
+        People being registered are looking at the camera, not at a sidebar,
+        so the instruction has to be where their eyes already are. Drawn on a
+        filled bar rather than as bare text, because text over a webcam feed
+        is unreadable against whatever happens to be behind it.
+        """
+        with self._lock:
+            live = self._live_traits
+        g = (live or {}).get("guidance")
+        if not g:
+            return
+
+        colour = {"block": RED, "warn": AMBER, "ok": GREEN}.get(g["severity"], GREY)
+        text = g["message"]
+        h, w = frame.shape[:2]
+
+        # Shrink the text until it fits, rather than letting it run off-frame.
+        scale, thick = 0.62, 2
+        while scale > 0.34:
+            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+            if tw <= w - 28:
+                break
+            scale -= 0.04
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+
+        bar_h = th + 26
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, h - bar_h), (w, h), PANEL, -1)
+        cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
+        cv2.rectangle(frame, (0, h - bar_h), (6, h), colour, -1)
+        cv2.putText(frame, text, (16, h - 12), cv2.FONT_HERSHEY_SIMPLEX,
+                    scale, colour, thick, cv2.LINE_AA)
 
     def _detect(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -327,7 +451,7 @@ class CameraManager:
     def _handle_idle(self, frame):
         _, faces = self._detect(frame)
         for (x, y, w, h) in faces:
-            cv2.rectangle(frame, (x, y), (x + w, y + h), GREY, 2)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), BLUE, 2)
 
     def _handle_register(self, frame):
         gray, faces = self._detect(frame)
@@ -359,7 +483,12 @@ class CameraManager:
                 self._reg_finished = True
                 self._mode = MODE_IDLE
             self._log_event("success",
-                            f"Captured {SAMPLES_TO_CAPTURE} samples for '{name}' — now retrain.")
+                            f"Captured {SAMPLES_TO_CAPTURE} samples for '{name}'.")
+            # Train immediately rather than leaving a "now retrain" instruction
+            # the user has to act on. A model that silently lags behind the
+            # dataset is the same failure as no model: the person is enrolled,
+            # the system does not know them, and nothing says why.
+            self.retrain(reason=f"after registering {name}")
 
     def _handle_attendance(self, frame):
         gray, faces = self._detect(frame)

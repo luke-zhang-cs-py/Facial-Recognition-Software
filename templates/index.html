@@ -37,6 +37,15 @@
         <div class="err" id="err" style="display:none;"></div>
       </div>
 
+      <div class="section" id="guideCard">
+        <h2>Position yourself</h2>
+        <div class="guide" id="guideBox">
+          <span class="dot" id="guideDot"></span>
+          <span id="guideMsg">Start the camera to begin.</span>
+        </div>
+        <ul class="steps checks" id="checkList"></ul>
+      </div>
+
       <div class="section">
         <h2>1 &middot; Register</h2>
         <input type="text" id="nameInput" placeholder="Full name" autocomplete="off">
@@ -49,9 +58,11 @@
       </div>
 
       <div class="section">
-        <h2>2 &middot; Train</h2>
-        <button class="secondary" id="trainBtn">Retrain model</button>
-        <div class="stat"><span>Model</span><b id="modelState">&mdash;</b></div>
+        <h2>2 &middot; Model</h2>
+        <div class="stat"><span>Status</span><b id="modelState">&mdash;</b></div>
+        <div class="note">Trains automatically after each registration and on
+          startup &mdash; you should not need this button.</div>
+        <button class="secondary" id="trainBtn">Retrain anyway</button>
       </div>
 
       <div class="section">

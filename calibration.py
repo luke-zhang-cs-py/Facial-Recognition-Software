@@ -140,3 +140,60 @@ def describe(gallery_size, max_risk=0.01):
     return (f"With {gallery_size} people enrolled, threshold {threshold} keeps the "
             f"chance of any false match at {risk:.2%} (target {max_risk:.0%}). "
             f"Calibrated on {CORPUS}.")
+
+
+# ---------------------------------------------------------------------------
+# Age estimator, calibrated on the 10,946 FairFace validation faces that
+# detected. Ages are compared against the midpoint of FairFace's own band,
+# which adds a little error of its own; treat these as slightly optimistic.
+# ---------------------------------------------------------------------------
+
+# Adience bucket midpoints, in years.
+AGE_MIDPOINTS = [1.0, 5.0, 10.0, 17.5, 28.5, 40.5, 50.5, 70.0]
+
+# Taking the probability-weighted mean over all eight buckets beats reading
+# off the argmax bucket: MAE 12.4y against 13.4y. The distribution carries
+# information the winning bucket throws away -- a face split 0.4/0.35 between
+# "25-32" and "38-43" is a statement about someone around 34, and the argmax
+# reports 28.5.
+AGE_MAE_EXPECTED = 12.4
+AGE_MAE_ARGMAX = 13.4
+
+# How often the true age actually falls within +/- k years of the estimate.
+# This is the number that stops a narrow band from being a lie: a +/-5y range
+# looks confident and is wrong two times in three.
+AGE_COVERAGE = {
+    3: 0.143, 4: 0.237, 5: 0.332, 6: 0.398, 8: 0.486,
+    10: 0.543, 12: 0.584, 15: 0.686,
+}
+
+# Default half-width for the displayed range. 6 years is deliberately tight --
+# it reads as a useful estimate rather than a shrug -- and everything that
+# shows it also shows that it lands ~40% of the time. Widen it if you would
+# rather be right more often than look precise.
+AGE_BAND_YEARS = 6
+
+
+def age_band_coverage(half_width):
+    """Measured share of faces whose true age falls within +/- half_width."""
+    if not AGE_COVERAGE:
+        return None
+    keys = sorted(AGE_COVERAGE)
+    if half_width <= keys[0]:
+        return AGE_COVERAGE[keys[0]]
+    if half_width >= keys[-1]:
+        return AGE_COVERAGE[keys[-1]]
+    lo = max(k for k in keys if k <= half_width)
+    hi = min(k for k in keys if k >= half_width)
+    if lo == hi:
+        return AGE_COVERAGE[lo]
+    frac = (half_width - lo) / (hi - lo)
+    return AGE_COVERAGE[lo] + frac * (AGE_COVERAGE[hi] - AGE_COVERAGE[lo])
+
+
+def describe_age(years, half_width=None):
+    """Render an age estimate with its real confidence attached."""
+    k = AGE_BAND_YEARS if half_width is None else half_width
+    cov = age_band_coverage(k)
+    lo, hi = max(0, round(years - k)), round(years + k)
+    return f"{round(years)} yrs ({lo}-{hi}, right ~{cov:.0%} of the time)"

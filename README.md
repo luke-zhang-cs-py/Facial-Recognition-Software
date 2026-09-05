@@ -8,10 +8,18 @@ and recognizes faces, and logs each recognized person into a SQL database
 
 1. **Register** — capture ~30 face photos of each person via webcam and
    create their record in the `users` table.
-2. **Train** — build an LBPH (Local Binary Patterns Histogram) face
-   recognizer model from all registered faces.
+2. **Train** — happens automatically: the LBPH model is rebuilt as soon as a
+   registration finishes, and again at startup if `dataset/` has changed since
+   `trainer.yml` was written. There is still a manual button, but reaching for
+   it should not be necessary.
 3. **Run attendance** — webcam feed detects faces every frame; recognized
    faces get an `attendance` row inserted (once per person per day).
+
+While the camera is on, the app tells the person in front of it what to fix —
+one instruction at a time, drawn onto the video itself and mirrored in the
+sidebar. "Look straight into the camera", "Move closer", "Take off sunglasses
+or anything with a brim that shades your eyes". See
+[Positioning guidance](#positioning-guidance).
 
 ```
 Webcam frame → Haar cascade (face detection) → LBPH recognizer (face ID)
@@ -36,6 +44,29 @@ Webcam frame → Haar cascade (face detection) → LBPH recognizer (face ID)
 | `fetch_models.py` | Downloads the pretrained weights into `models/` |
 | `calibration.py` | False-match rates measured on ~98k identities, and gallery-size maths |
 | `fairness_benchmark.py` | Stratified benchmark: does the quality gate treat groups equally? |
+| `guidance.py` | Turns a live trait read into one instruction to act on |
+
+## Positioning guidance
+
+`guidance.py` converts the live measurements into a single instruction, in
+priority order: is there a face at all, is there exactly one, is it close
+enough, is it facing forward, is it upright, is the exposure clipping, is it
+sharp. The first failing check is what gets shown, on a coloured bar burned
+into the video frame — people being registered are looking at the camera, not
+at a sidebar. The sidebar carries the full checklist so a failure is never a
+mystery.
+
+Two deliberate choices:
+
+- **Nothing gates on skin tone.** Exposure advice fires only on clipped
+  pixels, never on average brightness. Telling someone their face is "too
+  dark" because of their complexion is the same defect as the old quality
+  gate ([BENCHMARK.md](BENCHMARK.md)), just phrased more politely.
+- **Head coverings are not mentioned.** The honest failure is "no face
+  detected", not a guess about what somebody is wearing. A hijab, turban or
+  kippah does not interfere with detection and there is no reason to ask
+  anyone to remove one. Brims and dark lenses genuinely occlude, so those are
+  named — and only when detection is actually failing.
 
 There are two ways to drive the same pipeline: the **CLI scripts** above, or
 the **web UI** (`app.py`). They share `db.py` and `train_model.py` and read
@@ -157,10 +188,17 @@ both from Levi & Hassner (2015). Read the caveats below before using either.
 
 ### Caveats that matter
 
-- **Age** is coarse and dated. Being off by a whole bucket is common,
-  especially outside 25–45. Reported with its full probability distribution,
-  because the margin is the interesting part — a 0.34/0.31 split is a coin
-  flip wearing a label.
+- **Age** is reported as a single year figure with a range, rather than one of
+  eight wide buckets. The figure is the probability-weighted mean over all
+  eight, which measured better than reading off the winning bucket (MAE
+  **12.4y** vs 13.4y on 10,946 FairFace faces).
+
+  The range is deliberately narrow — ±6 years — **and always shown with how
+  often it is actually right, which is ~40%.** That pairing is the point.
+  Measured coverage: ±5y → 33%, ±10y → 54%, ±15y → 69%. A tighter band is
+  available by lowering `AGE_BAND_YEARS` in `calibration.py`, but it buys
+  the look of precision and nothing else; the underlying error does not
+  shrink because the display does.
 - **Gender** is a binary classifier guessing at apparent presentation from
   pixels. It is not a statement about anyone's identity, and it is
   materially less accurate for some groups than others. Treat it as weak

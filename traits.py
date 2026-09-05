@@ -31,6 +31,7 @@ import math
 import cv2
 import numpy as np
 
+import calibration
 import facemodels
 from facemodels import AGE_BUCKETS, GENDER_LABELS, CAFFE_MEAN
 
@@ -95,8 +96,10 @@ GENDER_CAVEAT = (
     "less accurate for some groups. Treat as weak evidence."
 )
 AGE_CAVEAT = (
-    "Coarse 8-bucket estimate from a 2015 model trained on Adience. Error of "
-    "one whole bucket is common, especially outside 25-45."
+    "Levi & Hassner (2015), trained on Adience. Measured on FairFace: mean "
+    "absolute error 12.4 years, and a +/-6 year range contains the true age "
+    "only ~40% of the time. Accurate enough to say roughly young or roughly "
+    "old, not to act on."
 )
 
 
@@ -308,8 +311,39 @@ def _caffe_predict(name, bgr_face, labels):
     }
 
 
+def _age_point_estimate(distribution):
+    """Probability-weighted age in years, plus a calibrated range.
+
+    Reading off the winning bucket throws away everything the other seven say.
+    A face split 0.40/0.35 between "25-32" and "38-43" is a statement about
+    someone around 34, and the argmax reports 28.5. Weighting all eight
+    midpoints by their probability measured better on FairFace: MAE 12.4y
+    against 13.4y.
+
+    The range that comes back is deliberately narrow *and* carries how often
+    it is actually right. A +/-5y band looks authoritative and contains the
+    truth a third of the time; showing the width without the coverage would
+    be the more precise-looking of two wrong answers.
+    """
+    mids = calibration.AGE_MIDPOINTS
+    total = sum(distribution.get(b, 0.0) for b in AGE_BUCKETS) or 1.0
+    years = sum(distribution.get(b, 0.0) * m
+                for b, m in zip(AGE_BUCKETS, mids)) / total
+    spread = math.sqrt(sum(distribution.get(b, 0.0) * (m - years) ** 2
+                           for b, m in zip(AGE_BUCKETS, mids)) / total)
+    k = calibration.AGE_BAND_YEARS
+    return {
+        "years": round(years, 1),
+        "range": [max(0, round(years - k)), round(years + k)],
+        "halfWidth": k,
+        "coverage": round(calibration.age_band_coverage(k), 3),
+        "modelSpread": round(spread, 1),
+        "maeYears": calibration.AGE_MAE_EXPECTED,
+    }
+
+
 def demographics(bgr_face, grayscale_source=False):
-    """Age bucket + gender estimate, each with its caveat attached.
+    """Age estimate + gender estimate, each with its caveat attached.
 
     Both nets are reported with their full probability distribution rather
     than a bare label, because the margin is usually the interesting part:
@@ -324,6 +358,7 @@ def demographics(bgr_face, grayscale_source=False):
     if age:
         age["caveat"] = AGE_CAVEAT
         age["uncertain"] = age["confidence"] < 0.5
+        age["estimate"] = _age_point_estimate(age["distribution"])
         out["age"] = age
     if gender:
         gender["caveat"] = GENDER_CAVEAT

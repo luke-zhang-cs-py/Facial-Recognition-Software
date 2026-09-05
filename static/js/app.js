@@ -86,6 +86,7 @@ function render(s) {
     $('regCount').textContent = `${r.captured || 0}/${r.target || 30}`;
   }
 
+  renderGuidance(s);
   renderTraits(s);
 
   fillList($('userList'), s.users, (u) => `[${u.id}] ${u.name}`, 'none yet');
@@ -143,10 +144,10 @@ trainBtn.onclick = async () => {
   try {
     const r = await post('/api/train');
     trainBtn.textContent = `Trained on ${r.images} images`;
-    setTimeout(() => { trainBtn.textContent = 'Retrain model'; }, 2500);
+    setTimeout(() => { trainBtn.textContent = 'Retrain anyway'; }, 2500);
   } catch (e) {
     showError(e.message);
-    trainBtn.textContent = 'Retrain model';
+    trainBtn.textContent = 'Retrain anyway';
   }
   trainBtn.disabled = false;
   refresh();
@@ -162,6 +163,42 @@ attBtn.onclick = async () => {
 };
 
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') regBtn.click(); });
+
+/* ---------------------------------------------------------- guidance */
+
+/* One instruction at a time. The checklist below it explains *why*, but the
+ * headline is a single thing to do -- people fix one problem at a time, and
+ * a wall of simultaneous corrections gets ignored. */
+function renderGuidance(s) {
+  const box = $('guideBox');
+  const msg = $('guideMsg');
+  const list = $('checkList');
+
+  if (!s.running) {
+    box.className = 'guide';
+    msg.textContent = 'Start the camera to begin.';
+    list.innerHTML = '';
+    return;
+  }
+
+  const t = s.liveTraits;
+  const g = t && t.guidance;
+  if (!g) {
+    box.className = 'guide';
+    msg.textContent = 'Reading the camera…';
+    list.innerHTML = '';
+    return;
+  }
+
+  box.className = 'guide ' + g.severity;
+  msg.textContent = g.message;
+
+  /* The dot bullet .steps already provides carries pass/fail, so no glyph
+   * column is needed — same shape as the Activity and Today lists. */
+  const checks = (t && t.checklist) || [];
+  list.innerHTML = checks.map((c) => `<li class="${c.ok ? 'pass' : 'fail'}">${c.label}`
+    + (c.ok ? '' : ` <span class="fix">— ${c.fix}</span>`) + '</li>').join('');
+}
 
 /* ------------------------------------------------------------ live traits */
 
@@ -191,9 +228,16 @@ function renderTraits(s) {
   /* Both estimates carry their uncertainty in the UI, not just the JSON —
    * a bare label reads as fact in a way the number never does. */
   const noFace = t.demographicsSkipped ? 'no face' : DASH;
-  $('ltAge').textContent = t.age
-    ? `${t.age.label}  ${(t.age.confidence * 100).toFixed(0)}%${t.age.uncertain ? ' ?' : ''}`
-    : noFace;
+  /* A single number with its real hit-rate, rather than a 7-year bucket that
+   * looks authoritative. Measured MAE is 12.4 years, so the coverage figure
+   * is the honest part of this readout. */
+  if (t.age && t.age.estimate) {
+    const e = t.age.estimate;
+    $('ltAge').textContent =
+      `${Math.round(e.years)}y (${e.range[0]}–${e.range[1]}, ${(e.coverage * 100).toFixed(0)}%)`;
+  } else {
+    $('ltAge').textContent = t.age ? t.age.label : noFace;
+  }
   $('ltGender').textContent = t.gender
     ? `${t.gender.label}  ${(t.gender.confidence * 100).toFixed(0)}%${t.gender.uncertain ? ' ?' : ''}`
     : noFace;

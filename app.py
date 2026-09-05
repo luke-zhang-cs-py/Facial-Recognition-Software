@@ -132,8 +132,7 @@ def api_train():
     if not faces:
         return fail("No face samples on disk yet — register someone first.")
 
-    train_model.train()
-    camera.invalidate_model()
+    camera.retrain(reason="(manual)")
     return jsonify({
         "ok": True,
         "images": len(faces),
@@ -222,6 +221,12 @@ if __name__ == "__main__":
     db.init_db()
     users = db.get_all_users()
     print(f"Database ready — {len(users)} registered user(s).")
+    # Train before serving if dataset/ has samples the model has not seen, so
+    # the app comes up ready to recognise instead of requiring a manual step.
+    if camera.ensure_trained():
+        print("Model retrained from dataset/ (it was missing or out of date).")
+    elif os.path.exists(os.path.join(BASE_DIR, "trainer.yml")):
+        print("Model is up to date.")
     print("Open http://127.0.0.1:5001")
     # threaded=True matters: the MJPEG stream holds a request open indefinitely,
     # so a single-threaded server would never answer anything else.

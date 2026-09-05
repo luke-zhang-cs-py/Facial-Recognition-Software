@@ -587,6 +587,10 @@ class CameraManager:
                 "thresholdReachable": ok,
                 "age": summary.get("age"),
                 "fairness": calibration.FAIRNESS,
+                "sampleAdvice": calibration.describe_samples(len(records)),
+                "sampleAccuracy": round(
+                    calibration.accuracy_for_samples(len(records)), 3),
+                "sampleSaturation": calibration.SAMPLE_SATURATION,
             }
             with self._lock:
                 self._reg_report = report

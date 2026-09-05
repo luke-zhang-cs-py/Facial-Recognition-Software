@@ -235,3 +235,66 @@ FAIRNESS = {
                    "than chance on a binary task. Recommend leaving it off."},
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# How many samples per person enrollment actually needs.
+#
+# Registration captures 30. That number was inherited, never measured. Swept
+# on LFW -- 24 identities deep enough for a 30-sample centroid, against a 610
+# identity gallery -- it turns out to saturate well before 30:
+#
+#   samples   correct   unknown
+#         1     42.0%     58.0%
+#         2     72.3%     27.7%
+#         3     79.0%     21.0%
+#         5     89.1%     10.9%
+#         8     90.8%      9.2%
+#        12     91.6%      8.4%
+#        16     92.4%      7.6%
+#        20     92.4%      7.6%
+#        30     92.4%      7.6%    <- identical to 16
+#
+# Almost everything is bought by the fifth image. Sixteen is the knee, and 17
+# through 30 buy literally nothing on this data.
+#
+# Capture still takes 30. These were LFW press photographs -- decently lit,
+# in focus, framed by someone whose job it was. A webcam enrollment produces
+# duds, and the pose stages deliberately spend samples on angles that are
+# individually worse but collectively necessary. The headroom is there to be
+# spent on bad frames; drop it only if you also measure what your camera
+# actually produces.
+# ---------------------------------------------------------------------------
+
+SAMPLE_ACCURACY = {
+    1: 0.420, 2: 0.723, 3: 0.790, 5: 0.891, 8: 0.908,
+    12: 0.916, 16: 0.924, 20: 0.924, 25: 0.924, 30: 0.924,
+}
+SAMPLE_SATURATION = 16
+
+
+def accuracy_for_samples(n):
+    """Interpolated identification rate for a person enrolled from n samples."""
+    if not SAMPLE_ACCURACY:
+        return None
+    keys = sorted(SAMPLE_ACCURACY)
+    if n <= keys[0]:
+        return SAMPLE_ACCURACY[keys[0]]
+    if n >= keys[-1]:
+        return SAMPLE_ACCURACY[keys[-1]]
+    lo = max(k for k in keys if k <= n)
+    hi = min(k for k in keys if k >= n)
+    if lo == hi:
+        return SAMPLE_ACCURACY[lo]
+    frac = (n - lo) / (hi - lo)
+    return SAMPLE_ACCURACY[lo] + frac * (SAMPLE_ACCURACY[hi] - SAMPLE_ACCURACY[lo])
+
+
+def describe_samples(n):
+    acc = accuracy_for_samples(n)
+    if n < SAMPLE_SATURATION:
+        nxt = accuracy_for_samples(SAMPLE_SATURATION)
+        return (f"{n} samples measures ~{acc:.0%} identification; "
+                f"{SAMPLE_SATURATION} would reach ~{nxt:.0%}.")
+    return (f"{n} samples measures ~{acc:.0%} identification, at the point "
+            f"where more stop helping ({SAMPLE_SATURATION}+).")

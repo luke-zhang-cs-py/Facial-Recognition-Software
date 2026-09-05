@@ -203,3 +203,36 @@ confirming rather than searching.
 
 The one reassurance is that it fails safely at every size. Misidentification
 never exceeds 0.1%: what grows is refusal, not error.
+
+
+## How many samples does enrollment need?
+
+Registration captures 30. That number was inherited, never measured. Swept on
+LFW: 24 identities deep enough to build a 30-sample centroid and still have
+probes left, against a 610-identity gallery.
+
+| Samples | Correct | Unknown | Wrong |
+|---|---|---|---|
+| 1 | 42.0% | 58.0% | 0% |
+| 2 | 72.3% | 27.7% | 0% |
+| 3 | 79.0% | 21.0% | 0% |
+| 5 | **89.1%** | 10.9% | 0% |
+| 8 | 90.8% | 9.2% | 0% |
+| 12 | 91.6% | 8.4% | 0% |
+| 16 | **92.4%** | 7.6% | 0% |
+| 20 | 92.4% | 7.6% | 0% |
+| 30 | 92.4% | 7.6% | 0% |
+
+**Almost everything is bought by the fifth image, and returns stop entirely at
+sixteen** — 17 through 30 are worth literally nothing here. A single sample is
+a bad idea at 42%; two is worth more than the following fourteen combined.
+
+Capture still takes 30, deliberately. These were LFW press photographs:
+decently lit, in focus, framed by someone whose job it was. A webcam
+enrollment produces duds, and the pose stages spend samples on angles that are
+individually worse but collectively necessary. The headroom exists to be spent
+on bad frames. Drop it only alongside a measurement of what your own camera
+produces.
+
+The enrollment report now states the measured identification rate for however
+many usable samples a person ended up with, and what more would buy.

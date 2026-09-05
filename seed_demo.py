@@ -108,6 +108,10 @@ def load_lfw(min_images, wanted, requested=None):
                 continue
             picked.append((lab, by_person[lab]))
         return names, images, picked
+    if wanted is None:
+        # everyone deep enough, not just the top N
+        picked = [(lab, idx) for lab, idx in ranked if len(idx) >= min_images]
+        return names, images, picked
     picked = [(lab, idx) for lab, idx in ranked if len(idx) >= min_images][:wanted]
     return names, images, picked
 
@@ -118,6 +122,9 @@ def main():
     ap.add_argument("--names", default="",
                     help="comma-separated LFW names to enroll explicitly, "
                          "e.g. LeBron_James,Yao_Ming")
+    ap.add_argument("--all-with", type=int, default=0,
+                    help="enroll every LFW identity having at least this many "
+                         "images (0 = off). --people is ignored.")
     ap.add_argument("--keep", action="store_true",
                     help="add to the existing demo entries instead of replacing")
     ap.add_argument("--samples", type=int, default=12)
@@ -141,8 +148,11 @@ def main():
     if not args.keep:
         remove_all()   # re-seeding replaces rather than duplicates
 
-    loaded = load_lfw(args.samples, args.people,
-                      [n for n in args.names.split(",") if n.strip()])
+    if args.all_with:
+        loaded = load_lfw(args.all_with, None, None)
+    else:
+        loaded = load_lfw(args.samples, args.people,
+                          [n for n in args.names.split(",") if n.strip()])
     if loaded is None:
         return 1
     names, images, picked = loaded
@@ -181,8 +191,9 @@ def main():
             kept += 1
             cv2.imwrite(os.path.join(folder, f"{kept}.jpg"),
                         cv2.resize(crop, (200, 200)))
-        print(f"  {display:<34} {kept} samples")
         total += kept
+        if len(picked) <= 20 or (len(picked) - 0) and (idxs is picked[-1][1] or total % 200 < kept):
+            print(f"  {display:<34} {kept} samples   ({total} images so far)", flush=True)
 
     print(f"\n{total} images written. Analysing so embeddings exist...")
     import analytics

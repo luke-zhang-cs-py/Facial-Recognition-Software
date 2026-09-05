@@ -215,6 +215,8 @@ function renderReport(rep) {
           <span class="pill ${rep.verdict === 'good' ? 'good' : 'warn'}">${rep.verdict}</span></div>
         <div class="metrics">
           ${stat('usable', `${rep.usable}/${rep.samples}`)}
+          ${rep.sampleAccuracy != null
+            ? stat('expected id rate', (100 * rep.sampleAccuracy).toFixed(0) + '%') : ''}
           ${stat('face size', px.mean != null ? px.mean + ' px' : '—')}
           ${stat('sharpness', s.mean != null ? s.mean : '—')}
           ${stat('quality', q.mean != null ? q.mean : '—')}
@@ -224,6 +226,7 @@ function renderReport(rep) {
         ${Object.keys(rep.flags || {}).length
           ? `<div class="chips">${Object.entries(rep.flags)
               .map(([k, v]) => `<span class="chip">${k} ×${v}</span>`).join('')}</div>` : ''}
+        ${rep.sampleAdvice ? `<div class="note">${rep.sampleAdvice}</div>` : ''}
         ${(rep.recommendations || []).length
           ? `<ul class="tips">${rep.recommendations.map((r) => `<li>${r}</li>`).join('')}</ul>` : ''}
       </div>

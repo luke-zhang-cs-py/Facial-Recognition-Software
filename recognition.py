@@ -23,8 +23,6 @@ A person is represented by the mean of their sample embeddings, re-normalised
 point of capturing 30 of them across different poses.
 """
 
-import os
-
 import paths
 
 import numpy as np

@@ -11,11 +11,13 @@ Usage:
 """
 
 import os
+
+import paths
 import cv2
 import numpy as np
 
-DATASET_DIR = "dataset"
-MODEL_PATH = "trainer.yml"
+DATASET_DIR = paths.dataset_dir()
+MODEL_PATH = paths.model_path()
 
 
 def load_training_data():

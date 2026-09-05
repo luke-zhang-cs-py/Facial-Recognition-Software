@@ -10,40 +10,41 @@ python -m radon cc . -s -n C --exclude "dataset/*,models/*"
 
 ## Coverage
 
-84 tests, **45%** overall (30% before the app-route and camera-logic tests).
+145 tests, **60%** overall, from 0% at the start of the audit.
 
-| Module | Cover | Note |
-|---|---|---|
-| `db.py` | 96% | includes the connection-leak regression |
-| `liveness.py` | 94% | |
-| `guidance.py` | 92% | every branch of the instruction ordering |
-| `facemodels.py` | 83% | |
-| `calibration.py` | 80% | pure arithmetic, easiest to get subtly wrong |
-| `app.py` | 71% | routes via Flask test client |
-| `traits.py` | 62% | |
-| `landmarks.py` | 61% | |
-| `recognition.py` | 57% | |
-| `camera.py` | 30% | decision logic only; the rest needs hardware |
-| `analytics.py` | 12% | **largest untested surface** |
-| CLI entry points | 0% | `attendance`, `register_user`, `view_report`, `analyze_faces` |
+| Module | Cover | | Module | Cover |
+|---|---|---|---|---|
+| `db.py` | **100%** | | `traits.py` | 68% |
+| `paths.py` | **100%** | | `analytics.py` | 67% |
+| `view_report.py` | **100%** | | `train_model.py` | 64% |
+| `landmarks.py` | 94% | | `camera.py` | 31% |
+| `liveness.py` | 94% | | `analyze_faces.py` | 19% |
+| `guidance.py` | 92% | | `attendance.py` | 0% |
+| `recognition.py` | 90% | | `register_user.py` | 0% |
+| `calibration.py` | 84% | | | |
+| `facemodels.py` | 83% | | | |
+| `app.py` | 72% | | | |
 
-Most uncovered lines need a webcam or a populated dataset. `analytics.py` at
-12% is the real gap: 217 statements of pure computation with no hardware
-dependency.
+What is left uncovered genuinely needs hardware. `camera.py` at 31% is its
+decision logic tested and its capture loop not; `attendance.py` and
+`register_user.py` are camera loops end to end. Everything that can be tested
+without a webcam now is.
 
 ## Findings
 
 ### Dispensables
 
-**Duplicate code, `face_attendance.py` (462 lines).** It re-implements
+**Duplicate code, `face_attendance.py` -- FIXED (462 -> 64 lines).** It re-implements
 **12 functions** that already exist in the modules: all 8 of `db.py`, plus
 `register_user`, `load_training_data`, `run_attendance`, and `view_report`
 `main`. Two copies of the schema and the attendance rules, and only one has
 this year of bug fixes -- the connection-leak repair, the detection-threshold
 split, the yaw clamp. **The largest maintenance liability in the repo**, and a
 textbook shotgun-surgery source: every future pipeline change must be made
-twice or silently diverge. *Not fixed* -- deleting a deliverable is the
-owner call. Recommended: delete, or reduce to a thin script that imports.
+twice or silently diverge. *Fixed:* rewritten as one argument parser over the real modules. The
+convenience of a single command is kept; the duplication is gone. A test
+(`test_face_attendance_defines_no_duplicated_logic`) now fails if logic
+creeps back in.
 
 **Unused imports** in `recognition.py`, `seed_demo.py`, `tools_trials.py`.
 *Fixed.*
@@ -75,20 +76,22 @@ string (`block`/`warn`/`ok`) compared by literal in Python, JS *and* CSS.
 A typo in any of the three places fails silently. These want an `Enum` on the
 Python side with the strings generated for the wire.
 
-**Magic numbers** in `camera.pose_matches`: `12`, `13`, `38`, `22` are the yaw
-gates, unnamed and repeated. Contrast `traits.py` and `calibration.py`, where
-every threshold is a named constant with its measurement written above it.
-`analytics.summarize_user` has the same problem with `0.75`, `0.15`, `0.3`.
+**Magic numbers -- FIXED.** `camera.pose_matches` had `12`, `13`, `38`, `22`
+inline as yaw gates; they are now `FRONT_YAW`, `TURN_MIN`, `TURN_MAX`,
+`TILT_MAX_YAW` with the reasoning above them. `analytics.summarize_user` had
+`0.75`, `0.15`, `0.3` and now has `USABLE_FRACTION`, `SOFT_FRACTION`,
+`DARK_FRACTION`, `UNDETECTED_FRACTION`, `FLAT_POSE_DEGREES`,
+`EXPECTED_SAMPLES`.
 
 ### Couplers
 
-**Inappropriate intimacy: `DATASET_DIR` is resolved at module level in three
-places** (`analytics`, `train_model`, `camera`) and is not injectable. A test
-can redirect the database and still read the real dataset off disk -- which is
-exactly what happened while writing `test_app_routes.py`. It is the same
-split-brain that let a `dataset/` folder reference a user id with no matching
-row: the two stores are independently redirectable and nothing keeps them in
-step. *Not fixed* -- wants a config object threaded through.
+**Inappropriate intimacy: `DATASET_DIR` resolved in three places -- FIXED.**
+`analytics`, `train_model` and `camera` each worked out their own paths at
+import time, so a test could redirect the database and still read the real
+dataset off disk. That is the same split-brain that let a `dataset/` folder
+reference a user id with no matching row. New `paths.py` is the single source;
+`paths.use(root)` moves the whole set together so the two stores cannot drift
+apart. 100% covered.
 
 **Feature envy:** `camera._build_report` reaches into `analytics`, `db`,
 `calibration` and numpy to assemble its result. It belongs in `analytics`.
@@ -104,8 +107,8 @@ the shakiest.
 ### Naming
 
 Consistent: `snake_case` in Python, `camelCase` at the JSON boundary, which is
-the right seam. `_f()` in `landmarks.py` is uncommunicative -- it rounds to a
-plain Python float and should say so.
+the right seam. `_f()` in `landmarks.py` was uncommunicative -- **renamed to
+`_plain_float()`**, which is what it does and why it exists.
 
 ## Bug classes
 
@@ -122,9 +125,10 @@ plain Python float and should say so.
 unauthenticated, defensible only because of that binding -- the moment this is
 exposed, `/api/identify` and `/api/report` leak biometric matching and
 attendance records to anyone who can reach the port. SQL is parameterised
-throughout; no injection surface found. `/api/identify` accepts an arbitrary
-upload with **no size limit**, a trivial memory-exhaustion vector that wants a
-`MAX_CONTENT_LENGTH`.
+throughout; no injection surface found. `/api/identify` accepted an arbitrary upload with
+no size limit, a trivial memory-exhaustion vector -- **fixed** with a 12 MB
+`MAX_CONTENT_LENGTH` and a 413 handler that returns JSON rather than an HTML
+error page. Verified: a 13 MB upload returns 413.
 
 ## Maintenance classification
 
@@ -143,3 +147,30 @@ behaviour; all affect the cost of the next change.
 already happened: `test_a_rejected_write_does_not_lock_the_database` and
 `test_landmark_metrics_are_json_serialisable`. Neither failure was reachable
 by a test that only checked return values.
+
+
+## Status after the audit
+
+Fixed in this pass:
+
+- `face_attendance.py` duplication, 462 -> 64 lines, twelve duplicated
+  functions to zero
+- `DATASET_DIR` split-brain, via `paths.py`
+- magic numbers in `camera.pose_matches` and `analytics.summarize_user`
+- `/api/identify` unbounded upload
+- `_f()` renamed to `_plain_float()`
+- three unused imports
+
+Deliberately not changed, with reasons:
+
+- **`guidance.instruction` complexity (E/32).** The long if-chain *is* the
+  priority ordering, and it is the most-tested function in the project. A
+  predicate table would read better; it would also make the ordering
+  implicit, which is the one property that must stay obvious.
+- **Primitives for state.** Severity and verdict strings cross into JS and
+  CSS, so an `Enum` only helps the Python third of the problem and adds a
+  translation layer at the wire. Worth doing alongside a typed API, not
+  before it.
+- **`camera._build_report` feature envy.** Moving it into `analytics` is
+  right, but it is live code with no coverage of its own; it should move
+  after it has tests, not before.

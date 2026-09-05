@@ -52,6 +52,19 @@ from camera import camera, CameraError     # noqa: E402
 
 app = Flask(__name__)
 
+# /api/identify accepts an arbitrary upload. Without a ceiling, a large file
+# is a one-request memory-exhaustion vector -- the whole body is read into
+# memory before it is decoded. 12 MB is far more than any camera still needs.
+MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return jsonify({"ok": False,
+                    "error": f"Image is larger than "
+                             f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB."}), 413
+
 # A full dataset scan runs five networks over every stored sample, so it is
 # seconds-to-minutes of work, not a request. Run it on a worker thread and let
 # the page poll for progress.

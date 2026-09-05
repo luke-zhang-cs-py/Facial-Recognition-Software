@@ -174,7 +174,7 @@ def _aspect(pts):
     return (a + b) / (2.0 * width)
 
 
-def _f(value, places=3):
+def _plain_float(value, places=3):
     """Round to a plain Python float.
 
     numpy scalars survive round() as numpy scalars, and Flask's JSON encoder
@@ -188,7 +188,7 @@ def _f(value, places=3):
 def metrics(points):
     """Per-feature measurements plus the flags they imply.
 
-    Every value is a plain Python float via _f(); this dict is serialised
+    Every value is a plain Python float via _plain_float(); this dict is serialised
     straight to JSON.
     """
     if points is None or len(points) < 68:
@@ -242,18 +242,18 @@ def metrics(points):
         flags.append("face partly obscured")
 
     return {
-        "eyeOpenRight": _f(ear_r),
-        "eyeOpenLeft": _f(ear_l),
-        "mouthOpen": _f(mar),
-        "browRaiseRight": _f(brow_r),
-        "browRaiseLeft": _f(brow_l),
-        "interocularPx": _f(interocular, 1),
-        "jawWidthRatio": _f(jaw_width),
-        "cheekWidthRatio": _f(cheek_width),
-        "cheekProminence": _f(cheek_prominence),
-        "faceHeightRatio": _f(face_height),
-        "centreOffset": _f(centre_offset),
-        "eyeMismatch": _f(eye_mismatch),
+        "eyeOpenRight": _plain_float(ear_r),
+        "eyeOpenLeft": _plain_float(ear_l),
+        "mouthOpen": _plain_float(mar),
+        "browRaiseRight": _plain_float(brow_r),
+        "browRaiseLeft": _plain_float(brow_l),
+        "interocularPx": _plain_float(interocular, 1),
+        "jawWidthRatio": _plain_float(jaw_width),
+        "cheekWidthRatio": _plain_float(cheek_width),
+        "cheekProminence": _plain_float(cheek_prominence),
+        "faceHeightRatio": _plain_float(face_height),
+        "centreOffset": _plain_float(centre_offset),
+        "eyeMismatch": _plain_float(eye_mismatch),
         "flags": [str(f) for f in flags],
     }
 

@@ -34,9 +34,11 @@ import landmarks as facelandmarks
 import liveness as faceliveness
 import traits as facetraits
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATASET_DIR = os.path.join(BASE_DIR, "dataset")
-MODEL_PATH = os.path.join(BASE_DIR, "trainer.yml")
+import paths
+
+BASE_DIR = paths.BASE_DIR
+DATASET_DIR = paths.dataset_dir()
+MODEL_PATH = paths.model_path()
 FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
 # Same tuning knobs as the CLI version. LBPH "confidence" is a distance,
@@ -55,6 +57,20 @@ SAMPLES_TO_CAPTURE = 30
 # necessary because pitchRatio depends on face proportions, so one person's
 # level head reads differently from another's. Same reasoning as the relative
 # blur check.
+# Pose gates, in degrees of yaw. These were bare literals inside
+# pose_matches, repeated and unexplained; every other threshold in this
+# project is a named constant with its reasoning written above it.
+#
+# FRONT_YAW is what still counts as looking at the lens. TURN_MIN is far
+# enough that the sample carries genuinely new information rather than
+# repeating the front stage; TURN_MAX is where enough of the far side of the
+# face is hidden that the crop stops being useful.
+FRONT_YAW = 12.0
+FRONT_ROLL = 12.0
+TURN_MIN = 13.0
+TURN_MAX = 38.0
+TILT_MAX_YAW = 22.0     # chin stages still want a roughly frontal face
+
 PITCH_DELTA = 0.055
 
 CAPTURE_PLAN = [
@@ -71,19 +87,19 @@ def pose_matches(key, yaw, roll, pitch, baseline_pitch):
     if yaw is None:
         return False
     if key == "front":
-        return abs(yaw) <= 12 and (roll is None or abs(roll) <= 12)
+        return abs(yaw) <= FRONT_YAW and (roll is None or abs(roll) <= FRONT_ROLL)
     if key == "left":
-        return -38 <= yaw <= -13
+        return -TURN_MAX <= yaw <= -TURN_MIN
     if key == "right":
-        return 13 <= yaw <= 38
+        return TURN_MIN <= yaw <= TURN_MAX
     if pitch is None or baseline_pitch is None:
         return False
     # Looking down foreshortens the lower face, so the nose sits further down
     # between the eyes and the mouth: pitchRatio rises. Looking up lowers it.
     if key == "up":
-        return pitch <= baseline_pitch - PITCH_DELTA and abs(yaw) <= 22
+        return pitch <= baseline_pitch - PITCH_DELTA and abs(yaw) <= TILT_MAX_YAW
     if key == "down":
-        return pitch >= baseline_pitch + PITCH_DELTA and abs(yaw) <= 22
+        return pitch >= baseline_pitch + PITCH_DELTA and abs(yaw) <= TILT_MAX_YAW
     return False
 
 # A full trait read runs five networks and costs ~130 ms, so it cannot go on

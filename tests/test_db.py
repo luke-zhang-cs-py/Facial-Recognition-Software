@@ -1,7 +1,5 @@
 """db.py had a connection leak that turned any single error into 'database is
 locked' for the rest of the process. These lock that fix down."""
-import sqlite3
-
 import pytest
 
 

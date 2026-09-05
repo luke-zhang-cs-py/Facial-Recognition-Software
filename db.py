@@ -12,7 +12,12 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, date
 
-DB_PATH = "attendance.db"
+import paths
+
+# Kept as a module attribute because tests and the CLI scripts patch it, but
+# the default now comes from paths so it moves with dataset/ rather than
+# being separately redirectable.
+DB_PATH = paths.db_path()
 
 
 def get_connection():

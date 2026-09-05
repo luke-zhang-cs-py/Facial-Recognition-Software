@@ -29,6 +29,8 @@ nothing.
 """
 
 import os
+
+import paths
 from collections import Counter, defaultdict
 
 import cv2
@@ -39,7 +41,7 @@ import db
 import facemodels
 import traits
 
-DATASET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset")
+DATASET_DIR = paths.dataset_dir()
 
 LBPH_SWEEP = list(range(30, 131, 10))
 SFACE_SWEEP = [round(x, 2) for x in np.arange(0.20, 0.71, 0.05)]
@@ -53,6 +55,15 @@ SFACE_REFERENCE = calibration.SFACE_REFERENCE
 # evidence of anything. The recommendation falls back to calibration.py,
 # which was measured on ~98k identities.
 MIN_USERS_FOR_LOCAL_SWEEP = 15
+
+# Thresholds that turn per-sample flags into advice. Named because "0.75" in
+# the middle of a conditional says nothing about what it is a fraction of.
+USABLE_FRACTION = 0.75      # below this, recommend recapturing outright
+SOFT_FRACTION = 0.15        # share of soft samples worth mentioning
+DARK_FRACTION = 0.25        # share flagged dark before lighting advice fires
+UNDETECTED_FRACTION = 0.30  # share that will not re-detect before warning
+FLAT_POSE_DEGREES = 5.0     # yaw spread below this is one angle repeated
+EXPECTED_SAMPLES = 20       # fewer than this is a thin enrollment
 
 
 # --------------------------------------------------------------- collecting
@@ -228,22 +239,22 @@ def summarize_user(user_id, name, records):
     yaw_range = (round(float(min(yaws)), 1), round(float(max(yaws)), 1)) if yaws else None
 
     recommendations = []
-    if records and usable / len(records) < 0.75:
+    if records and usable / len(records) < USABLE_FRACTION:
         recommendations.append("More than a quarter of samples are flagged — recapture.")
     soft = flags.get("blurry", 0) + flags.get("soft focus", 0)
-    if soft > len(records) * 0.15:
+    if soft > len(records) * SOFT_FRACTION:
         recommendations.append(
             f"{soft} samples are noticeably softer than the rest — hold still, or add "
             f"light so the camera picks a shorter exposure.")
-    if flags.get("too dark", 0) > len(records) * 0.25 or flags.get("flat contrast", 0):
+    if flags.get("too dark", 0) > len(records) * DARK_FRACTION             or flags.get("flat contrast", 0):
         recommendations.append("Add light in front of the face, not behind it.")
-    if yaw_spread is not None and yaw_spread < 5:
+    if yaw_spread is not None and yaw_spread < FLAT_POSE_DEGREES:
         recommendations.append("Every sample is the same angle — turn your head a little while capturing.")
-    if len(records) < 20:
+    if len(records) < EXPECTED_SAMPLES:
         recommendations.append(f"Only {len(records)} samples; 30 is the intended count.")
 
     undetected = sum(1 for r in records if not r["detected"])
-    if undetected > len(records) * 0.3:
+    if undetected > len(records) * UNDETECTED_FRACTION:
         recommendations.append(
             f"{undetected} samples did not re-detect as faces — the crops may be too tight.")
 

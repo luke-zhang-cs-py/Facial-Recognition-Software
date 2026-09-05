@@ -62,7 +62,7 @@ function render(s) {
   $('modeflagText').textContent = mode.text;
   $('modedot').className = 'dot ' + mode.dot;
 
-  camBtn.textContent = s.running ? 'Stop camera' : 'Start camera';
+  camBtn.textContent = s.running ? 'Close camera' : 'Open camera';
   camBtn.classList.toggle('active', s.running);
 
   const busy = s.mode === 'register';
@@ -128,14 +128,31 @@ async function refresh() {
   }
 }
 
-camBtn.onclick = async () => {
+async function toggleCamera(forceOn) {
   showError('');
+  const turningOff = forceOn === undefined ? state.running : !forceOn;
   try {
-    await post(state.running ? '/api/camera/stop' : '/api/camera/start');
-    if (state.running) setStream(false);   // drop the stream immediately
+    await post(turningOff ? '/api/camera/stop' : '/api/camera/start');
+    if (turningOff) setStream(false);   // drop the stream immediately
   } catch (e) { showError(e.message); }
   refresh();
-};
+}
+
+camBtn.onclick = () => toggleCamera();
+$('openCamBtn').onclick = () => toggleCamera(true);
+
+/* Release the camera when the page goes away. Without this the capture thread
+ * keeps the device open — and the webcam light stays on — after the tab is
+ * closed, which is both alarming and wrong for something that only needs the
+ * camera while someone is looking at it. sendBeacon because a normal fetch is
+ * cancelled during unload. */
+function releaseCamera() {
+  if (!state.running) return;
+  const body = new Blob(['{}'], { type: 'application/json' });
+  navigator.sendBeacon('/api/camera/stop', body);
+}
+window.addEventListener('pagehide', releaseCamera);
+window.addEventListener('beforeunload', releaseCamera);
 
 regBtn.onclick = async () => {
   showError('');
@@ -232,6 +249,24 @@ function renderReport(rep) {
              the risk under 1%.</b> Add a second factor.</div>` : ''}
       </div>
     </div>
+    ${rep.fairness ? `
+    <div class="agrid">
+      <div class="card" style="grid-column:1/-1;">
+        <div class="who"><h3>How evenly this system performs</h3>
+          <span class="pill warn">audit</span></div>
+        <div class="note" style="margin-top:0;">Measured across demographic
+          groups on ${rep.fairness.corpus}. This measures the software, not
+          you &mdash; the system does not infer anyone&rsquo;s ethnicity, and
+          nothing about it is stored.</div>
+        <table class="sweep">
+          <tr><th>check</th><th>result</th><th>disparity</th></tr>
+          ${rep.fairness.checks.map((c) => `<tr class="${c.disparity > 1.25 ? 'cur' : 'rec'}">
+            <td>${c.name}</td><td>${c.value}</td><td>${c.disparity.toFixed(2)}x</td></tr>
+            <tr><td colspan="3" style="color:var(--muted);font-size:10.5px;padding-top:0;">
+            ${c.detail}</td></tr>`).join('')}
+        </table>
+      </div>
+    </div>` : ''}
     <div class="caveat">Measured from the ${rep.samples} images just captured.
       These describe image quality and separability &mdash; how well this
       enrollment will work &mdash; not attributes of the person.</div>`;
@@ -248,44 +283,47 @@ function renderReport(rep) {
  * headline is a single thing to do -- people fix one problem at a time, and
  * a wall of simultaneous corrections gets ignored. */
 function renderGuidance(s) {
-  const box = $('guideBox');
+  const bar = $('instrBar');
   const msg = $('guideMsg');
+  const count = $('guideCount');
   const list = $('checkList');
+  const idle = '<li class="muted">—</li>';
 
   if (!s.running) {
-    box.className = 'guide';
+    bar.className = 'instrbar';
     msg.textContent = 'Camera off';
-    $('guideDetail').style.display = 'none';
-    list.innerHTML = '';
+    count.textContent = '';
+    list.innerHTML = idle;
     return;
   }
 
   const t = s.liveTraits;
   const g = t && t.guidance;
   if (!g) {
-    box.className = 'guide';
+    bar.className = 'instrbar';
     msg.textContent = 'Reading…';
-    $('guideDetail').style.display = 'none';
-    list.innerHTML = '';
+    count.textContent = '';
+    list.innerHTML = idle;
     return;
   }
 
-  /* Headline is two or three words; the sentence explaining it sits under
-   * the instruction in smaller muted type, the same relationship .note has
-   * to the controls above it elsewhere on the page. */
-  box.className = 'guide ' + g.severity;
+  bar.className = 'instrbar ' + g.severity;
   msg.textContent = g.message;
-  const det = $('guideDetail');
-  det.textContent = g.detail || '';
-  det.style.display = g.detail ? 'block' : 'none';
 
-  /* The dot bullet .steps already provides carries pass/fail, so no glyph
-   * column is needed — same shape as the Activity and Today lists. */
+  /* During capture the bar doubles as the progress readout, so the person
+   * never has to look away from the lens to know how far along they are. */
+  const r = s.register || {};
+  const stage = (r.stages || [])[r.stage];
+  count.textContent = (s.mode === 'register' && stage)
+    ? `${r.stageCount || 0}/${stage.count}  ·  ${r.captured || 0}/${r.target}`
+    : '';
+
+  /* Only what is failing, as .steps rows — same shape as Activity and Today. */
   const checks = (t && t.checklist) || [];
-  list.innerHTML = checks
-    .filter((c) => !c.ok)
-    .map((c) => `<li class="fail">${c.fix}</li>`).join('');
-  list.style.display = list.innerHTML ? 'block' : 'none';
+  const bad = checks.filter((c) => !c.ok);
+  list.innerHTML = bad.length
+    ? bad.map((c) => `<li class="fail">${c.fix}</li>`).join('')
+    : '<li class="muted">Nothing — you are framed correctly.</li>';
 }
 
 /* ------------------------------------------------------------ live traits */
@@ -299,7 +337,7 @@ function renderTraits(s) {
   traitsBtn.classList.toggle('active', !!s.traitsOn);
 
   if (!t || t.error) {
-    ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender']
+    ['ltDetected', 'ltSharp', 'ltBright', 'ltQuality', 'ltPose', 'ltAge', 'ltGender', 'ltParts', 'ltSym']
       .forEach((id) => { $(id).textContent = DASH; });
     $('ltFlags').innerHTML = t && t.error
       ? `<div class="chips"><span class="chip">${t.error}</span></div>` : '';
@@ -329,6 +367,14 @@ function renderTraits(s) {
   $('ltGender').textContent = t.gender
     ? `${t.gender.label}  ${(t.gender.confidence * 100).toFixed(0)}%${t.gender.uncertain ? ' ?' : ''}`
     : noFace;
+
+  const pm = t.parts;
+  $('ltParts').textContent = pm
+    ? `eyes ${pm.eyeOpenRight.toFixed(2)}/${pm.eyeOpenLeft.toFixed(2)}  mouth ${pm.mouthOpen.toFixed(2)}`
+    : DASH;
+  $('ltSym').textContent = pm
+    ? `offset ${pm.centreOffset.toFixed(2)}  eyes ${pm.eyeMismatch.toFixed(2)}`
+    : DASH;
 
   $('ltFlags').innerHTML = (t.flags && t.flags.length)
     ? `<div class="chips">${t.flags.map((f) => `<span class="chip">${f}</span>`).join('')}</div>`

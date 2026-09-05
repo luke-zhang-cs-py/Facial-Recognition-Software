@@ -30,6 +30,7 @@ import cv2
 
 import db
 import guidance
+import landmarks as facelandmarks
 import traits as facetraits
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -383,7 +384,6 @@ class CameraManager:
                 # capture thread while `running` stayed True -- the stream
                 # simply stopped and nothing said why.
                 self._maybe_traits(frame)
-                self._draw_guidance(frame)
             except Exception as exc:  # keep the stream alive, surface the problem
                 with self._lock:
                     self._error = str(exc)
@@ -439,6 +439,22 @@ class CameraManager:
             "flags": t["flags"],
             "usable": t["usable"],
         }
+
+        # 68-point part measurements: eyes open, mouth neutral, both halves
+        # of the face equally visible. A face can pass every geometric check
+        # and still be unusable because the person blinked.
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            rows = facetraits.detect(frame)
+            if rows:
+                box = facetraits.geometry(rows[0])["box"]
+                pts = facelandmarks.fit(gray, box)
+                pm = facelandmarks.metrics(pts)
+                if pm:
+                    summary["parts"] = pm
+                    summary["flags"] = list(summary["flags"]) + pm["flags"]
+        except Exception:
+            pass
 
         with self._lock:
             mode = self._mode
@@ -547,47 +563,13 @@ class CameraManager:
                 "thresholdRisk": round(risk, 5),
                 "thresholdReachable": ok,
                 "age": summary.get("age"),
+                "fairness": calibration.FAIRNESS,
             }
             with self._lock:
                 self._reg_report = report
             self._log_event("success", f"Enrollment report ready for {name}.")
         except Exception as exc:
             self._log_event("error", f"Could not build report: {exc}")
-
-    def _draw_guidance(self, frame):
-        """Burn the current instruction into the frame.
-
-        People being registered are looking at the camera, not at a sidebar,
-        so the instruction has to be where their eyes already are. Drawn on a
-        filled bar rather than as bare text, because text over a webcam feed
-        is unreadable against whatever happens to be behind it.
-        """
-        with self._lock:
-            live = self._live_traits
-        g = (live or {}).get("guidance")
-        if not g:
-            return
-
-        colour = {"block": RED, "warn": AMBER, "ok": GREEN}.get(g["severity"], GREY)
-        text = g["message"]
-        h, w = frame.shape[:2]
-
-        # Shrink the text until it fits, rather than letting it run off-frame.
-        scale, thick = 0.62, 2
-        while scale > 0.34:
-            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
-            if tw <= w - 28:
-                break
-            scale -= 0.04
-        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
-
-        bar_h = th + 26
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (0, h - bar_h), (w, h), PANEL, -1)
-        cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
-        cv2.rectangle(frame, (0, h - bar_h), (6, h), colour, -1)
-        cv2.putText(frame, text, (16, h - 12), cv2.FONT_HERSHEY_SIMPLEX,
-                    scale, colour, thick, cv2.LINE_AA)
 
     def _detect(self, frame):
         """Detect faces, preferring YuNet because it returns landmarks.
@@ -608,9 +590,17 @@ class CameraManager:
             faces = []
             for row in rows:
                 g = facetraits.geometry(row)
-                faces.append({"box": tuple(g["box"]), "landmarks": g["landmarks"],
-                              "yaw": g["yaw"], "roll": g["roll"],
-                              "pitch": g["pitchRatio"], "score": g["score"]})
+                face = {"box": tuple(g["box"]), "landmarks": g["landmarks"],
+                        "yaw": g["yaw"], "roll": g["roll"],
+                        "pitch": g["pitchRatio"], "score": g["score"],
+                        "points68": None}
+                # ~5 ms on top of detection, and it is what turns "a face is
+                # here" into "the eyes are open and nothing is covering it".
+                try:
+                    face["points68"] = facelandmarks.fit(gray, face["box"])
+                except Exception:
+                    pass
+                faces.append(face)
             return gray, faces
 
         boxes = self._cascade.detectMultiScale(
@@ -638,7 +628,10 @@ class CameraManager:
             cv2.line(frame, (cx, cy), (cx + dx * t, cy), colour, 1, cv2.LINE_AA)
             cv2.line(frame, (cx, cy), (cx, cy + dy * t), colour, 1, cv2.LINE_AA)
 
-        if pts:
+        pts68 = face.get("points68")
+        if pts68 is not None:
+            facelandmarks.draw(frame, pts68)
+        elif pts:
             p = [(int(round(a)), int(round(b))) for a, b in pts]
             right_eye, left_eye, nose, mouth_r, mouth_l = p
             eye_mid = ((right_eye[0] + left_eye[0]) // 2,

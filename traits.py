@@ -152,12 +152,25 @@ def geometry(row):
     right_eye, left_eye, nose, mouth_r, mouth_l = pts
 
     eye_mid = (right_eye + left_eye) / 2.0
-    eye_dist = float(np.linalg.norm(left_eye - right_eye)) or 1.0
+    eye_dist = float(np.linalg.norm(left_eye - right_eye))
 
     roll = math.degrees(math.atan2(float(left_eye[1] - right_eye[1]),
                                    float(left_eye[0] - right_eye[0])))
-    yaw_ratio = float(nose[0] - eye_mid[0]) / eye_dist
-    yaw = yaw_ratio * 75.0  # empirical scaling to something degree-ish
+
+    # Yaw from how far the nose sits off the midpoint of the eyes, scaled by
+    # eye separation. That denominator collapses as the head turns towards
+    # profile -- the two eyes converge in the image -- so the raw ratio runs
+    # away: benchmarking produced yaw values from -689 to +470 degrees, which
+    # then poisoned every pose comparison downstream.
+    #
+    # Guard it two ways. Floor the denominator against the face's own width,
+    # since eyes closer together than a tenth of the box mean the fit has
+    # collapsed rather than the head having turned that far. Then clamp to
+    # the physically possible range.
+    min_sep = max(1.0, 0.10 * max(w, h))
+    yaw_ratio = float(nose[0] - eye_mid[0]) / max(eye_dist, min_sep)
+    yaw = max(-90.0, min(90.0, yaw_ratio * 75.0))
+    eye_dist = eye_dist or 1.0
 
     mouth_mid = (mouth_r + mouth_l) / 2.0
     vertical = float(np.linalg.norm(mouth_mid - eye_mid)) or 1.0

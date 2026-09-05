@@ -163,15 +163,20 @@ AGE_MAE_ARGMAX = 13.4
 # This is the number that stops a narrow band from being a lie: a +/-5y range
 # looks confident and is wrong two times in three.
 AGE_COVERAGE = {
-    3: 0.143, 4: 0.237, 5: 0.332, 6: 0.398, 8: 0.486,
-    10: 0.543, 12: 0.584, 15: 0.686,
+    1: 0.056, 2: 0.100, 3: 0.143, 4: 0.237, 5: 0.332, 6: 0.398,
+    8: 0.486, 10: 0.543, 12: 0.584, 15: 0.686, 20: 0.800,
 }
 
-# Default half-width for the displayed range. 6 years is deliberately tight --
-# it reads as a useful estimate rather than a shrug -- and everything that
-# shows it also shows that it lands ~40% of the time. Widen it if you would
-# rather be right more often than look precise.
-AGE_BAND_YEARS = 6
+# Displayed half-width, set to 2 years by request.
+#
+# Be clear about what this means: a +/-2 year window contains the true age
+# 10% of the time. Nine readings in ten are wrong. The underlying error did
+# not change when the window shrank -- MAE is still 12.4 years -- so this is
+# a display choice, not an accuracy improvement, and every surface that shows
+# the range also shows the coverage so it cannot be mistaken for confidence.
+#
+# For reference: +/-10y is right 54% of the time, +/-20y is right 80%.
+AGE_BAND_YEARS = 2
 
 
 def age_band_coverage(half_width):
@@ -197,3 +202,36 @@ def describe_age(years, half_width=None):
     cov = age_band_coverage(k)
     lo, hi = max(0, round(years - k)), round(years + k)
     return f"{round(years)} yrs ({lo}-{hi}, right ~{cov:.0%} of the time)"
+
+
+# ---------------------------------------------------------------------------
+# How evenly this system performs across demographic groups, measured on all
+# 97,698 FairFace images. See BENCHMARK.md.
+#
+# This is the legitimate use of race labels: auditing whether a system works
+# equally for everyone. It is the opposite of classifying an individual's
+# ethnicity -- it measures the software, not the person, and the labels come
+# from the corpus rather than from a model guessing about somebody.
+# ---------------------------------------------------------------------------
+
+FAIRNESS = {
+    "corpus": "FairFace, 97,698 images, 7 race groups (~14k each)",
+    "checks": [
+        {"name": "Face detection",
+         "value": "99.95%", "disparity": 1.00,
+         "detail": "Widest gap between race groups 0.08pp. Even."},
+        {"name": "Quality gate rejection",
+         "value": "1.24x", "disparity": 1.24,
+         "detail": "Within the 1.25x budget, after removing the absolute "
+                   "brightness and contrast thresholds that encoded skin tone "
+                   "(2.15x and 1.61x)."},
+        {"name": "False-match burden",
+         "value": "1.48x", "disparity": 1.48,
+         "detail": "At threshold 0.5, 76.0% of Indian faces falsely match "
+                   "somebody against 51.2% of White faces. Not evenly shared."},
+        {"name": "Gender estimator",
+         "value": "43.7% worst cell", "disparity": 2.07,
+         "detail": "Black women, against 90.2% for Middle Eastern men. Worse "
+                   "than chance on a binary task. Recommend leaving it off."},
+    ],
+}

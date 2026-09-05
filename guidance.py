@@ -111,7 +111,26 @@ def instruction(traits, frame_shape=None, mode="idle"):
     if roll is not None and abs(roll) > MAX_ROLL:
         return out("warn", "Head upright", "Your head is tilted.")
 
-    # 4. Exposure, by clipping only -- never by average level.
+    # 4. The face itself, from the 68-point fit. These sit above exposure
+    # because a blink ruins a sample no matter how well lit it is, and unlike
+    # lighting the person can fix them instantly.
+    parts = traits.get("parts") or {}
+    pflags = parts.get("flags") or []
+    if "eyes closed" in pflags:
+        return out("block", "Open your eyes",
+                   "Both eyes read as closed — the sample would be unusable.")
+    if "one eye closed" in pflags:
+        return out("warn", "Open both eyes", "One eye reads as closed.")
+    if "face partly obscured" in pflags:
+        return out("block", "Uncover your face",
+                   "One side is measuring very differently from the other — "
+                   "something may be covering it, or the light is only hitting "
+                   "one side.")
+    if "mouth open" in pflags:
+        return out("warn", "Neutral expression",
+                   "An open mouth changes the shape of the lower face.")
+
+    # 5. Exposure, by clipping only -- never by average level.
     if (traits.get("shadowClip") or 0) > MAX_SHADOW_CLIP:
         return out("warn", "More light in front",
                    "Detail is being lost in shadow.")
@@ -119,7 +138,7 @@ def instruction(traits, frame_shape=None, mode="idle"):
         return out("warn", "Less light behind",
                    "Move away from the window, or turn to face the light.")
 
-    # 5. General image quality, last because it is the least specific.
+    # 6. General image quality, last because it is the least specific.
     sharp = traits.get("sharpness")
     if sharp is not None and sharp < MIN_SHARPNESS:
         return out("warn", "Hold still", "The image is blurred.")
@@ -147,6 +166,7 @@ def checklist(traits, frame_shape=None):
     px = traits.get("facePx") or 0
     yaw, roll = traits.get("yaw"), traits.get("roll")
     q, sharp = traits.get("qualityScore"), traits.get("sharpness")
+    pflags = (traits.get("parts") or {}).get("flags") or []
 
     items = [
         ("Face visible", detected and faces >= 1,
@@ -159,6 +179,11 @@ def checklist(traits, frame_shape=None):
          "Straighten your head"),
         ("Eyes unobstructed", detected and faces >= 1,
          "Remove sunglasses or a shading brim"),
+        ("Eyes open", "eyes closed" not in pflags and "one eye closed" not in pflags,
+         "Open both eyes"),
+        ("Neutral expression", "mouth open" not in pflags, "Close your mouth"),
+        ("Both sides visible", "face partly obscured" not in pflags,
+         "Uncover your face, or even out the light"),
         ("Sharp", sharp is None or sharp >= MIN_SHARPNESS, "Hold still"),
         ("Good quality", q is None or q >= MIN_QUALITY, "Improve lighting"),
     ]

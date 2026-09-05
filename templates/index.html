@@ -22,10 +22,18 @@
     <div class="mapcard">
       <div class="videobox">
         <img id="video" alt="Camera feed">
-        <div class="placeholder" id="placeholder">Camera is off</div>
+        <div class="placeholder" id="placeholder">
+          <span>Camera is off</span>
+          <button id="openCamBtn">Open camera</button>
+        </div>
       </div>
       <div class="modeflag" id="modeflag">
         <span class="dot" id="modedot"></span><span id="modeflagText">Camera off</span>
+      </div>
+      <div class="instrbar" id="instrBar">
+        <span class="dot" id="guideDot"></span>
+        <span id="guideMsg">Camera off</span>
+        <span class="right" id="guideCount"></span>
       </div>
     </div>
 
@@ -33,18 +41,15 @@
 
       <div class="section">
         <h2>Camera</h2>
-        <button id="camBtn">Start camera</button>
+        <button id="camBtn">Open camera</button>
+        <div class="note">Released automatically when you close or leave this
+          page, so the camera light does not stay on.</div>
         <div class="err" id="err" style="display:none;"></div>
       </div>
 
       <div class="section" id="guideCard">
-        <h2>Position yourself</h2>
-        <div class="guide" id="guideBox">
-          <span class="dot" id="guideDot"></span>
-          <span id="guideMsg">Camera off</span>
-        </div>
-        <div class="note" id="guideDetail" style="display:none;"></div>
-        <ul class="steps checks" id="checkList" style="display:none;"></ul>
+        <h2>To fix</h2>
+        <ul class="steps checks" id="checkList"><li class="muted">&mdash;</li></ul>
       </div>
 
       <div class="section">
@@ -75,6 +80,8 @@
         <div class="stat"><span>Brightness</span><b id="ltBright">&mdash;</b></div>
         <div class="stat"><span>Quality</span><b id="ltQuality">&mdash;</b></div>
         <div class="stat"><span>Pose</span><b id="ltPose">&mdash;</b></div>
+        <div class="stat"><span>Eyes / mouth</span><b id="ltParts">&mdash;</b></div>
+        <div class="stat"><span>Symmetry</span><b id="ltSym">&mdash;</b></div>
         <div class="stat"><span>Age est.</span><b id="ltAge">&mdash;</b></div>
         <div class="stat"><span>Gender est.</span><b id="ltGender">&mdash;</b></div>
         <div id="ltFlags"></div>

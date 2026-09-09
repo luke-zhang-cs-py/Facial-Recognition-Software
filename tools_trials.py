@@ -15,12 +15,20 @@ import io, os, sys, json, time, collections
 import numpy as np, cv2, pyarrow.parquet as pq
 from PIL import Image
 
-PROJ = r"c:\Users\justl\Facial-Recognition-Software"
-sys.path.insert(0, PROJ); os.chdir(PROJ)
+PROJ = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJ)
+import corpus_paths
 import recognition
 
 TRIALS = int(sys.argv[1]) if len(sys.argv) > 1 else 100
-LFW = os.path.join(os.environ["TEMP"], "lfw", "lfw.parquet")
+
+# This read os.environ["TEMP"], which is unset outside Windows, so the script
+# died with a KeyError here rather than saying which corpus was missing.
+# corpus_paths uses tempfile.gettempdir(), which is defined everywhere.
+LFW = corpus_paths.lfw_parquet()
+if not os.path.exists(LFW):
+    sys.exit(f"No LFW corpus at {LFW}\n"
+             "Set FACE_CORPORA if it is cached somewhere else.")
 pf = pq.ParquetFile(LFW)
 names = json.loads(pf.schema_arrow.metadata[b'huggingface'].decode())["info"]["features"]["label"]["names"]
 tab = pf.read(); labels = tab.column("label").to_pylist(); images = tab.column("image").to_pylist()

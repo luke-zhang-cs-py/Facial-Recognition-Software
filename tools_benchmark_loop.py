@@ -72,15 +72,13 @@ import numpy as np
 PROJ = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJ)
 
-import paths          # noqa: E402
+import corpus_paths   # noqa: E402
 import recognition    # noqa: E402
 import traits         # noqa: E402
 
-TEMP = os.environ.get("TEMP", os.path.join(os.path.expanduser("~"), "tmp"))
-LFW_PARQUET = os.path.join(TEMP, "lfw", "lfw.parquet")
-FAIRFACE_DIR = os.path.join(TEMP, "claude", "c--Users-justl-Downloads-toronto-transit",
-                            "8a4bfe8e-abc0-4a7c-ab43-54af99de2068", "scratchpad", "fairface")
-FACEAGE_PARQUET = os.path.join(TEMP, "faceage", "val.parquet")
+LFW_PARQUET = corpus_paths.lfw_parquet()
+FAIRFACE_DIR = corpus_paths.fairface_dir()
+FACEAGE_PARQUET = corpus_paths.faceage_parquet()
 
 LOG_DIR = os.path.join(PROJ, "logs")
 STOP_FILE = os.path.join(PROJ, "STOP_BENCHMARK")

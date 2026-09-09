@@ -34,13 +34,18 @@ import numpy as np
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)   # importable when run as a script from anywhere
 
+import corpus_paths              # noqa: E402
 import cv2                       # noqa: E402
 import db                        # noqa: E402
 import paths                     # noqa: E402
 import traits                    # noqa: E402
 
 PREFIX = "[demo] "
-LFW = os.path.join(os.environ.get("TEMP", "."), "lfw", "lfw.parquet")
+
+# The fallback here was ".", which does not fail -- it looks for the corpus
+# beside whatever directory you happened to run this from and reports it
+# absent.
+LFW = corpus_paths.lfw_parquet()
 
 
 def demo_users():

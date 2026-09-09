@@ -36,6 +36,26 @@ that need the pretrained weights skip rather than fail, which is what makes
 the suite runnable in CI at all — keep that property. `pytest -q -rs` shows
 you what skipped and why.
 
+## Benchmark corpora
+
+LFW, FairFace, faceage and the CASIA gallery are downloaded on demand and
+cached under the system temporary directory. `corpus_paths.py` is the only
+place that decides where:
+
+| Variable | Effect |
+|---|---|
+| `FACE_CORPORA` | base directory for every corpus; defaults to the system temp dir |
+| `CASIA_DIR` | the CASIA shards and gallery on their own, since they are the largest |
+
+Worth setting `FACE_CORPORA` somewhere permanent — these take a long time to
+fetch and some systems clear `/tmp` on boot.
+
+Read paths from `corpus_paths`, never from `os.environ["TEMP"]`. That is
+unset outside Windows, and `os.environ.get("TEMP", ".")` is worse: it does
+not fail, it just looks in whatever directory the process is standing in and
+reports the corpus missing. Both spellings were in here, along with a
+FairFace path pointing inside a long-dead editor session.
+
 ## Tests
 
 ```bash

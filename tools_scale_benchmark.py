@@ -14,7 +14,7 @@ Protocol per gallery size N:
     number usually quoted as "accuracy" and hides the false-match problem
 
 Run tools_build_gallery.py first; this reads what that writes, and both agree
-on the location through gallery_paths so neither hardcodes it.
+on the location through corpus_paths so neither hardcodes it.
 
     python tools_scale_test.py
     CASIA_DIR=/data/casia python tools_scale_test.py
@@ -29,7 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import calibration                                   # noqa: E402
-from gallery_paths import gallery_path                # noqa: E402
+from corpus_paths import gallery_path                # noqa: E402
 
 
 def load_gallery():

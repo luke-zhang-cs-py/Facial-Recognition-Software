@@ -43,9 +43,12 @@ def face_image():
     that need one use a genuine frame if the corpus is present and skip
     otherwise rather than asserting against a fake.
     """
+    import corpus_paths
     import cv2
+    # The fallback was ".", so off Windows this looked for sample frames in
+    # the current directory and always skipped.
     for name in ("best.png", "live.png", "now.png"):
-        p = os.path.join(os.environ.get("TEMP", "."), name)
+        p = os.path.join(corpus_paths.sample_frame_dir(), name)
         if os.path.exists(p):
             img = cv2.imread(p)
             if img is not None:

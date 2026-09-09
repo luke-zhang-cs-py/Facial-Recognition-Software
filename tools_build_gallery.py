@@ -7,7 +7,7 @@ thousand people is ~16 MB rather than gigabytes of face crops nobody needs.
 
     python tools_build_gallery.py [--shards N] [--per-id 4] [--workers 8]
 
-Writes where tools_scale_benchmark.py reads, via gallery_paths -- set
+Writes where tools_scale_benchmark.py reads, via corpus_paths -- set
 CASIA_DIR to put the shards and the gallery somewhere other than the system
 temporary directory.
 """
@@ -18,7 +18,7 @@ import multiprocessing as mp
 PROJ = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJ)
 
-from gallery_paths import gallery_dir, gallery_path   # noqa: E402
+from corpus_paths import gallery_dir, gallery_path   # noqa: E402
 
 D = gallery_dir()
 BASE = "https://huggingface.co/api/datasets/SaffalPoosh/casia_web_face/parquet/default/train"
@@ -57,6 +57,11 @@ def main():
         if a == "--shards": shards = int(sys.argv[i+1])
         if a == "--per-id": per_id = int(sys.argv[i+1])
         if a == "--workers": workers = int(sys.argv[i+1])
+
+    # Was a directory that happened to exist on one machine; now it is derived,
+    # so it has to be created. curl will not make a missing parent and would
+    # fail every shard with an unhelpful exit code.
+    os.makedirs(D, exist_ok=True)
 
     labels_all, vecs_all = [], []
     seen_ids = set()

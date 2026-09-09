@@ -1,5 +1,9 @@
 # Face Recognition Attendance System
 
+[![CI](https://github.com/luke-zhang-cs-py/Facial-Recognition-Software/actions/workflows/python-package.yml/badge.svg)](https://github.com/luke-zhang-cs-py/Facial-Recognition-Software/actions/workflows/python-package.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue.svg)](https://www.python.org/)
+
 A simple, local attendance system: OpenCV captures webcam frames, detects
 and recognizes faces, and logs each recognized person into a SQL database
 (SQLite by default — no server setup needed).
@@ -346,3 +350,8 @@ sqlite3 attendance.db "SELECT * FROM attendance;"
   model in `trainer.yml`. Treat both as sensitive biometric data —
   don't commit them to a public repo, and delete a person's folder +
   retrain if they ask to be removed.
+
+## License
+
+[MIT](LICENSE) — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and test
+conventions.

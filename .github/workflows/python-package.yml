@@ -1,0 +1,48 @@
+name: Python Package
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.12']
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # The headless build of the same library. Identical APIs minus the
+          # GUI windows, and cv2.face still ships in the contrib build, so
+          # the recogniser is there. The desktop build imports libGL, which a
+          # runner has no display for -- installing it here would mean
+          # apt-getting graphics libraries purely to satisfy an import that
+          # nothing in the suite uses.
+          grep -viE '^opencv' requirements.txt > ci-requirements.txt
+          pip install -r ci-requirements.txt
+          pip install "opencv-contrib-python-headless>=4.13.0.92"
+          pip install flake8 pytest
+
+      - name: Lint with flake8
+        run: |
+          # Real errors only: syntax problems and undefined names.
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Everything else is advisory.
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run tests
+        # Note what this runner does not have. models/ holds ~134 MB of
+        # third-party weights fetched by fetch_models.py, and dataset/ holds
+        # captured images of real people -- both gitignored, the second
+        # deliberately so. The handful of tests that need those weights skip
+        # rather than fail, which is what makes this runnable at all.
+        run: pytest -q -rs

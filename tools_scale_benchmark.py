@@ -12,15 +12,42 @@ Protocol per gallery size N:
     REJECTED if nothing clears it, MISIDENTIFIED if somebody else wins
   - separately measure the rank-1 rate ignoring the threshold, which is the
     number usually quoted as "accuracy" and hides the false-match problem
+
+Run tools_build_gallery.py first; this reads what that writes, and both agree
+on the location through gallery_paths so neither hardcodes it.
+
+    python tools_scale_test.py
+    CASIA_DIR=/data/casia python tools_scale_test.py
 """
-import os, sys, collections
+import collections
+import os
+import sys
+
 import numpy as np
 
-PROJ = r"c:\Users\justl\Facial-Recognition-Software"
-sys.path.insert(0, PROJ); os.chdir(PROJ)
-import calibration
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 
-G = np.load(r"C:\Users\justl\AppData\Local\Temp\casia\gallery.npz", allow_pickle=True)
+import calibration                                   # noqa: E402
+from gallery_paths import gallery_path                # noqa: E402
+
+
+def load_gallery():
+    """The embeddings, or a message saying how to build them.
+
+    The corpus is several GB and is not in the repository, so its absence is
+    the ordinary state of a fresh clone rather than something worth a
+    traceback.
+    """
+    path = gallery_path()
+    if not os.path.exists(path):
+        sys.exit(f"No gallery at {path}\n"
+                 f"Build one first:  python tools_build_gallery.py\n"
+                 f"Or point CASIA_DIR at an existing one.")
+    return np.load(path, allow_pickle=True)
+
+
+G = load_gallery()
 labels, vecs = G["labels"], G["vecs"]
 print(f"loaded {len(vecs)} embeddings, {len(set(labels.tolist()))} identities\n")
 

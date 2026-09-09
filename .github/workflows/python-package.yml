@@ -18,18 +18,21 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      - name: System libraries for OpenCV
+        # The desktop build needs libGL and libgthread even when nothing opens
+        # a window. Paying for them is deliberate: the headless wheel ships
+        # cv2/data as an empty package -- no haarcascade XML at all -- so
+        # CameraManager cannot load the face cascade and every import of the
+        # app fails. The GUI build is the one that carries the data files.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgl1 libglib2.0-0t64 \
+            || sudo apt-get install -y -qq libgl1 libglib2.0-0
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # The headless build of the same library. Identical APIs minus the
-          # GUI windows, and cv2.face still ships in the contrib build, so
-          # the recogniser is there. The desktop build imports libGL, which a
-          # runner has no display for -- installing it here would mean
-          # apt-getting graphics libraries purely to satisfy an import that
-          # nothing in the suite uses.
-          grep -viE '^opencv' requirements.txt > ci-requirements.txt
-          pip install -r ci-requirements.txt
-          pip install "opencv-contrib-python-headless>=4.13.0.92"
+          pip install -r requirements.txt
           pip install flake8 pytest
 
       - name: Lint with flake8

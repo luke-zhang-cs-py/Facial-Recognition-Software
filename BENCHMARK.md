@@ -148,7 +148,7 @@ threshold from `calibration.py`. Two questions matter: how often is it right,
 and does that hold as more people enroll.
 
 Reproduce with `tools_trials.py` (robustness) and `tools_build_gallery.py` +
-`tools_scale_test.py` (scale).
+`tools_scale_benchmark.py` (scale).
 
 ## 4,500 randomised trials, 45 enrolled people
 

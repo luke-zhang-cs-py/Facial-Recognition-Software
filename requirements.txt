@@ -2,6 +2,15 @@
 # actually ships cv2.face (the LBPH recogniser). Installing both side by side
 # makes the two cv2 packages shadow each other, so only list contrib here.
 # (The old pin, 4.13.0.88, was never published to PyPI.)
-opencv-contrib-python>=4.13.0.92
+#
+# Capped below 5. The bare >= resolved to 5.0.0.93, so a fresh install got a
+# major version nothing here has been run against while this machine stayed
+# on 4.13. Raise the cap deliberately, after checking cv2.face still behaves,
+# rather than by being the next person to install.
+#
+# Not the -headless build, even on a server: headless ships cv2/data as an
+# empty package, with none of the haarcascade XML files, so loading the face
+# cascade fails. See the CI workflow.
+opencv-contrib-python>=4.13.0.92,<5
 numpy
 Flask>=2.3

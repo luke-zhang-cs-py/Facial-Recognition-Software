@@ -5,16 +5,24 @@ embeddings, then deletes the shard. Storing embeddings instead of images is
 what makes a 10k-person gallery practical: 128 float32 is 512 bytes, so ten
 thousand people is ~16 MB rather than gigabytes of face crops nobody needs.
 
-    python build_gallery.py [--shards N] [--per-id 4] [--workers 8]
+    python tools_build_gallery.py [--shards N] [--per-id 4] [--workers 8]
+
+Writes where tools_scale_benchmark.py reads, via gallery_paths -- set
+CASIA_DIR to put the shards and the gallery somewhere other than the system
+temporary directory.
 """
 import io, os, sys, time, subprocess, collections
 import numpy as np, pyarrow.parquet as pq
 import multiprocessing as mp
 
-PROJ = r"c:\Users\justl\Facial-Recognition-Software"
-D = r"C:\Users\justl\AppData\Local\Temp\casia"
+PROJ = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJ)
+
+from gallery_paths import gallery_dir, gallery_path   # noqa: E402
+
+D = gallery_dir()
 BASE = "https://huggingface.co/api/datasets/SaffalPoosh/casia_web_face/parquet/default/train"
-OUT = os.path.join(D, "gallery.npz")
+OUT = gallery_path()
 
 PER_ID = 4          # 3 build the centroid, 1 is held out for testing
 WORKERS = 8

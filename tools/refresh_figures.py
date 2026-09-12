@@ -149,6 +149,23 @@ def fix_tests(page, counts, changes):
     return page[:block.start(1)] + "\n".join(lines) + page[block.end(1):]
 
 
+def fix_measured_with(page, changes):
+    """Record the interpreter, because a statement count is a property of a
+    file *and* an interpreter -- 3.14 and 3.12 disagree about several of the
+    modules in this family."""
+    version = "%d.%d" % sys.version_info[:2]
+    found = re.search(r"var MEASURED_WITH = 'Python ([\d.]+)';", page)
+    if not found:
+        raise SystemExit(
+            "the page has no MEASURED_WITH line, so nothing records which "
+            "Python produced its figures. Add one to the data block.")
+    if found.group(1) != version:
+        changes.append("MEASURED_WITH Python %s -> %s"
+                       % (found.group(1), version))
+    return re.sub(r"var MEASURED_WITH = 'Python [\d.]+';",
+                  "var MEASURED_WITH = 'Python %s';" % version, page)
+
+
 def fix_test_lines(page, changes):
     total = 0
     for here, dirs, names in os.walk(os.path.join(ROOT, "tests")):
@@ -182,9 +199,9 @@ def fix_readme(measured, counts, changes):
 
 
 def rewrite(page, measured, counts, changes):
-    return fix_test_lines(
+    return fix_measured_with(fix_test_lines(
         fix_tests(fix_modules(page, measured, changes), counts, changes),
-        changes)
+        changes), changes)
 
 
 def main():

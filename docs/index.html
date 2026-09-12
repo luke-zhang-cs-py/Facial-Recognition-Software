@@ -439,11 +439,19 @@ var TESTS = [
   { file: 'test_paths_and_cli.py',        n: 10, of: 'that every module resolves its paths per call' },
   { file: 'test_recognition_liveness.py', n: 10, of: 'identification, and refusing a photograph' },
   { file: 'test_traits_landmarks.py',     n: 10, of: 'the trait read and the mesh' },
-  { file: 'test_published_figures.py',    n:  8, of: 'the numbers on this page, against a fresh measurement' },
+  { file: 'test_published_figures.py',    n:  9, of: 'the numbers on this page, against a fresh measurement' },
   { file: 'test_path_discipline.py',      n:  6, of: 'structurally: no module may read a path at import' }
 ];
 
-var TEST_LINES = 1903;
+var TEST_LINES = 1947;
+
+/* Which interpreter produced the statement counts above. It matters: coverage
+ * counts a `with` block or a multi-line call differently between versions, so
+ * the same unchanged file measures a different number of statements under a
+ * different Python. The guard compares only when the running one is this one,
+ * and skips with a reason otherwise -- which is why this line exists rather
+ * than the check simply failing on a CI runner. */
+var MEASURED_WITH = 'Python 3.14';
 var ROUTE_COUNT = 15;
 var SKIPPED = 3;
 
@@ -821,6 +829,11 @@ el('footNote').textContent =
   'built for this measurement; scraping faces off the web would have been ' +
   'the wrong way to get a corpus. Everything on this page is read from one ' +
   'data block, so the tiles, the charts and the table cannot disagree.';
+
+el('footNote').textContent += ' The statement counts were produced by ' +
+  MEASURED_WITH + ': coverage counts statements differently between versions, so the
+  figure is a property of the code and the interpreter together, and the check that
+  guards it compares only like with like.';
 
 drawTiles();
 drawModules();

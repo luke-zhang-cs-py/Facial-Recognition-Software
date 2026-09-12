@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Recognition Attendance — overview</title>
+<meta name="description" content="A local face-recognition attendance system, and a 97,698-face fairness benchmark of its own engine — including the quality gate that was rejecting people rather than photographs, and what was done about it.">
+<meta property="og:title" content="Face Recognition Attendance System">
+<!-- No count in here. A figure typed into a meta tag is one nothing on the
+     page derives, so it is the first thing to go stale. -->
+<meta property="og:description" content="Webcam attendance with OpenCV, benchmarked against FairFace: what held up, what did not, and the defects that only appear at scale.">
+<meta property="og:type" content="website">
+<style>
+/* The warm surface this family of pages uses. The marks on top come from the
+ * validated palette and were re-run against *this* surface, because contrast
+ * only means anything against the colour the chart actually sits on:
+ *
+ *   series  #2a78d6  on #fffdf7   all five checks PASS (light)
+ *   series  #3987e5  on #1a1a19   all five checks PASS (dark)
+ *   good    #0ca30c  3.30:1
+ *   warning #fab219  1.80:1  sub-3:1 BY DESIGN -> always icon + label
+ *   crit    #d03b3b  4.72:1
+ *
+ * Run as a categorical set the status colours fail on #fab219, and are meant
+ * to: status is not a categorical palette, and amber is legal only with a
+ * glyph and a word beside it. Every use of it here has both.
+ *
+ * Dark is a selected set stepped for the dark surface, not an inversion. */
+.viz-root {
+  color-scheme: light;
+  --plane:     #ece6d6;
+  --surface:   #fffdf7;
+  --ink:       #12161d;
+  --ink-2:     #3c4453;
+  --ink-muted: #8d7a52;
+  --grid:      #ece6d6;
+  --ring:      #ded5bf;
+  --code-bg:   #f6f1e4;
+  --series:    #2a78d6;
+  --track:     #ece6d6;
+  --good:      #0ca30c;
+  --warning:   #fab219;
+  --critical:  #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
+    --grid: #2c2c2a; --ring: #383835; --code-bg: #21201e;
+    --series: #3987e5; --track: #2c2c2a;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --plane: #0d0d0d; --surface: #1a1a19;
+  --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
+  --grid: #2c2c2a; --ring: #383835; --code-bg: #21201e;
+  --series: #3987e5; --track: #2c2c2a;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+.viz-root {
+  --text: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 34px 24px 44px;
+  font: 15px/1.55 var(--text);
+  background: var(--plane); color: var(--ink);
+  min-height: 100vh;
+}
+main { max-width: 980px; margin: 0 auto; }
+
+.crumb {
+  margin: 0 0 6px; font: 400 12px var(--mono); color: var(--ink-muted);
+  letter-spacing: .02em;
+}
+h1 { font-size: 23px; margin: 0 0 5px; letter-spacing: -0.2px; }
+.lede { color: var(--ink-2); margin: 0; font-size: 15px; max-width: 68ch; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; }
+button, .btn {
+  font: 400 13px var(--text); cursor: pointer; text-decoration: none;
+  display: inline-block;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--ring); border-radius: 8px; padding: 7px 12px;
+}
+button:hover, .btn:hover { border-color: var(--ink-muted); }
+button[aria-pressed="true"] { border-color: var(--series); color: var(--series); }
+
+/* ------------------------------------------------------------ stat tiles */
+/* A bare stat tile is the one form that ships without a hover layer: there is
+ * no plot to interrogate, just the figure and what it counts. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(156px, 1fr)); gap: 12px; margin: 26px 0 10px; }
+.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; }
+.tile .k { display: block; color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.tile .v { display: block; margin-top: 3px; font: 600 27px/1.12 var(--text); font-variant-numeric: tabular-nums; }
+.tile .n { display: block; margin-top: 2px; color: var(--ink-muted); font-size: 12px; }
+
+.note { color: var(--ink-muted); font-size: 13px; max-width: 80ch; margin: 12px 0 0; }
+
+/* ---------------------------------------------------------------- panels */
+.panel { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 17px 19px; margin-top: 22px; }
+.panel h2 { margin: 0 0 2px; font-size: 15px; }
+.panel h3 { margin: 20px 0 6px; font-size: 13px; color: var(--ink-2); }
+.panel .sub { margin: 0 0 14px; color: var(--ink-2); font-size: 13px; max-width: 76ch; }
+.panel p { font-size: 14px; color: var(--ink-2); max-width: 76ch; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 22px; }
+
+/* Thin marks on a recessive track, 4px rounding on the data end only so the
+ * mark stays anchored flat to the baseline it grows from. */
+.bars { display: grid; gap: 9px; }
+.bar { display: grid; grid-template-columns: 140px 1fr 92px; gap: 12px; align-items: center; }
+.bar .lab { font: 400 12.5px var(--mono); color: var(--ink-2); }
+.bar .rail { position: relative; height: 12px; background: var(--track); border-radius: 3px; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--series); border-radius: 0 4px 4px 0; }
+.bar .val { text-align: right; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.bar:hover .rail { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* ----------------------------------------------------------------- table */
+table { width: 100%; border-collapse: collapse; }
+caption { text-align: left; color: var(--ink-2); font-size: 13px; padding-bottom: 10px; }
+th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--grid); font-size: 13px; vertical-align: top; }
+th { color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.mono { font-family: var(--mono); font-size: 12px; }
+tr.total td { border-bottom: none; font-weight: 600; }
+[hidden] { display: none !important; }
+
+code { font-family: var(--mono); font-size: 12.5px; background: var(--code-bg); border: 1px solid var(--grid); border-radius: 4px; padding: 1px 5px; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--grid); border-radius: 8px;
+  padding: 13px 15px; overflow-x: auto;
+  font: 12.5px/1.7 var(--mono); color: var(--ink); margin: 12px 0 0;
+}
+
+/* Numbered steps. */
+.flow { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.flow li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 13.5px; color: var(--ink-2); }
+.step {
+  font: 500 11px var(--mono); color: var(--series);
+  border: 1px solid var(--ring); border-radius: 5px;
+  text-align: center; padding: 1px 0; height: 20px;
+}
+
+/* Status. Never colour alone: each carries a glyph and a word, which is what
+ * makes the sub-3:1 amber legal. */
+.flag { display: inline-flex; align-items: center; gap: 5px; font: 500 11.5px var(--mono); white-space: nowrap; }
+.flag .g { font-size: 12px; }
+.flag.good { color: var(--good); }
+.flag.warn { color: var(--warning); }
+.flag.crit { color: var(--critical); }
+
+dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
+dl.kv dt { color: var(--ink-2); font-family: var(--mono); font-size: 12px; }
+dl.kv dd { margin: 0; }
+
+footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width: 86ch; }
+footer a { color: inherit; }
+</style>
+</head>
+
+<body class="viz-root" data-palette="#2a78d6">
+<main>
+
+<div class="head">
+  <div>
+    <p class="crumb">Facial-Recognition-Software &middot; port 5001</p>
+    <h1>Attendance by face, and a benchmark of its own fairness</h1>
+    <p class="lede">
+      A local attendance system: the webcam sees a face, the app names it and
+      writes a row. That part is ordinary. The part worth reading is what
+      happened when the engine was run over
+      <strong>97,698 labelled faces</strong> — the quality gate turned out to
+      be rejecting <em>people</em> rather than photographs, and the
+      recommended matching threshold did not survive contact with a real
+      gallery. Both are documented here rather than quietly fixed.
+    </p>
+  </div>
+  <div class="controls">
+    <button id="themeBtn" type="button">Theme</button>
+    <button id="tableBtn" type="button" aria-pressed="false">Table view</button>
+    <a class="btn" href="https://github.com/luke-zhang-cs-py/Facial-Recognition-Software">Repository</a>
+    <a class="btn" id="localBtn" href="http://127.0.0.1:5001/"
+       title="Only works on a machine that is running the app, with a webcam">Open app (local)</a>
+  </div>
+</div>
+
+<section class="tiles" id="tiles" aria-label="Headline figures"></section>
+<p class="note" id="tilesNote"></p>
+
+<!-- ================================================== the fairness -->
+<section class="panel">
+  <h2>The quality gate was rejecting people, not photographs</h2>
+  <p class="sub">
+    The shipped gate used absolute thresholds on mean brightness and
+    contrast. Both track skin tone, so both encoded it. Measured across
+    FairFace at a matched 25% overall flag rate:
+  </p>
+  <table>
+    <caption>Disparity is the ratio between the most- and least-flagged race
+      group. The budget is 1.25x.</caption>
+    <thead>
+      <tr><th>Gate</th><th class="num">Disparity</th><th class="num">What happened to it</th></tr>
+    </thead>
+    <tbody id="gateBody"></tbody>
+  </table>
+  <p class="note" id="gateNote"></p>
+
+  <h3>What it looked like in production terms</h3>
+  <p>
+    The old gate flagged <strong>38.8% of Black faces and 18.5% of White
+    faces</strong> as "too dark" — a 2.1x gap that was skin tone, not
+    lighting. Mean face-crop brightness by group ran White 102.4, East Asian
+    94.9, Indian 84.7, Black 83.8, and the threshold sat in the middle of
+    that spread.
+  </p>
+  <p>
+    Brightness and contrast are still <em>measured</em> and reported, because
+    they are useful diagnostics. They no longer decide anything. Exposure is
+    judged by clipping and dynamic range instead, which is skin-tone
+    independent: a dark face that is well lit still spans a wide range, and
+    an underexposed one has its shadows crushed flat whoever is in it.
+  </p>
+  <p id="residualNote"></p>
+</section>
+
+<!-- ================================================= the threshold -->
+<section class="panel">
+  <h2>The recommended threshold did not survive scale</h2>
+  <p class="sub">
+    Every FairFace image is a different person, so all 4.77 billion pairs are
+    impostor pairs — which makes this a direct false-match measurement rather
+    than an estimate.
+  </p>
+  <table>
+    <caption>A per-pair rate reads as harmless and is not: against N others
+      the chance of some collision is 1 − (1 − FMR)<sup>N−1</sup>.</caption>
+    <thead>
+      <tr><th>Threshold</th><th class="num">FMR per pair</th>
+          <th class="num">Gallery of 100</th><th class="num">of 1,000</th>
+          <th class="num">of 10,000</th></tr>
+    </thead>
+    <tbody id="fmrBody"></tbody>
+  </table>
+  <p id="thresholdNote"></p>
+  <dl class="kv" id="galleryKv"></dl>
+  <p class="note" id="galleryNote"></p>
+</section>
+
+<!-- ============================================== the demographics -->
+<section class="panel">
+  <h2>The demographic estimators are worse than their reputation</h2>
+  <p class="sub">
+    Gender classification scored against FairFace's ground truth, 72.88%
+    overall. The overall figure is the least informative number in the table.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Group</th><th class="num">Male</th><th class="num">Female</th>
+          <th class="num">Gap</th></tr>
+    </thead>
+    <tbody id="genderBody"></tbody>
+  </table>
+  <p id="genderNote"></p>
+</section>
+
+<!-- =============================================== the degradation -->
+<section class="panel">
+  <h2>Where it stops working</h2>
+  <p class="sub">
+    Video-like degradations applied to held-out stills. A controlled sweep
+    answers "where does it stop working" better than a handful of clips.
+    Face <em>detection</em> held at 100% throughout; it is recognition that
+    degrades.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Condition</th><th>Holds until</th><th>Breaks at</th></tr>
+    </thead>
+    <tbody id="rangeBody"></tbody>
+  </table>
+  <p class="note" id="rangeNote"></p>
+</section>
+
+<!-- =================================================== the guidance -->
+<section class="panel">
+  <h2>What it tells the person in front of it</h2>
+  <p class="sub">
+    One instruction at a time, in priority order, burned into the video frame
+    rather than only in a sidebar — someone being registered is looking at
+    the camera, not at the page.
+  </p>
+  <ul class="flow" id="guideList"></ul>
+  <div class="split">
+    <div>
+      <h3>Nothing gates on skin tone</h3>
+      <p>
+        Exposure advice fires only on clipped pixels, never on average
+        brightness. Telling someone their face is "too dark" because of their
+        complexion is the same defect as the old quality gate, just phrased
+        more politely.
+      </p>
+    </div>
+    <div>
+      <h3>Head coverings are not mentioned</h3>
+      <p>
+        The honest failure is "no face detected", not a guess about what
+        somebody is wearing. A hijab, turban or kippah does not interfere
+        with detection and there is no reason to ask anyone to remove one.
+        Brims and dark lenses genuinely occlude, so those are named — and
+        only when detection is actually failing.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================== the source -->
+<section class="panel" id="modulePanel">
+  <h2>Every module, by size</h2>
+  <p class="sub" id="moduleSub"></p>
+  <div id="moduleBars" class="bars"></div>
+</section>
+
+<section class="panel" id="testPanel">
+  <h2>Where the tests are</h2>
+  <p class="sub" id="testSub"></p>
+  <div id="testBars" class="bars"></div>
+</section>
+
+<section class="panel" id="tablePanel" hidden>
+  <table>
+    <caption>Every module with its size, statements, coverage and what it is
+      for. The same data as the two charts above.</caption>
+    <thead>
+      <tr><th>Module</th><th class="num">Lines</th><th class="num">Stmts</th>
+          <th class="num">Covered</th><th>What it does</th></tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</section>
+
+<!-- ======================================================= the bugs -->
+<section class="panel">
+  <h2>Bugs, and what found each one</h2>
+  <p class="sub">
+    Three of these were found by running the engine over a hundred thousand
+    faces, which is the argument for doing that at all: a 45-image test
+    exercises none of them.
+  </p>
+  <table>
+    <thead>
+      <tr><th>What was wrong</th><th>What found it</th><th class="num">State</th></tr>
+    </thead>
+    <tbody id="bugBody"></tbody>
+  </table>
+</section>
+
+<!-- ======================================================= the caveats -->
+<section class="panel">
+  <h2>What this does not do</h2>
+  <p class="sub">
+    The list that matters most on a page about face recognition.
+  </p>
+  <ul class="flow" id="limitList"></ul>
+</section>
+
+<footer>
+  <p id="footNote"></p>
+  <p>
+    <a href="https://github.com/luke-zhang-cs-py/Facial-Recognition-Software">Repository</a>
+    &middot; MIT &middot; loopback only, on port 5001 — it exposes a live
+    camera feed and everyone's attendance records
+  </p>
+</footer>
+
+</main>
+
+<script>
+'use strict';
+
+/* Every number on this page is read from here, so the tiles, the charts and
+ * the table cannot drift apart.
+ *
+ * Measured on 12 September 2026 in the repository: `pytest -q --cov` for the
+ * statements and what is uncovered, `wc -l` for length, and `pytest
+ * --collect-only -q` for the test counts. The benchmark figures come from
+ * BENCHMARK.md, which records a run over the whole of FairFace. Not
+ * estimated. tests/test_published_figures.py checks the module and test
+ * figures against a fresh measurement; `python tools/refresh_figures.py`
+ * rewrites them. */
+
+var MODULES = [
+  { name: 'camera.py',        lines: 838, stmts: 481, missed: 335, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
+  { name: 'analytics.py',     lines: 635, stmts: 254, missed: 85, does: 'dataset-wide enrollment quality and threshold sweeps' },
+  { name: 'traits.py',        lines: 508, stmts: 199, missed: 65, does: 'per-face quality, pose, embedding and demographics' },
+  { name: 'landmarks.py',     lines: 334, stmts: 154, missed: 26, does: 'the face mesh, and the overlay drawn on the frame' },
+  { name: 'app.py',           lines: 312, stmts: 140, missed: 40, does: 'the Flask UI; fifteen endpoints, loopback only' },
+  { name: 'analyze_faces.py', lines: 186, stmts: 119, missed: 96, does: 'the console version of the analysis panel' },
+  { name: 'guidance.py',      lines: 282, stmts: 101, missed:  6, does: 'turns a live trait read into one instruction to act on' },
+  { name: 'db.py',            lines: 295, stmts: 100, missed:  0, does: 'the schema and every query; one context manager for all access' },
+  { name: 'calibration.py',   lines: 300, stmts:  81, missed: 13, does: 'the measured false-match curve and the gallery-size maths' },
+  { name: 'liveness.py',      lines: 140, stmts:  66, missed: 25, does: 'is this a person or a photograph of one' },
+  { name: 'attendance.py',    lines: 102, stmts:  54, missed: 54, does: 'the CLI attendance loop — checked structurally, never executed' },
+  { name: 'recognition.py',   lines: 130, stmts:  48, missed:  5, does: 'identification by SFace embedding, against the gallery threshold' },
+  { name: 'facemodels.py',    lines: 121, stmts:  46, missed:  8, does: 'lazy loader for the pretrained analysis models' },
+  { name: 'register_user.py', lines:  90, stmts:  45, missed: 45, does: 'the CLI capture loop — checked structurally, never executed' },
+  { name: 'train_model.py',   lines:  68, stmts:  37, missed: 14, does: 'rebuilds the LBPH recogniser from dataset/' },
+  { name: 'paths.py',         lines:  54, stmts:  19, missed:  0, does: 'where the data lives — one decision, resolved per call' },
+  { name: 'corpus_paths.py',  lines:  68, stmts:  16, missed:  5, does: 'one home for the benchmark corpus locations' },
+  { name: 'view_report.py',   lines:  34, stmts:  15, missed:  0, does: 'prints the users and the attendance rows' }
+];
+
+/* Left out of coverage on purpose: each one downloads something, streams a
+ * corpus, or opens a camera, so exercising it in the suite would mean
+ * shipping gigabytes or owning hardware. Named here so the omission is
+ * visible rather than silent. */
+var OMITTED = [
+  { name: 'tools_benchmark_loop.py',  lines: 531, why: 'the continuous benchmark runner' },
+  { name: 'fairness_benchmark.py',    lines: 256, why: 'the stratified FairFace run' },
+  { name: 'seed_demo.py',             lines: 212, why: 'enrolls faces from LFW for testing' },
+  { name: 'tools_build_gallery.py',   lines: 130, why: 'builds a 10,590-identity gallery from CASIA-WebFace' },
+  { name: 'tools_trials.py',          lines: 121, why: 'the 4,500-trial robustness sweep' },
+  { name: 'fetch_models.py',          lines: 111, why: 'downloads the pretrained weights' },
+  { name: 'tools_scale_benchmark.py', lines: 103, why: 'the gallery-size sweep' },
+  { name: 'face_attendance.py',       lines:  64, why: 'a thin entry point, asserted by test to hold no logic' }
+];
+
+var TESTS = [
+  { file: 'test_pure_helpers.py',         n: 29, of: 'the functions with no camera, no model and no database' },
+  { file: 'test_analytics.py',            n: 23, of: 'the sweeps, and refusing to trust a small one' },
+  { file: 'test_calibration.py',          n: 16, of: 'the measured false-match curve and the gallery maths' },
+  { file: 'test_camera_logic.py',         n: 15, of: 'the capture state machine, without a camera' },
+  { file: 'test_nonfinite.py',            n: 15, of: 'that no endpoint can emit NaN into JSON' },
+  { file: 'test_app_routes.py',           n: 13, of: 'the HTTP surface' },
+  { file: 'test_frontend_escaping.py',    n: 13, of: 'that a registered name cannot become script' },
+  { file: 'test_guidance.py',             n: 12, of: 'which instruction wins, and what is never said' },
+  { file: 'test_db.py',                   n: 10, of: 'the schema, and that a failed write closes its connection' },
+  { file: 'test_paths_and_cli.py',        n: 10, of: 'that every module resolves its paths per call' },
+  { file: 'test_recognition_liveness.py', n: 10, of: 'identification, and refusing a photograph' },
+  { file: 'test_traits_landmarks.py',     n: 10, of: 'the trait read and the mesh' },
+  { file: 'test_published_figures.py',    n:  8, of: 'the numbers on this page, against a fresh measurement' },
+  { file: 'test_path_discipline.py',      n:  6, of: 'structurally: no module may read a path at import' }
+];
+
+var TEST_LINES = 1903;
+var ROUTE_COUNT = 15;
+var SKIPPED = 3;
+
+/* From BENCHMARK.md — a run over the whole of FairFace. */
+var BENCH = {
+  images: 97698,
+  groups: 7,
+  minutes: 39.8,
+  rate: 41,
+  comparisons: 4767224190,
+  detection: 99.95,
+  detectionMisses: 53,
+  budget: 1.25
+};
+
+var IDENTIFY = {
+  correct: 92.9, rejected: 6.7, misidentified: 0.4, enrolled: 40,
+  probes: 240, impostors: 300, impostorAccepts: 0,
+  matchMean: 0.677, impostorMean: 0.231,
+  trials: 4500, trialCorrect: 82.2, trialWrong: 0.0
+};
+
+var GATES = [
+  ['mean brightness (absolute)', '2.15x', 'removed', 'crit'],
+  ['contrast / std (absolute)', '1.61x', 'removed', 'crit'],
+  ['MIN_SHARPNESS = 25 absolute floor', '1.32x', 'lowered to 6.0', 'warn'],
+  ['sharpness, relative to the person', '1.20x', 'kept', 'good'],
+  ['eDifFIQA learned quality', '1.21x', 'kept, now the main gate', 'good']
+];
+
+var FMR = [
+  ['0.363 (SFace reference)', '0.547%', '41.9%', '99.6%', '~100%'],
+  ['0.500', '0.017%', '1.6%', '15.4%', '81.3%'],
+  ['0.725', '0.0009%', '0.08%', '0.85%', '8.2%']
+];
+
+var GALLERY = [
+  ['10 enrolled', '0.425'],
+  ['100 enrolled', '0.525'],
+  ['1,000 enrolled', '0.725'],
+  ['10,000 enrolled', 'unreachable — no measured threshold holds the line']
+];
+
+var GENDER = [
+  ['Middle Eastern', 90.2, 56.6],
+  ['White', 87.3, 61.4],
+  ['Indian', 88.5, 53.3],
+  ['Black', 81.2, 43.7]
+];
+
+var RANGE = [
+  ['Distance (downscale)', '0.25x — 83% correct', '0.15x — 23%'],
+  ['Motion blur', '9 px — 83%', '13 px — 47%'],
+  ['Lighting (gamma 0.4–2.2)', 'no measurable loss', '—'],
+  ['In-plane rotation', '15° — 80%', '30° — 37%'],
+  ['JPEG compression', 'q20 — 83%', 'q10 — 77%']
+];
+
+var GUIDE = [
+  'Is there a face at all?',
+  'Is there exactly one?',
+  'Is it close enough?',
+  'Is it facing forward?',
+  'Is it upright?',
+  'Is the exposure clipping?',
+  'Is it sharp?'
+];
+
+/* Authored prose with intentional markup, kept out of esc() deliberately --
+ * see drawBugs, which says so. Nothing here comes from a user. */
+var BUGS = [
+  ['A registered name was script',
+   'Names are stored exactly as typed, which is right — a name is not the system’s to rewrite, and names contain apostrophes and ampersands — and the dashboard rendered them straight into <code>innerHTML</code>. Registering somebody as <code>&lt;img src=x onerror=...&gt;</code> put running script in every browser that opened the page, and registering people is what this application is <em>for</em>. There was no escaping helper at all; there is one now, applied to 26 sites.',
+   'Writing the test for it — which found five more sites missed on the first pass', 'fixed'],
+  ['<code>db.py</code> leaked a connection on any error',
+   'Every function closed its connection only on the success path, so one failed write left a connection open with its transaction, and SQLite refused every later write with "database is locked". One bad row poisoned the process. All access goes through a context manager now that closes and rolls back.',
+   'Running the engine over 97,698 images', 'fixed'],
+  ['<code>paths.use()</code> did not work',
+   'Its own docstring describes the failure it was written to prevent — "a test could point the database at a temporary file and still read the real dataset/ off disk" — and seven modules had reintroduced exactly that by reading their path once at import. Two more never used <code>paths.py</code> at all and held bare relative names, so they only worked if you happened to be standing in the project directory.',
+   'Trying to point the app at a copy of the data', 'fixed'],
+  ['One orphan folder crashed the whole analysis',
+   'A <code>dataset/</code> folder naming a user id with no <code>users</code> row failed a foreign key and took the entire scan with it. Reported now, and returned under <code>orphanFolders</code>.',
+   'A scan over a real dataset', 'fixed'],
+  ['The fairness benchmark called noise "bias"',
+   'A 0.20% against 0.00% detection gap is an infinite ratio and means nothing. A verdict now requires both an effect over budget <em>and</em> non-overlapping confidence intervals, or it reads INCONCLUSIVE.',
+   'Reading its own output sceptically', 'fixed'],
+  ['The threshold was tuned on three people',
+   'The earlier recommendation of 0.5 came from a sweep over three enrolled identities — with three people there are three ways to be wrong, so almost any threshold scores zero false matches and the sweep recommends the loosest one. <code>analytics.py</code> now refuses to trust a local sweep below 15 enrolled and defers to the measured curve.',
+   '4.77 billion impostor comparisons', 'fixed'],
+  ['Face detection was rejecting real faces on webcam frames',
+   'And trait analysis ran on frames that had already been drawn on, so it measured the overlay as well as the face.',
+   'Using it', 'fixed']
+];
+
+var LIMITS = [
+  '<strong>It is not deployable, on purpose.</strong> The webcam is opened by the server process, so the machine running it must be the machine with the camera — and it binds <code>127.0.0.1</code> because it exposes a live camera feed and everyone’s attendance records.',
+  '<strong>Gender estimation should be left off.</strong> 86.5% on men against 57.6% on women, and 43.7% on Black women — worse than a coin flip on a binary task. This reproduces <em>Gender Shades</em>. The honest recommendation is to delete the model file.',
+  '<strong>Age estimation is usable only on young faces.</strong> MAE 13.6 years overall; 61.6% within ten years at 20–29, 11.1% at 50–59, and MAE 38.4 years past 70.',
+  '<strong>Past about 10,000 enrolled, SFace embeddings alone do not hold.</strong> No measured threshold keeps the false-match risk under 1%. The answer is a second factor, not a tighter number.',
+  '<strong>False matches are not evenly shared.</strong> At threshold 0.5 the share of people who falsely match somebody runs from 51.2% (White) to 76.0% (Indian). Same-race impostor similarity averages 0.1022 against 0.0777 cross-race — the other-race effect, measured.'
+];
+
+/* ------------------------------------------------------------- helpers */
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function el(id) { return document.getElementById(id); }
+function covered(m) { return m.stmts - m.missed; }
+function coverage(m) { return Math.round(100 * covered(m) / m.stmts); }
+function sum(list, field) {
+  return list.reduce(function (n, item) { return n + field(item); }, 0);
+}
+
+var STMTS = sum(MODULES, function (m) { return m.stmts; });
+var COVERED = sum(MODULES, covered);
+var LINES = sum(MODULES, function (m) { return m.lines; });
+var TEST_COUNT = sum(TESTS, function (t) { return t.n; });
+
+/* ---------------------------------------------------------------- tiles */
+
+function drawTiles() {
+  var tiles = [
+    ['Benchmark corpus', BENCH.images.toLocaleString(),
+     'labelled faces, ' + BENCH.groups + ' race groups'],
+    ['Identified correctly', IDENTIFY.correct + '%',
+     IDENTIFY.misidentified + '% named the wrong person'],
+    ['Tests', TEST_COUNT.toLocaleString(),
+     TESTS.length + ' files, ' + TEST_LINES.toLocaleString() + ' lines'],
+    ['Coverage', Math.round(100 * COVERED / STMTS) + '%',
+     COVERED.toLocaleString() + ' of ' + STMTS.toLocaleString() + ' statements'],
+    ['Endpoints', ROUTE_COUNT, 'Flask, loopback only']
+  ];
+  el('tiles').innerHTML = tiles.map(function (t) {
+    return '<div class="tile"><span class="k">' + esc(t[0]) +
+      '</span><strong class="v">' + esc(t[1]) + '</strong>' +
+      '<span class="n">' + esc(t[2]) + '</span></div>';
+  }).join('');
+
+  /* Derived, not typed: these are the modules nothing imports, so their
+   * statements were the ones missing from the report. Writing the total out
+   * would be a number beside a number, and the two would drift. */
+  var unexecuted = MODULES.filter(function (m) { return covered(m) === 0; });
+  var hidden = sum(unexecuted, function (m) { return m.stmts; });
+
+  el('tilesNote').textContent =
+    'Coverage is ' + Math.round(100 * COVERED / STMTS) + '%, and that ' +
+    'figure is lower than it used to read for an honest reason: the config ' +
+    'had no source setting, so coverage reported only files something ' +
+    'imported — and ' +
+    unexecuted.map(function (m) { return m.name; }).join(' and ') +
+    ' are never imported by a test. ' + hidden + ' statements of shipped ' +
+    'code were missing from the report rather than showing as uncovered, ' +
+    'which flattered exactly the code that needed the most attention. They ' +
+    'are in the table now, at 0%. The rest of the gap is camera.py, which ' +
+    'cannot be driven without a webcam on the machine.';
+}
+
+/* --------------------------------------------------------------- charts */
+
+function drawBars(id, rows, label, value, size, peak) {
+  el(id).innerHTML = rows.map(function (row) {
+    var width = (size(row) / peak * 100).toFixed(1);
+    return '<div class="bar" title="' + esc(label(row) + ' — ' + value(row)) +
+      '"><span class="lab">' + esc(label(row)) + '</span>' +
+      '<span class="rail"><span class="fill" style="width:' + width +
+      '%"></span></span>' +
+      '<span class="val">' + esc(value(row)) + '</span></div>';
+  }).join('');
+}
+
+function byStatements() {
+  return MODULES.slice().sort(function (a, b) { return b.stmts - a.stmts; });
+}
+
+function drawModules() {
+  var rows = byStatements();
+  var peak = rows[0].stmts;
+  el('moduleSub').textContent =
+    'By executable statements, largest first. One measure, so one colour and ' +
+    'no legend — the heading names it, and every bar is labelled directly. ' +
+    'The widest by a distance is camera.py at ' + rows[0].stmts + ': owning ' +
+    'one webcam across capture, streaming, registration and recognition is ' +
+    'most of this project’s difficulty, and it is also the hardest thing ' +
+    'here to test without hardware.';
+  drawBars('moduleBars', rows,
+           function (m) { return m.name; },
+           function (m) { return m.stmts + ' · ' + coverage(m) + '%'; },
+           function (m) { return m.stmts; }, peak);
+}
+
+function drawTests() {
+  var peak = Math.max.apply(null, TESTS.map(function (t) { return t.n; }));
+  var most = TESTS.reduce(function (a, b) { return b.n > a.n ? b : a; });
+  el('testSub').textContent =
+    'The heaviest file is ' + most.file + ' at ' + most.n + ' — ' + most.of +
+    '. ' + TEST_LINES.toLocaleString() + ' lines of test against ' +
+    LINES.toLocaleString() + ' of source, and ' + SKIPPED + ' tests skip ' +
+    'when no sample face image is on disk, which is the honest behaviour ' +
+    'for a check that needs one.';
+  drawBars('testBars', TESTS,
+           function (t) { return t.file.replace('test_', '').replace('.py', ''); },
+           function (t) { return String(t.n); },
+           function (t) { return t.n; }, peak);
+}
+
+/* --------------------------------------------------------------- tables */
+
+function drawTable() {
+  var rows = byStatements().map(function (m) {
+    return '<tr><td class="mono">' + esc(m.name) + '</td>' +
+      '<td class="num">' + m.lines + '</td>' +
+      '<td class="num">' + m.stmts + '</td>' +
+      '<td class="num">' + coverage(m) + '%</td>' +
+      '<td>' + esc(m.does) + '</td></tr>';
+  }).join('');
+  var omitted = OMITTED.map(function (o) {
+    return '<tr><td class="mono">' + esc(o.name) + '</td>' +
+      '<td class="num">' + o.lines + '</td>' +
+      '<td class="num">&mdash;</td><td class="num">omitted</td>' +
+      '<td>' + esc(o.why) + '</td></tr>';
+  }).join('');
+  el('tableBody').innerHTML = rows + omitted +
+    '<tr class="total"><td>Total, excluding the omitted tools</td>' +
+    '<td class="num">' + LINES.toLocaleString() + '</td>' +
+    '<td class="num">' + STMTS.toLocaleString() + '</td>' +
+    '<td class="num">' + Math.round(100 * COVERED / STMTS) + '%</td>' +
+    '<td>&mdash;</td></tr>';
+}
+
+function drawGates() {
+  var flags = { good: ['good', '✓', 'kept'], warn: ['warn', '⚠', 'lowered'],
+                crit: ['crit', '×', 'removed'] };
+  el('gateBody').innerHTML = GATES.map(function (g) {
+    var f = flags[g[3]];
+    return '<tr><td class="mono">' + esc(g[0]) + '</td>' +
+      '<td class="num">' + esc(g[1]) + '</td>' +
+      '<td class="num"><span class="flag ' + f[0] + '"><span class="g">' +
+      f[1] + '</span>' + esc(g[2]) + '</span></td></tr>';
+  }).join('');
+
+  el('gateNote').textContent =
+    'At about 14,000 samples per group the 95% confidence intervals are ' +
+    'roughly ±0.4 percentage points. The disparities found were 8 to 25 ' +
+    'points — fifty times wider — so more images would have narrowed error ' +
+    'bars that were already far too small to change any conclusion.';
+
+  el('residualNote').innerHTML =
+    'After the fix, at 800 per group: overall rejection disparity <b>1.24x, ' +
+    'within budget</b>, gender 1.07x, and the "too dark" flag no longer ' +
+    'exists. Two residuals stay over the 1.25x budget and are documented ' +
+    'rather than tuned away — <code>turned away</code> at 1.34x and ' +
+    'gender-sliced rejection at 1.26x. Both track head pose in the source ' +
+    'photographs rather than skin tone, and FairFace is in-the-wild imagery ' +
+    'where pose varies by source. Tuning <code>MAX_YAW</code> to equalise ' +
+    'them would be fitting the corpus, not fixing a defect.';
+}
+
+function drawFmr() {
+  el('fmrBody').innerHTML = FMR.map(function (row) {
+    return '<tr><td class="mono">' + esc(row[0]) + '</td>' +
+      '<td class="num">' + esc(row[1]) + '</td>' +
+      '<td class="num">' + esc(row[2]) + '</td>' +
+      '<td class="num">' + esc(row[3]) + '</td>' +
+      '<td class="num">' + esc(row[4]) + '</td></tr>';
+  }).join('');
+
+  el('thresholdNote').innerHTML =
+    'The threshold the reference implementation suggests, 0.363, gives a ' +
+    '41.9% chance of a false match in a gallery of a hundred people. ' +
+    '<code>calibration.py</code> carries the measured curve now, and the ' +
+    'recommendation is a function of gallery size rather than a constant:';
+
+  el('galleryKv').innerHTML = GALLERY.map(function (pair) {
+    return '<dt>' + esc(pair[0]) + '</dt><dd>' + esc(pair[1]) + '</dd>';
+  }).join('');
+
+  el('galleryNote').textContent =
+    'Against 300 non-enrolled people the system accepted none of them — ' +
+    'zero false accepts — and across 4,500 randomised trials that varied ' +
+    'distance, blur, rotation, gamma, noise and JPEG quality together, it ' +
+    'named the wrong person once in 4,500. That distribution is the design ' +
+    'working: under degradation it declines rather than guesses. A refusal ' +
+    'costs somebody a badge swipe; a confident wrong name puts them in ' +
+    'another person’s attendance record.';
+}
+
+function drawGender() {
+  el('genderBody').innerHTML = GENDER.map(function (g) {
+    var gap = (g[1] - g[2]).toFixed(1);
+    return '<tr><td>' + esc(g[0]) + '</td>' +
+      '<td class="num">' + g[1].toFixed(1) + '%</td>' +
+      '<td class="num">' + g[2].toFixed(1) + '%</td>' +
+      '<td class="num"><span class="flag ' +
+      (g[1] - g[2] > 30 ? 'crit' : 'warn') + '"><span class="g">' +
+      (g[1] - g[2] > 30 ? '×' : '⚠') + '</span>' + gap + 'pp</span></td></tr>';
+  }).join('');
+
+  el('genderNote').innerHTML =
+    'Male 86.5% against female 57.6% — a 28.9 point gap — and Black women at ' +
+    '<b>43.7%</b>, worse than a coin flip on a binary task. This reproduces ' +
+    'Buolamwini and Gebru’s <em>Gender Shades</em> finding on a different ' +
+    'corpus. The recommendation in the repository is to leave the estimator ' +
+    'off, or delete the model file outright: an attendance system has no ' +
+    'use for a guess at somebody’s gender, and this one is not even a good ' +
+    'guess.';
+}
+
+function drawRange() {
+  el('rangeBody').innerHTML = RANGE.map(function (r) {
+    return '<tr><td>' + esc(r[0]) + '</td><td class="mono">' + esc(r[1]) +
+      '</td><td class="mono">' + esc(r[2]) + '</td></tr>';
+  }).join('');
+  el('rangeNote').textContent =
+    'Lighting invariance is the standout — the embeddings are essentially ' +
+    'unaffected across a five-fold gamma range, which is the opposite of ' +
+    'what the old brightness gate assumed. Rotation is the weakest axis, so ' +
+    'a tilted camera costs more than a dim room.';
+}
+
+function drawGuide() {
+  el('guideList').innerHTML = GUIDE.map(function (text, index) {
+    var n = index + 1;
+    return '<li><span class="step">' + (n < 10 ? '0' + n : n) +
+      '</span><span>' + esc(text) + '</span></li>';
+  }).join('');
+}
+
+function drawBugs() {
+  el('bugBody').innerHTML = BUGS.map(function (b) {
+    return '<tr><td><b>' + b[0] + '</b><br>' + b[1] + '</td>' +
+      '<td>' + b[2] + '</td>' +
+      '<td class="num"><span class="flag good"><span class="g">✓</span>' +
+      esc(b[3]) + '</span></td></tr>';
+  }).join('');
+}
+
+function drawLimits() {
+  el('limitList').innerHTML = LIMITS.map(function (text) {
+    return '<li><span class="step">&rarr;</span><span>' + text +
+      '</span></li>';
+  }).join('');
+}
+
+/* -------------------------------------------------------------- controls */
+
+el('themeBtn').addEventListener('click', function () {
+  var set = document.documentElement.getAttribute('data-theme');
+  var dark = set ? set === 'dark'
+    : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+});
+
+el('tableBtn').addEventListener('click', function () {
+  var showTable = el('tablePanel').hidden;
+  el('tablePanel').hidden = !showTable;
+  el('modulePanel').hidden = showTable;
+  el('testPanel').hidden = showTable;
+  this.setAttribute('aria-pressed', String(showTable));
+  this.textContent = showTable ? 'Chart view' : 'Table view';
+});
+
+el('footNote').textContent =
+  'Code figures measured on 12 September 2026 in the repository with pytest ' +
+  '--cov, wc -l and pytest --collect-only, and checked against a fresh ' +
+  'measurement by tests/test_published_figures.py. The benchmark figures ' +
+  'come from a run over the whole of FairFace — ' +
+  BENCH.images.toLocaleString() + ' images in ' + BENCH.minutes + ' minutes ' +
+  'at ' + BENCH.rate + ' images a second, followed by ' +
+  BENCH.comparisons.toLocaleString() + ' identity comparisons — and are ' +
+  'recorded in BENCHMARK.md with the command to reproduce them. FairFace ' +
+  'was chosen because it is openly licensed, demographically labelled and ' +
+  'built for this measurement; scraping faces off the web would have been ' +
+  'the wrong way to get a corpus. Everything on this page is read from one ' +
+  'data block, so the tiles, the charts and the table cannot disagree.';
+
+drawTiles();
+drawModules();
+drawTests();
+drawTable();
+drawGates();
+drawFmr();
+drawGender();
+drawRange();
+drawGuide();
+drawBugs();
+drawLimits();
+</script>
+</body>
+</html>

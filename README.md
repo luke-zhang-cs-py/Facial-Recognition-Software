@@ -4,6 +4,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue.svg)](https://www.python.org/)
 
+**[Read the overview →](https://luke-zhang-cs-py.github.io/Facial-Recognition-Software/)**
+— what the 97,698-face benchmark found, where recognition stops working,
+and every bug this thing has had.
+
 A simple, local attendance system: OpenCV captures webcam frames, detects
 and recognizes faces, and logs each recognized person into a SQL database
 (SQLite by default — no server setup needed).

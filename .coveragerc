@@ -1,12 +1,23 @@
 [run]
+# Without this, coverage reports only the files something imported -- and
+# register_user.py and attendance.py are never imported by a test, so 99
+# statements of shipped code were missing from the report entirely rather
+# than showing as uncovered. The percentage was measured over a subset and
+# read 61.5% where the honest figure is 58.4%. A coverage report that
+# silently excludes untested modules flatters exactly the code that needs
+# the most attention.
+source = .
+
 omit =
     tests/*
+    tools/*
     tools_*.py
     face_attendance.py
     seed_demo.py
     fetch_models.py
     fairness_benchmark.py
     .venv/*
+    docs/*
 
 [report]
 exclude_lines =

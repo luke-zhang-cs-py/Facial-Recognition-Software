@@ -14,3 +14,11 @@
 opencv-contrib-python>=4.13.0.92,<5
 numpy
 Flask>=2.3
+
+# Tests only, and less optional than they look. `coverage` is what
+# tests/test_published_figures.py measures the published figures with, so
+# without it that test errors rather than skips -- and CI installs exactly
+# this file. pytest-cov is what the documented coverage command asks for.
+pytest>=7.4
+coverage>=7.0
+pytest-cov>=4.0

@@ -28,9 +28,11 @@ empty measurement — which would "pass" by calling everything uncovered.
 `python tools/refresh_figures.py` rewrites whatever this finds wrong.
 """
 import fnmatch
+import glob
 import io
 import os
 import re
+import string
 import subprocess
 import sys
 
@@ -127,6 +129,167 @@ def has_coverage_data():
         return bool(cov.get_data().measured_files())
     except Exception:                                  # pragma: no cover
         return False
+
+
+# --------------------------------------------- does the page's script run?
+# Every check below this point reads the page as text, and for a while that
+# was the whole story. The result: this page shipped an unterminated string
+# literal, its script threw SyntaxError on load, and *none* of the
+# JavaScript ran -- empty tiles, empty tables, empty charts, and a full set
+# of green tests, because every figure in the data block was perfectly
+# accurate and nothing had ever asked whether the page could read it. Five
+# pages in this family had it, from the same copied four lines.
+#
+# So: no string literal left open at the end of a line, and every element
+# the script writes into exists in the markup. Neither needs a JavaScript
+# engine, which these projects do not depend on and should not start
+# depending on for a static page.
+
+
+def published_pages():
+    """Every HTML file served from docs/, not just the main one.
+
+    A glob rather than the PAGE constant because more than one project here
+    publishes a second page, and a check that names one file stops checking
+    the moment a second appears.
+    """
+    return sorted(glob.glob(os.path.join(ROOT, "docs", "*.html")))
+
+
+def script_body(text):
+    """Every <script> block in a page, concatenated."""
+    blocks = re.findall(r"<script[^>]*>(.*?)</script>", text, re.DOTALL)
+    return "\n".join(blocks)
+
+
+# A `/` after one of these is division; anywhere else it opens a regex
+# literal. The distinction matters because a page carrying `/[&<>"]/g` would
+# otherwise have that `"` read as the start of a string, and the rest of the
+# line reported as unterminated.
+_ENDS_A_VALUE = set(")]}") | set(string.ascii_letters + string.digits + "_$")
+
+_CLOSERS = {"single": "'", "double": '"', "template": "`", "regex": "/"}
+_OPENERS = {"'": "single", '"': "double", "`": "template"}
+
+
+def _step_in_code(text, index, previous):
+    """(state, next index, last significant char) for one character of code.
+
+    The state "comment" means the rest of the line is one, which the caller
+    takes as its cue to stop.
+    """
+    char = text[index]
+    pair = text[index:index + 2]
+    if pair == "//":
+        return "comment", len(text), previous
+    if pair == "/*":
+        return "block", index + 2, previous
+    if char == "/" and previous not in _ENDS_A_VALUE:
+        return "regex", index + 1, previous
+    if char in _OPENERS:
+        return _OPENERS[char], index + 1, previous
+    return "code", index + 1, previous if char.isspace() else char
+
+
+def _step_in_quotes(text, index, state):
+    """(state, next index, last significant char) inside a string or regex."""
+    char = text[index]
+    if char == "\\":
+        return state, index + 2, ""
+    if char == _CLOSERS[state]:
+        # A closing quote or slash ends a value, so a `/` after it is
+        # division rather than the start of another regex.
+        return "code", index + 1, "x"
+    return state, index + 1, ""
+
+
+def _scan_line(text, state, previous):
+    """Run the scanner to the end of one line; return where it ended up."""
+    index = 0
+    while index < len(text):
+        if state == "code":
+            state, index, previous = _step_in_code(text, index, previous)
+            if state == "comment":
+                return "code", previous
+        elif state == "block":
+            if text[index:index + 2] == "*/":
+                state, index = "code", index + 2
+            else:
+                index += 1
+        else:
+            state, index, seen = _step_in_quotes(text, index, state)
+            previous = seen or previous
+    return state, previous
+
+
+def open_string_lines(source):
+    """Lines where a quoted string is still open at the newline.
+
+    A hand-written scanner, because the alternatives are a regex (which
+    cannot do this) or a JavaScript engine. It tracks quotes, both comment
+    forms, regex literals and backslash escapes, and flags only single- and
+    double-quoted strings -- a template literal spanning lines is legal. It
+    reports the offending line's text rather than its number, which is the
+    more useful half of the answer.
+    """
+    flagged = []
+    state, previous = "code", ""
+    for text in source.splitlines():
+        state, previous = _scan_line(text, state, previous)
+        if state in ("single", "double"):
+            flagged.append(text.strip())
+            state = "code"                       # do not cascade
+    return flagged
+
+
+def test_no_published_page_leaves_a_string_open_at_a_line_end():
+    """The failure this whole file did not catch."""
+    pages = published_pages()
+    assert pages, "no page was found, so this check is vacuous"
+
+    broken = {}
+    for path in pages:
+        with io.open(path, encoding="utf-8") as handle:
+            source = script_body(handle.read())
+        if not source.strip():
+            continue
+        flagged = open_string_lines(source)
+        if flagged:
+            broken[os.path.basename(path)] = flagged
+
+    assert not broken, (
+        "these pages leave a string literal open, so the browser throws "
+        "SyntaxError and none of their script runs: %r" % broken)
+
+
+def test_every_element_a_published_script_writes_into_exists():
+    """A renamed id fails silently: `el(...)` returns null and the
+    assignment throws, taking the rest of the script with it."""
+    pages = published_pages()
+    assert pages, "no page was found, so this check is vacuous"
+
+    missing = {}
+    checked = 0
+    for path in pages:
+        with io.open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        source = script_body(text)
+        wanted = set(re.findall(r"el\(\s*'([\w-]+)'\s*\)", source))
+        wanted |= set(re.findall(
+            r"getElementById\(\s*['\"]([\w-]+)['\"]\s*\)", source))
+        if not wanted:
+            continue
+        checked += 1
+        present = set(re.findall(r'id="([\w-]+)"', text))
+        present |= set(re.findall(r"id='([\w-]+)'", text))
+        absent = sorted(wanted - present)
+        if absent:
+            missing[os.path.basename(path)] = absent
+
+    assert checked, "no el() calls found on any page, so this check is vacuous"
+    assert not missing, (
+        "these scripts write into elements that are not in the markup: %r"
+        % missing)
 
 
 def test_the_page_has_a_data_block_at_all(page):

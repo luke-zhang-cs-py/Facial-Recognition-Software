@@ -55,7 +55,33 @@ Webcam frame → Haar cascade (face detection) → LBPH recognizer (face ID)
 | `guidance.py` | Turns a live trait read into one instruction to act on |
 | `liveness.py` | Presentation-attack detection (is this a person or a photo) |
 | `recognition.py` | Identification via SFace embeddings + gallery-size threshold |
+| `landmarks.py` | 68-point landmarks, the face mesh, and the overlay drawn on the frame |
+| `readout.py` | The live sidebar payload, assembled from one frame |
+| `enrollment.py` | The post-capture report: pose coverage, and who this face sits closest to |
+| `vision.py` | The numbers the LBPH capture path shares — threshold, crop size, detector tuning |
+| `paths.py` | Where the data lives — one decision, resolved per call |
+| `corpus_paths.py` | One home for the benchmark corpus locations |
 | `seed_demo.py` | Enrolls well-known faces from LFW so recognition can be tested |
+| `face_attendance.py` | A thin entry point; a test asserts it holds no logic |
+
+Four of those exist because something was in more than one place:
+
+- **`vision.py`** — `CONFIDENCE_THRESHOLD` was declared in `attendance.py`
+  and again in `camera.py`, while `analytics.py` reported a third literal
+  `70` back to you as your *current* setting. Change the threshold the
+  recogniser uses and the tool whose job is to report your configuration
+  kept saying 70. The crop size was written out at six call sites, and LBPH
+  compares histograms over a fixed grid — a gallery captured at one size and
+  a query resized to another are not comparable, and the only symptom is
+  worse recognition.
+- **`readout.py` and `enrollment.py`** were methods on `CameraManager`.
+  Neither needs a camera: one reshapes a trait read into JSON, the other
+  reads files and database rows. As methods on a class that owns the capture
+  device they could not be tested without one, which is why the camera path
+  was the least covered part of the project.
+- **`paths.py`** — three modules each worked out where the database and the
+  dataset were, at import time, so a test could point one at a temporary
+  folder and still read the real dataset off disk.
 
 ## Testing recognition without registering anyone
 
@@ -341,9 +367,13 @@ sqlite3 attendance.db "SELECT * FROM attendance;"
   `face_recognition` (128-d embeddings) — the DB and attendance logic
   here don't need to change, just what feeds `recognizer.predict()`.
 - **Recognition confidence**: LBPH's `confidence` is a *distance* —
-  lower means more sure. `CONFIDENCE_THRESHOLD = 70` in `attendance.py`
-  is a starting point; tighten it (e.g. 50) if you get false positives,
-  loosen it if real matches are being marked "Unknown."
+  lower means more sure. `CONFIDENCE_THRESHOLD = 70` in **`vision.py`** is
+  a starting point; tighten it (e.g. 50) if you get false positives, loosen
+  it if real matches are being marked "Unknown." Better than guessing:
+  `python analyze_faces.py` sweeps it against your own data and recommends
+  a value. Change it in `vision.py` and every module that matches a face
+  follows, including the report that tells you what it currently is — it
+  used to be three separate literals, and two of them kept saying 70.
 - **One mark per day**: `db.already_marked_today()` stops duplicate rows
   from being inserted every frame someone's face is on camera.
 - **Switching to MySQL/Postgres**: only `db.py` needs to change — swap
@@ -354,6 +384,38 @@ sqlite3 attendance.db "SELECT * FROM attendance;"
   model in `trainer.yml`. Treat both as sensitive biometric data —
   don't commit them to a public repo, and delete a person's folder +
   retrain if they ask to be removed.
+
+## Tests
+
+```bash
+pytest -q
+pytest -q --cov=. --cov-report=term-missing
+```
+
+266 tests, 66% of 2,151 statements. That figure is itself checked:
+`tests/test_published_figures.py` measures the repository and compares it
+with what the [published overview](https://luke-zhang-cs-py.github.io/Facial-Recognition-Software/)
+claims, and `python tools/refresh_figures.py` rewrites them.
+
+The suite needs no webcam, no pretrained weights and no corpus: the tests
+that genuinely need a real face use a sample frame if one is present and
+**skip** rather than asserting against a synthetic one, because a face a
+detector accepts cannot be faked convincingly enough to be evidence.
+
+Coverage is not uniform, and the uneven part is the point rather than an
+oversight:
+
+- The **pure logic is covered heavily** — the database at 100%, guidance at
+  95%, recognition at 90%, the landmark maths at 86%.
+- **`camera.py` is around a third**, and most of what is left is the frame
+  loop itself: opening the device, grabbing, annotating, sleeping. The
+  decisions it used to make inline have been moved to `readout.py` and
+  `enrollment.py`, which are covered properly, because the reason that code
+  was untested was that it lived on a class holding a capture device.
+- The two CLI loops are the same story. `register_user.py` was at **0%** —
+  not one statement had ever run under test — and the part that writes a
+  gallery sample is now its own function and tested, which matters because
+  those images are what `attendance.py` is later compared against.
 
 ## License
 

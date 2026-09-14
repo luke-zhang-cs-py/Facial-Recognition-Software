@@ -110,4 +110,3 @@ def test_no_module_opens_a_raw_connection():
         if re.search(r"get_connection\s*\(", text):
             offenders.append(name)
     assert not offenders, f"use db.connection() instead: {offenders}"
-

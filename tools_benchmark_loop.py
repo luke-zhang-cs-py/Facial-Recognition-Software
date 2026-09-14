@@ -89,6 +89,21 @@ STOP_FILE = os.path.join(PROJ, "STOP_BENCHMARK")
 DETECTION_SAMPLE = 300
 AGE_SAMPLE = 200
 
+# Command-line defaults, named so the --help text and the constants cannot
+# disagree about them.
+DEFAULT_TRIALS = 60
+DEFAULT_DETECTION_EVERY = 3     # the detection sweep is the slow one
+DEFAULT_AGE_EVERY = 5
+
+# How often to print the cumulative summary. Every round would bury the
+# per-round lines it is meant to contextualise.
+SUMMARY_EVERY = 5
+
+# Seeding. A fresh seed per round comes from the clock in milliseconds,
+# folded into the 32-bit space numpy's default_rng accepts.
+MILLISECONDS = 1000
+SEED_SPACE = 2 ** 32
+
 # The ground truth and the model do not use the same buckets, so neither can
 # be scored against the other directly.
 #
@@ -393,19 +408,127 @@ def summarise(state):
     )
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[2])
     parser.add_argument("--rounds", type=int, default=0,
                         help="run N rounds this session (default: until stopped). "
                              "Counted per session, not cumulatively -- the log "
                              "resumes, but --rounds 1 always means one more.")
-    parser.add_argument("--trials", type=int, default=60,
+    parser.add_argument("--trials", type=int, default=DEFAULT_TRIALS,
                         help="identity trials per enrolled person per round")
-    parser.add_argument("--detection-every", type=int, default=3,
+    parser.add_argument("--detection-every", type=int,
+                        default=DEFAULT_DETECTION_EVERY,
                         help="run the FairFace detection sweep every N rounds")
-    parser.add_argument("--age-every", type=int, default=5,
+    parser.add_argument("--age-every", type=int, default=DEFAULT_AGE_EVERY,
                         help="run the age pass every N rounds")
-    args = parser.parse_args()
+    return parser
+
+
+def fresh_state():
+    """A state file for a run that has never been done before."""
+    return {
+        "rounds": 0,
+        "startedAt": dt.datetime.now().isoformat(timespec="seconds"),
+        "cumulative": {
+            "identity": {"trials": 0, "correct": 0, "unknown": 0, "wrong": 0},
+            "detection": {"sampled": 0, "detected": 0},
+            "age": {"sampled": 0, "errorSum": 0.0},
+        },
+    }
+
+
+def load_state(path):
+    """Resume from a previous session, or start fresh.
+
+    A corrupt or half-written state file starts fresh rather than raising:
+    this loop is meant to be stopped at any point, so a truncated write is an
+    expected state rather than an error worth aborting the next run for. The
+    previous version caught bare `Exception` around a `json.load(open(...))`
+    that also leaked the file handle.
+    """
+    if not os.path.exists(path):
+        return fresh_state()
+    try:
+        with open(path, encoding="utf-8") as handle:
+            state = json.load(handle)
+    except (OSError, ValueError, KeyError):
+        return fresh_state()
+    print(f"  resuming from {state['rounds']} previous rounds\n")
+    return state
+
+
+def run_round(lfw, gallery, args, round_no, rng):
+    """One round's measurements, and how long they took."""
+    started = time.time()
+    record = {"round": round_no,
+              "at": dt.datetime.now().isoformat(timespec="seconds"),
+              "identity": identity_round(lfw, gallery, args.trials, rng)}
+
+    if args.detection_every and round_no % args.detection_every == 0:
+        record["detection"] = detection_round(rng)
+    if args.age_every and round_no % args.age_every == 0:
+        record["age"] = age_round(rng)
+
+    record["seconds"] = round(time.time() - started, 1)
+    return record
+
+
+def accumulate(state, record):
+    """Fold one round's numbers into the running totals.
+
+    The age total keeps `errorSum` rather than a running mean, because a mean
+    of means is not the mean unless every round sampled the same number of
+    images -- and `--age-every` guarantees they do not.
+    """
+    identity = state["cumulative"]["identity"]
+    for key in ("trials", "correct", "unknown", "wrong"):
+        identity[key] += record["identity"][key]
+
+    if record.get("detection"):
+        detection = state["cumulative"]["detection"]
+        detection["sampled"] += record["detection"]["sampled"]
+        detection["detected"] += record["detection"]["detected"]
+
+    if record.get("age"):
+        age = state["cumulative"]["age"]
+        age["sampled"] += record["age"]["sampled"]
+        age["errorSum"] += record["age"]["mae"] * record["age"]["sampled"]
+
+    state["rounds"] = record["round"]
+    state["updatedAt"] = record["at"]
+
+
+def report_round(record, readable):
+    """Print one round's lines and append them to the readable log."""
+    identity = record["identity"]
+    trials = max(1, identity["trials"])
+    lines = [
+        f"round {record['round']:>4}  {identity['trials']:>5} trials  "
+        f"correct {100 * identity['correct'] / trials:5.1f}%  "
+        f"unknown {100 * identity['unknown'] / trials:5.1f}%  "
+        f"WRONG {100 * identity['wrong'] / trials:5.1f}%  "
+        f"({record['seconds']}s)"
+    ]
+
+    if record.get("detection"):
+        found = record["detection"]
+        lines.append(f"           detection {100 * found['rate']:.1f}% over "
+                     f"{found['sampled']} FairFace images, "
+                     f"disparity {found['disparity']}")
+    if record.get("age"):
+        age = record["age"]
+        lines.append(f"           age MAE {age['mae']}y, "
+                     f"within2 {100 * age['within2']:.0f}%, "
+                     f"within10 {100 * age['within10']:.0f}% "
+                     f"over {age['sampled']}")
+
+    for line in lines:
+        print(line)
+        append(readable, line)
+
+
+def main():
+    args = build_parser().parse_args()
 
     os.makedirs(LOG_DIR, exist_ok=True)
     jsonl = os.path.join(LOG_DIR, "benchmark.jsonl")
@@ -429,17 +552,7 @@ def main():
     print(f"  stop with: create {STOP_FILE}")
     print()
 
-    state = {"rounds": 0, "startedAt": dt.datetime.now().isoformat(timespec="seconds"),
-             "cumulative": {"identity": {"trials": 0, "correct": 0, "unknown": 0, "wrong": 0},
-                            "detection": {"sampled": 0, "detected": 0},
-                            "age": {"sampled": 0, "errorSum": 0.0}}}
-    if os.path.exists(state_file):
-        try:
-            state = json.load(open(state_file, encoding="utf-8"))
-            print(f"  resuming from {state['rounds']} previous rounds\n")
-        except Exception:
-            pass
-
+    state = load_state(state_file)
     append(readable, f"\n=== benchmark loop started "
                      f"{dt.datetime.now().isoformat(timespec='seconds')} ===")
 
@@ -456,74 +569,29 @@ def main():
             break
         this_session += 1
 
-        round_no = state["rounds"] + 1
         # A fresh seed per round: the point of running repeatedly is to draw
         # different images and different degradations, not to recompute one
         # sample with better precision.
-        rng = np.random.default_rng(int(time.time() * 1000) % (2 ** 32))
-        started = time.time()
+        rng = np.random.default_rng(
+            int(time.time() * MILLISECONDS) % SEED_SPACE)
+        record = run_round(lfw, gallery, args, state["rounds"] + 1, rng)
 
-        record = {"round": round_no,
-                  "at": dt.datetime.now().isoformat(timespec="seconds")}
-
-        record["identity"] = identity_round(lfw, gallery, args.trials, rng)
-
-        if args.detection_every and round_no % args.detection_every == 0:
-            record["detection"] = detection_round(rng)
-        if args.age_every and round_no % args.age_every == 0:
-            record["age"] = age_round(rng)
-
-        record["seconds"] = round(time.time() - started, 1)
-
-        # accumulate
-        ident = record["identity"]
-        cume = state["cumulative"]["identity"]
-        for key in ("trials", "correct", "unknown", "wrong"):
-            cume[key] += ident[key]
-        if record.get("detection"):
-            det = state["cumulative"]["detection"]
-            det["sampled"] += record["detection"]["sampled"]
-            det["detected"] += record["detection"]["detected"]
-        if record.get("age"):
-            age = state["cumulative"]["age"]
-            age["sampled"] += record["age"]["sampled"]
-            age["errorSum"] += record["age"]["mae"] * record["age"]["sampled"]
-
-        state["rounds"] = round_no
-        state["updatedAt"] = record["at"]
-
+        accumulate(state, record)
         append(jsonl, json.dumps(record))
-        line = (f"round {round_no:>4}  {ident['trials']:>5} trials  "
-                f"correct {100 * ident['correct'] / max(1, ident['trials']):5.1f}%  "
-                f"unknown {100 * ident['unknown'] / max(1, ident['trials']):5.1f}%  "
-                f"WRONG {100 * ident['wrong'] / max(1, ident['trials']):5.1f}%  "
-                f"({record['seconds']}s)")
-        print(line)
-        append(readable, line)
-        if record.get("detection"):
-            d = record["detection"]
-            extra = (f"           detection {100 * d['rate']:.1f}% over {d['sampled']} "
-                     f"FairFace images, disparity {d['disparity']}")
-            print(extra)
-            append(readable, extra)
-        if record.get("age"):
-            a = record["age"]
-            extra = (f"           age MAE {a['mae']}y, within2 {100 * a['within2']:.0f}%, "
-                     f"within10 {100 * a['within10']:.0f}% over {a['sampled']}")
-            print(extra)
-            append(readable, extra)
+        report_round(record, readable)
 
         with open(state_file, "w", encoding="utf-8") as handle:
             json.dump(state, handle, indent=2)
 
-        if round_no % 5 == 0:
+        if record["round"] % SUMMARY_EVERY == 0:
             print(summarise(state))
             append(readable, summarise(state))
 
     print()
     print(summarise(state))
     append(readable, summarise(state))
-    append(readable, f"=== stopped {dt.datetime.now().isoformat(timespec='seconds')} ===")
+    append(readable, f"=== stopped "
+                     f"{dt.datetime.now().isoformat(timespec='seconds')} ===")
     return 0
 
 

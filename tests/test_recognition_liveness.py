@@ -14,9 +14,14 @@ def test_identify_declines_an_ambiguous_match():
     the pair is being separated by noise, and naming a winner presents a coin
     toss as an identification."""
     import recognition
-    v = np.zeros(128, np.float32); v[0] = 1.0
-    a = np.zeros(128, np.float32); a[0] = 0.99; a[1] = 0.14
-    b = np.zeros(128, np.float32); b[0] = 0.985; b[1] = 0.17
+    v = np.zeros(128, np.float32)
+    v[0] = 1.0
+    a = np.zeros(128, np.float32)
+    a[0] = 0.99
+    a[1] = 0.14
+    b = np.zeros(128, np.float32)
+    b[0] = 0.985
+    b[1] = 0.17
     gal = {1: {"name": "A", "centroid": a / np.linalg.norm(a), "samples": 10},
            2: {"name": "B", "centroid": b / np.linalg.norm(b), "samples": 10}}
 
@@ -31,9 +36,12 @@ def test_identify_declines_an_ambiguous_match():
 def test_identify_accepts_a_clear_match():
     import recognition
     import unittest.mock as mock
-    v = np.zeros(128, np.float32); v[0] = 1.0
-    a = np.zeros(128, np.float32); a[0] = 1.0
-    b = np.zeros(128, np.float32); b[1] = 1.0
+    v = np.zeros(128, np.float32)
+    v[0] = 1.0
+    a = np.zeros(128, np.float32)
+    a[0] = 1.0
+    b = np.zeros(128, np.float32)
+    b[1] = 1.0
     gal = {1: {"name": "A", "centroid": a, "samples": 10},
            2: {"name": "B", "centroid": b, "samples": 10}}
     with mock.patch.object(recognition, "embed_image", return_value=(v, {"box": [0, 0, 10, 10]})):
@@ -45,11 +53,14 @@ def test_identify_accepts_a_clear_match():
 def test_identify_threshold_follows_gallery_size():
     import recognition
     import unittest.mock as mock
-    v = np.zeros(128, np.float32); v[0] = 1.0
+    v = np.zeros(128, np.float32)
+    v[0] = 1.0
+
     def gal_of(n):
         out = {}
         for i in range(n):
-            c = np.zeros(128, np.float32); c[i % 128] = 1.0
+            c = np.zeros(128, np.float32)
+            c[i % 128] = 1.0
             out[i] = {"name": f"P{i}", "centroid": c, "samples": 5}
         return out
     with mock.patch.object(recognition, "embed_image", return_value=(v, {})):
@@ -62,7 +73,8 @@ def test_liveness_vote_needs_evidence_before_deciding():
     import liveness
     v = liveness.LivenessVote(window=7, required=4)
     assert v.verdict() == "unknown"
-    v.push(0.9); v.push(0.9)
+    v.push(0.9)
+    v.push(0.9)
     assert v.verdict() == "unknown", "must not decide on two frames"
     for _ in range(3):
         v.push(0.9)
@@ -89,7 +101,8 @@ def test_liveness_vote_window_slides():
 def test_liveness_vote_ignores_none_scores():
     import liveness
     v = liveness.LivenessVote()
-    v.push(None); v.push(None)
+    v.push(None)
+    v.push(None)
     assert v.samples == 0 and v.verdict() == "unknown"
 
 

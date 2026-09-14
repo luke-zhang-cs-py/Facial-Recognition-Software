@@ -17,7 +17,6 @@ import cv2
 import numpy as np
 
 
-
 def load_training_data():
     faces = []
     labels = []

@@ -200,5 +200,5 @@ def test_the_intended_sample_count_matches_the_capture_plan():
     import analytics
     from camera import CAPTURE_PLAN
     assert analytics.INTENDED_SAMPLES == sum(p["count"] for p in CAPTURE_PLAN)
-    assert analytics.EXPECTED_SAMPLES < analytics.INTENDED_SAMPLES,         "the complain-at threshold has to be below the target"
-
+    assert analytics.EXPECTED_SAMPLES < analytics.INTENDED_SAMPLES, (
+        "the complain-at threshold has to be below the target")

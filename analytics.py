@@ -40,6 +40,7 @@ import calibration
 import db
 import facemodels
 import traits
+import vision
 
 
 LBPH_SWEEP = list(range(30, 131, 10))
@@ -47,19 +48,31 @@ SFACE_SWEEP = [round(x, 2) for x in np.arange(0.20, 0.71, 0.05)]
 KFOLDS = 5
 
 # LBPH is trained and queried at a fixed size; every sample is resized to it.
-# It was written out as a bare (200, 200) at the two call sites, where a
-# mismatch between the two would train on one geometry and predict on
-# another, and the only symptom would be worse numbers.
-LBPH_INPUT_SIZE = (200, 200)
+# This module was the only one that had named it: five other call sites wrote
+# out a bare (200, 200), and a mismatch between any two of them would train
+# on one geometry and predict on another, with worse numbers as the only
+# symptom. Re-exported from vision.py so there is exactly one value, and so
+# that the name this module already used keeps working.
+LBPH_INPUT_SIZE = vision.LBPH_INPUT_SIZE
 
 # SFace's own documented operating point for "same person" on cosine.
 SFACE_REFERENCE = calibration.SFACE_REFERENCE
+
+# Separability is a comparison, so it needs two people to compare. One
+# enrolled person has no impostors at all, and the analysis has nothing to
+# say -- which is a different answer from "we measured and it is bad", so it
+# is reported as unavailable with a reason rather than as a score.
+MIN_USERS_FOR_SEPARABILITY = 2
 
 # Below this many enrolled people, a locally-swept threshold means nothing:
 # there are too few ways to be wrong for a 0% false-match reading to be
 # evidence of anything. The recommendation falls back to calibration.py,
 # which was measured on ~98k identities.
 MIN_USERS_FOR_LOCAL_SWEEP = 15
+
+# How many confusable pairs the report carries. The list is sorted worst
+# first, and past the top few it is a long tail nobody acts on.
+WEAKEST_PAIRS_SHOWN = 5
 
 # Thresholds that turn per-sample flags into advice. Named because "0.75" in
 # the middle of a conditional says nothing about what it is a fraction of.
@@ -319,6 +332,70 @@ def summarize_user(user_id, name, records):
 
 # ------------------------------------------------------- recognition (SFace)
 
+def leave_one_out(sims, labels):
+    """Best genuine and best impostor similarity for every sample.
+
+    Returns (genuine_best, impostor_best, correct, unmatchable).
+
+    A sample whose owner has no *other* usable image cannot be matched to
+    anything under leave-one-out: there is nothing left to match it to. That
+    used to be recorded as a similarity of -inf and averaged in with the
+    rest, which dragged the whole genuine distribution to -inf -- and -inf is
+    not valid JSON, so the report reached the browser as a parse error rather
+    than as a number. It is a property of the dataset, not a score, so it is
+    counted and reported separately.
+
+    Pulled out of `sface_analysis` because this loop *is* the measurement,
+    and it was reachable only by assembling a full record list with real
+    embeddings. It takes a matrix and a label array now.
+    """
+    genuine_best, impostor_best, correct, unmatchable = [], [], 0, 0
+    for i in range(len(labels)):
+        same = labels == labels[i]
+        same[i] = False
+        other = labels != labels[i]
+
+        genuine = float(sims[i][same].max()) if same.any() else None
+        impostor = float(sims[i][other].max()) if other.any() else None
+
+        if genuine is None:
+            unmatchable += 1
+        else:
+            genuine_best.append(genuine)
+        if impostor is not None:
+            impostor_best.append(impostor)
+        if genuine is not None and impostor is not None and genuine > impostor:
+            correct += 1
+
+    return genuine_best, impostor_best, correct, unmatchable
+
+
+def threshold_sweep(genuine, impostor):
+    """Accept rate and false-match rate at each candidate cosine threshold."""
+    return [{"threshold": t,
+             "accept": round(100.0 * float((genuine >= t).mean()), 1),
+             "falseMatch": round(100.0 * float((impostor >= t).mean()), 1)}
+            for t in SFACE_SWEEP]
+
+
+def confusable_pairs(sims, labels, user_ids):
+    """Every pair of enrolled people, most confusable first.
+
+    The pair with the highest cross-similarity is where a threshold will
+    fail first, which makes it the most actionable line in the report.
+    """
+    pairs = []
+    for a in range(len(user_ids)):
+        for b in range(a + 1, len(user_ids)):
+            first, second = user_ids[a], user_ids[b]
+            block = sims[np.ix_(labels == first, labels == second)]
+            pairs.append({"a": first, "b": second,
+                          "maxSimilarity": round(float(block.max()), 3),
+                          "meanSimilarity": round(float(block.mean()), 3)})
+    pairs.sort(key=lambda pair: -pair["maxSimilarity"])
+    return pairs
+
+
 def sface_analysis(records):
     """Leave-one-out nearest-neighbour over SFace embeddings."""
     usable = [r for r in records if r["embedding"] is not None]
@@ -326,9 +403,10 @@ def sface_analysis(records):
     for r in usable:
         by_user[r["userId"]].append(r)
 
-    if len(by_user) < 2:
+    if len(by_user) < MIN_USERS_FOR_SEPARABILITY:
         return {"available": False,
-                "reason": f"Needs at least 2 registered people to measure separability "
+                "reason": f"Needs at least {MIN_USERS_FOR_SEPARABILITY} "
+                          f"registered people to measure separability "
                           f"(found {len(by_user)})."}
 
     mat = np.vstack([r["embedding"] for r in usable])
@@ -336,30 +414,8 @@ def sface_analysis(records):
     sims = mat @ mat.T
     np.fill_diagonal(sims, -np.inf)  # leave-one-out: never match against yourself
 
-    # A sample whose owner has no *other* usable image cannot be matched to
-    # anything under leave-one-out: there is nothing left to match it to. That
-    # used to be recorded as a similarity of -inf and averaged in with the
-    # rest, which dragged the whole genuine distribution to -inf -- and -inf
-    # is not valid JSON, so the report reached the browser as a parse error
-    # rather than as a number. It is a property of the dataset, not a score,
-    # so it is counted and reported separately.
-    genuine_best, impostor_best, correct, unmatchable = [], [], 0, 0
-    for i in range(len(usable)):
-        same = labels == labels[i]
-        same[i] = False
-        other = labels != labels[i]
-
-        g = float(sims[i][same].max()) if same.any() else None
-        m = float(sims[i][other].max()) if other.any() else None
-
-        if g is None:
-            unmatchable += 1
-        else:
-            genuine_best.append(g)
-        if m is not None:
-            impostor_best.append(m)
-        if g is not None and m is not None and g > m:
-            correct += 1
+    genuine_best, impostor_best, correct, unmatchable = leave_one_out(
+        sims, labels)
 
     if not genuine_best:
         return {"available": False,
@@ -370,13 +426,7 @@ def sface_analysis(records):
     impostor = np.array(impostor_best)
     evaluated = len(genuine_best)
 
-    sweep = []
-    for t in SFACE_SWEEP:
-        sweep.append({
-            "threshold": t,
-            "accept": round(100.0 * float((genuine >= t).mean()), 1),
-            "falseMatch": round(100.0 * float((impostor >= t).mean()), 1),
-        })
+    sweep = threshold_sweep(genuine, impostor)
 
     # The local sweep can only see the impostors that exist in this dataset.
     # With a handful of enrolled people that is a handful of chances to be
@@ -391,17 +441,7 @@ def sface_analysis(records):
     cal_threshold, cal_risk, cal_ok = calibration.recommend_threshold(n_users)
     recommended = best["threshold"] if trust_local else cal_threshold
 
-    # Which two people are most confusable?
-    pairs = []
-    user_ids = sorted(by_user)
-    for a in range(len(user_ids)):
-        for b in range(a + 1, len(user_ids)):
-            ua, ub = user_ids[a], user_ids[b]
-            block = sims[np.ix_(labels == ua, labels == ub)]
-            pairs.append({"a": ua, "b": ub,
-                          "maxSimilarity": round(float(block.max()), 3),
-                          "meanSimilarity": round(float(block.mean()), 3)})
-    pairs.sort(key=lambda p: -p["maxSimilarity"])
+    pairs = confusable_pairs(sims, labels, sorted(by_user))
 
     return {
         "available": True,
@@ -423,7 +463,7 @@ def sface_analysis(records):
         "recommendedAccept": best["accept"],
         "recommendedFalseMatch": best["falseMatch"],
         "referenceThreshold": SFACE_REFERENCE,
-        "weakestPairs": pairs[:5],
+        "weakestPairs": pairs[:WEAKEST_PAIRS_SHOWN],
         # Gallery-size-aware guidance from the large-corpus calibration.
         "localSweepTrusted": trust_local,
         "localSweepThreshold": best["threshold"],
@@ -581,7 +621,11 @@ def lbph_analysis(records, folds=KFOLDS):
         "recommendedThreshold": best["threshold"],
         "recommendedAccept": best["accept"],
         "recommendedFalseMatch": best["falseMatch"],
-        "currentThreshold": 70,
+        # Read, not typed. Four things consume this -- the sweep table's
+        # "current" marker, the CLI's advice line, and two places in the
+        # web UI -- and a literal here made all four misreport the
+        # configuration the moment somebody changed the real threshold.
+        "currentThreshold": vision.CONFIDENCE_THRESHOLD,
     }
 
 

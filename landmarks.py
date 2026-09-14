@@ -33,16 +33,65 @@ import numpy as np
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "lbfmodel.yaml")
 
+# The 68-point model's layout, as half-open ranges. Named once and used
+# everywhere, because the alternative -- and what this replaced -- was a
+# PARTS dict that named them and then twenty lines of `p[36:42]` and `p[45]`
+# further down that did not. Two spellings of the same convention, and the
+# raw ones give a reader nothing to check against the diagram above.
+POINT_COUNT = 68
+
+JAW = (0, 17)
+BROW_RIGHT = (17, 22)
+BROW_LEFT = (22, 27)
+NOSE_BRIDGE = (27, 31)
+NOSTRILS = (31, 36)
+EYE_RIGHT = (36, 42)
+EYE_LEFT = (42, 48)
+LIP_OUTER = (48, 60)
+LIP_INNER = (60, 68)
+
+# Both brows together, for the forehead arc.
+BROWS = (BROW_RIGHT[0], BROW_LEFT[1])
+
+# Individual points the cheek and chin geometry is built from. The outer eye
+# corners and the nose wings are the stable landmarks on each side; the jaw
+# indices are the points level with them.
+CHIN = 8
+EYE_RIGHT_OUTER = 36
+EYE_LEFT_OUTER = 45
+NOSE_RIGHT = 31
+NOSE_LEFT = 35
+JAW_RIGHT_HIGH = 2
+JAW_LEFT_HIGH = 14
+JAW_RIGHT_LOW = 4
+JAW_LEFT_LOW = 12
+
+# How far above the brow line the synthetic forehead arc sits, in interocular
+# distances -- so it scales with the face rather than with the image.
+FOREHEAD_RISE = 0.62
+
+# Offsets *within* a named part, for the measurements that need two specific
+# points rather than the whole outline. Within-part offsets rather than
+# absolute indices because that is how the code reads them: `mouth[3]` is the
+# fourth point of the outer lip, not the fourth point of the face.
+LIP_CORNER_RIGHT = 0     # within lipOuter
+LIP_TOP_CENTRE = 3
+LIP_CORNER_LEFT = 6
+LIP_BOTTOM_CENTRE = 9
+JAW_START = 0            # within jaw
+JAW_CHIN = 8
+JAW_END = 16
+
 PARTS = {
-    "jaw": list(range(0, 17)),
-    "browRight": list(range(17, 22)),
-    "browLeft": list(range(22, 27)),
-    "noseBridge": list(range(27, 31)),
-    "nostrils": list(range(31, 36)),
-    "eyeRight": list(range(36, 42)),
-    "eyeLeft": list(range(42, 48)),
-    "lipOuter": list(range(48, 60)),
-    "lipInner": list(range(60, 68)),
+    "jaw": list(range(*JAW)),
+    "browRight": list(range(*BROW_RIGHT)),
+    "browLeft": list(range(*BROW_LEFT)),
+    "noseBridge": list(range(*NOSE_BRIDGE)),
+    "nostrils": list(range(*NOSTRILS)),
+    "eyeRight": list(range(*EYE_RIGHT)),
+    "eyeLeft": list(range(*EYE_LEFT)),
+    "lipOuter": list(range(*LIP_OUTER)),
+    "lipInner": list(range(*LIP_INNER)),
 }
 
 # Eye aspect ratio below this reads as a closed eye (Soukupova & Cech 2016
@@ -112,12 +161,12 @@ def derived_points(points):
     open at the top. The arc is the brow line pushed up along the face's own
     vertical axis, scaled by eye separation so it holds at any distance.
     """
-    if points is None or len(points) < 68:
+    if points is None or len(points) < POINT_COUNT:
         return {}
 
     p = points
-    eye_r_c = p[36:42].mean(axis=0)
-    eye_l_c = p[42:48].mean(axis=0)
+    eye_r_c = p[slice(*EYE_RIGHT)].mean(axis=0)
+    eye_l_c = p[slice(*EYE_LEFT)].mean(axis=0)
     interocular = float(np.linalg.norm(eye_l_c - eye_r_c)) or 1.0
 
     # Face's own "up": perpendicular to the eye line, pointing away from the
@@ -126,16 +175,16 @@ def derived_points(points):
     eye_axis = eye_l_c - eye_r_c
     norm = float(np.linalg.norm(eye_axis)) or 1.0
     up = np.array([eye_axis[1], -eye_axis[0]], dtype=np.float32) / norm
-    if float(np.dot(up, p[8] - (eye_r_c + eye_l_c) / 2.0)) > 0:
-        up = -up   # p[8] is the chin, so "up" must point away from it
+    if float(np.dot(up, p[CHIN] - (eye_r_c + eye_l_c) / 2.0)) > 0:
+        up = -up   # "up" must point away from the chin
 
-    cheek_r_high = (p[36] + p[2]) / 2.0
-    cheek_l_high = (p[45] + p[14]) / 2.0
-    cheek_r_low = (p[31] + p[4]) / 2.0
-    cheek_l_low = (p[35] + p[12]) / 2.0
+    cheek_r_high = (p[EYE_RIGHT_OUTER] + p[JAW_RIGHT_HIGH]) / 2.0
+    cheek_l_high = (p[EYE_LEFT_OUTER] + p[JAW_LEFT_HIGH]) / 2.0
+    cheek_r_low = (p[NOSE_RIGHT] + p[JAW_RIGHT_LOW]) / 2.0
+    cheek_l_low = (p[NOSE_LEFT] + p[JAW_LEFT_LOW]) / 2.0
 
-    brow = np.vstack([p[17:27]])
-    forehead = brow + up * (0.62 * interocular)
+    brow = np.vstack([p[slice(*BROWS)]])
+    forehead = brow + up * (FOREHEAD_RISE * interocular)
 
     return {
         "cheekRightHigh": cheek_r_high, "cheekLeftHigh": cheek_l_high,
@@ -151,7 +200,7 @@ def outline(points):
     d = derived_points(points)
     if not d:
         return None
-    jaw = points[0:17]
+    jaw = points[slice(*JAW)]
     fore = d["forehead"][::-1]      # left temple back to right
     return np.vstack([jaw, fore]).astype(np.int32)
 
@@ -191,15 +240,18 @@ def metrics(points):
     Every value is a plain Python float via _plain_float(); this dict is serialised
     straight to JSON.
     """
-    if points is None or len(points) < 68:
+    if points is None or len(points) < POINT_COUNT:
         return None
     p = parts(points)
 
     ear_r = _aspect(p["eyeRight"])
     ear_l = _aspect(p["eyeLeft"])
     mouth = p["lipOuter"]
-    mar = (float(np.linalg.norm(mouth[3] - mouth[9]))
-           / (float(np.linalg.norm(mouth[0] - mouth[6])) or 1.0))
+    lip_gap = float(np.linalg.norm(
+        mouth[LIP_TOP_CENTRE] - mouth[LIP_BOTTOM_CENTRE]))
+    lip_width = float(np.linalg.norm(
+        mouth[LIP_CORNER_RIGHT] - mouth[LIP_CORNER_LEFT]))
+    mar = lip_gap / (lip_width or 1.0)
 
     eye_r_c = p["eyeRight"].mean(axis=0)
     eye_l_c = p["eyeLeft"].mean(axis=0)
@@ -219,8 +271,10 @@ def metrics(points):
     eye_mismatch = abs(ear_r - ear_l) / (max(ear_r, ear_l) or 1.0)
 
     jaw = p["jaw"]
-    jaw_width = float(np.linalg.norm(jaw[0] - jaw[16])) / interocular
-    face_height = float(np.linalg.norm(jaw[8] - nose_top)) / interocular
+    jaw_width = (float(np.linalg.norm(jaw[JAW_START] - jaw[JAW_END]))
+                 / interocular)
+    face_height = (float(np.linalg.norm(jaw[JAW_CHIN] - nose_top))
+                   / interocular)
 
     # Cheekbones, from the derived zygomatic points. Width is the arch-to-arch
     # span; prominence is how far they sit outside the jaw below them, which
@@ -228,7 +282,12 @@ def metrics(points):
     d = derived_points(points)
     cheek_width = float(np.linalg.norm(
         d["cheekLeftHigh"] - d["cheekRightHigh"])) / interocular
-    lower_jaw_width = float(np.linalg.norm(jaw[4] - jaw[12])) / interocular
+    # The jaw part starts at absolute index 0, so a within-jaw offset and an
+    # absolute landmark index are the same number here -- which is why the
+    # JAW_*_LOW constants serve both uses.
+    lower_jaw_width = (float(np.linalg.norm(jaw[JAW_RIGHT_LOW]
+                                            - jaw[JAW_LEFT_LOW]))
+                       / interocular)
     cheek_prominence = cheek_width / (lower_jaw_width or 1.0)
 
     flags = []
@@ -297,7 +356,7 @@ def draw(frame, points, colour=(138, 201, 94)):
     differently made the overlay look like a diagram of something else; the
     state of the capture is already carried by which colour is passed in.
     """
-    if points is None or len(points) < 68:
+    if points is None or len(points) < POINT_COUNT:
         return
     h, w = frame.shape[:2]
 
@@ -330,5 +389,3 @@ def draw(frame, points, colour=(138, 201, 94)):
         q = d.get(key)
         if q is not None and 0 <= q[0] < w and 0 <= q[1] < h:
             cv2.circle(frame, (int(q[0]), int(q[1])), 3, colour, 1, cv2.LINE_AA)
-
-

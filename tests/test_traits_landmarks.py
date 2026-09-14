@@ -38,7 +38,8 @@ def test_detection_and_person_thresholds_are_distinct():
 def test_count_people_ignores_haar_rows():
     import traits
     haar = np.zeros(15, np.float32)          # score 0
-    strong = np.zeros(15, np.float32); strong[14] = 0.95
+    strong = np.zeros(15, np.float32)
+    strong[14] = 0.95
     assert traits.count_people([haar]) == 0
     assert traits.count_people([haar, strong]) == 1
 

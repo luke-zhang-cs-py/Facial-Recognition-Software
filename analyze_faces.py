@@ -22,55 +22,106 @@ import calibration
 import facemodels
 
 
-def bar(value, width=22, lo=0.0, hi=100.0):
+# Console layout. RULE_WIDTH was written out as a bare 66 at five call
+# sites; BAR_WIDTH is the usable-percentage bar.
+RULE_WIDTH = 66
+BAR_WIDTH = 22
+
+# The per-image statistics, and the label each gets in the readout. A tuple
+# rather than five near-identical print calls, which is what it replaced.
+STAT_ROWS = (("sharpness", "sharpness"), ("brightness", "brightness"),
+             ("contrast", "contrast"), ("quality", "quality 0-1"),
+             ("facePx", "face px"))
+
+
+def rule(char="="):
+    print(char * RULE_WIDTH)
+
+
+def bar(value, width=BAR_WIDTH, lo=0.0, hi=100.0):
     span = hi - lo or 1.0
     filled = int(round(width * max(0.0, min(1.0, (value - lo) / span))))
     return "#" * filled + "." * (width - filled)
 
 
+def print_stats(user):
+    """The numeric spread for each property this user has a reading for."""
+    for key, label in STAT_ROWS:
+        stats = user[key]
+        if stats:
+            print(f"    {label:<12}mean {stats['mean']:<9} "
+                  f"min {stats['min']:<9} max {stats['max']}")
+
+
+def print_pose(user):
+    """Yaw spread, or why there isn't one.
+
+    "unavailable" and "0 degrees" mean opposite things -- no landmarks at all
+    against every sample taken from the same angle -- so the absent case says
+    so rather than printing a zero that reads as a measurement.
+    """
+    if user["yawSpread"] is not None:
+        print(f"    pose        yaw spread {user['yawSpread']} deg, "
+              f"range {user['yawRange']}")
+    else:
+        print("    pose        unavailable "
+              "(no landmarks — face did not re-detect)")
+
+
+def print_demographics(user):
+    """The age and gender guesses, each with the agreement behind it.
+
+    The agreement figure is the point: a label that thirty samples disagreed
+    about is a different thing from one they all produced, and printing the
+    label alone would present the two identically.
+    """
+    if user["age"]:
+        age = user["age"]
+        print(f"    age         {age['label']}  "
+              f"(agreement {age['agreement']:.0%} across {age['samples']} "
+              f"samples, {age['distinctLabels']} distinct labels)")
+    if user["gender"]:
+        gender = user["gender"]
+        print(f"    gender      {gender['label']}  "
+              f"(agreement {gender['agreement']:.0%})")
+
+
+def print_user(user):
+    """One person's enrollment-quality block."""
+    usable, samples = user["usable"], user["samples"]
+    percent = 100.0 * usable / samples if samples else 0.0
+
+    print(f"\n  [{user['userId']}] {user['name']}   {user['verdict'].upper()}")
+    print(f"    usable      {usable}/{samples}  {bar(percent)} {percent:.0f}%")
+
+    print_stats(user)
+    print_pose(user)
+
+    if user["flags"]:
+        counted = ", ".join(f"{k} x{v}" for k, v in user["flags"].items())
+        print(f"    flags       {counted}")
+
+    print_demographics(user)
+
+    if user["worstSamples"]:
+        print("    recapture these first:")
+        for worst in user["worstSamples"]:
+            print(f"      {worst['file']:<10}{', '.join(worst['reasons'])}")
+
+    for recommendation in user["recommendations"]:
+        print(f"    -> {recommendation}")
+
+
 def print_quality(report):
-    print("=" * 66)
+    rule()
     print("ENROLLMENT QUALITY")
-    print("=" * 66)
+    rule()
     if not report["users"]:
         print("  No samples found under dataset/ — register someone first.")
         return
 
-    for u in report["users"]:
-        pct = 100.0 * u["usable"] / u["samples"] if u["samples"] else 0.0
-        print(f"\n  [{u['userId']}] {u['name']}   {u['verdict'].upper()}")
-        print(f"    usable      {u['usable']}/{u['samples']}  {bar(pct)} {pct:.0f}%")
-
-        for key, label in (("sharpness", "sharpness"), ("brightness", "brightness"),
-                           ("contrast", "contrast"), ("quality", "quality 0-1"),
-                           ("facePx", "face px")):
-            s = u[key]
-            if s:
-                print(f"    {label:<12}mean {s['mean']:<9} min {s['min']:<9} max {s['max']}")
-
-        if u["yawSpread"] is not None:
-            print(f"    pose        yaw spread {u['yawSpread']} deg, range {u['yawRange']}")
-        else:
-            print("    pose        unavailable (no landmarks — face did not re-detect)")
-
-        if u["flags"]:
-            print(f"    flags       {', '.join(f'{k} x{v}' for k, v in u['flags'].items())}")
-
-        if u["age"]:
-            a = u["age"]
-            print(f"    age         {a['label']}  (agreement {a['agreement']:.0%} across "
-                  f"{a['samples']} samples, {a['distinctLabels']} distinct labels)")
-        if u["gender"]:
-            g = u["gender"]
-            print(f"    gender      {g['label']}  (agreement {g['agreement']:.0%})")
-
-        if u["worstSamples"]:
-            print("    recapture these first:")
-            for w in u["worstSamples"]:
-                print(f"      {w['file']:<10}{', '.join(w['reasons'])}")
-
-        for rec in u["recommendations"]:
-            print(f"    -> {rec}")
+    for user in report["users"]:
+        print_user(user)
 
 
 def print_sweep(title, block, unit=""):
@@ -98,9 +149,9 @@ def print_sweep(title, block, unit=""):
 
 def print_thresholds(report):
     print()
-    print("=" * 66)
+    rule()
     print("RECOGNITION ANALYTICS")
-    print("=" * 66)
+    rule()
 
     lbph = report["lbph"]
     print_sweep("LBPH — the recogniser attendance.py uses today", lbph)
@@ -134,18 +185,18 @@ def print_thresholds(report):
             if local is not None and not sface.get("localSweepTrusted"):
                 print(f"    For contrast, this dataset's own sweep would have said "
                       f"{local}, which carries a "
-                      f"{100*cal['riskAtLocalChoice']:.2f}% gallery-wide false-match "
+                      f"{100 * cal['riskAtLocalChoice']:.2f}% gallery-wide false-match "
                       f"risk at {cal['gallerySize']} enrolled.")
             print(f"\n    {'gallery':>9}{'threshold':>11}{'risk':>9}")
             for size in (10, 100, 1000, 10000):
                 t, r, ok = calibration.recommend_threshold(size)
                 mark = "" if ok else "   (unreachable)"
-                print(f"    {size:>9}{t:>11.3f}{100*r:>8.2f}%{mark}")
+                print(f"    {size:>9}{t:>11.3f}{100 * r:>8.2f}%{mark}")
             d = cal["disparity"]
             print(f"\n    Risk is not evenly shared: at threshold {d['threshold']}, "
                   f"{d['worst'][0]} faces false-match at "
-                  f"{100*d['worst'][1]:.1f}% vs {d['best'][0]} at "
-                  f"{100*d['best'][1]:.1f}% ({d['ratio']}x).")
+                  f"{100 * d['worst'][1]:.1f}% vs {d['best'][0]} at "
+                  f"{100 * d['best'][1]:.1f}% ({d['ratio']}x).")
 
 
 def main():
@@ -176,7 +227,7 @@ def main():
         print_thresholds(report)
 
     print()
-    print("=" * 66)
+    rule()
     for note in report["notes"]:
         print(f"  * {note}")
     return 0

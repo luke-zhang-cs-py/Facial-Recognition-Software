@@ -77,18 +77,20 @@ for n in SIZES:
         c = np.mean(np.vstack(e[:3]), axis=0)
         c = c / (np.linalg.norm(c) or 1.0)
         cents.append(c)
-        p = e[3]; probes.append(p / (np.linalg.norm(p) or 1.0))
-    C = np.vstack(cents); P = np.vstack(probes)
+        p = e[3]
+        probes.append(p / (np.linalg.norm(p) or 1.0))
+    C = np.vstack(cents)
+    P = np.vstack(probes)
 
     thr, risk, reachable = calibration.recommend_threshold(n)
 
     rank1 = correct = rejected = misid = 0
     B = 512
     for s in range(0, n, B):
-        S = P[s:s+B] @ C.T
+        S = P[s:s + B] @ C.T
         idx = S.argmax(axis=1)
         best = S.max(axis=1)
-        truth = np.arange(s, min(s+B, n))
+        truth = np.arange(s, min(s + B, n))
         rank1 += int((idx == truth).sum())
         above = best >= thr
         correct += int(((idx == truth) & above).sum())
@@ -96,8 +98,8 @@ for n in SIZES:
         rejected += int((~above).sum())
 
     mark = "" if reachable else "  UNREACHABLE"
-    print(f"{n:>8}{thr:>8.3f}{100*rank1/n:>7.1f}%{100*correct/n:>8.1f}%"
-          f"{100*rejected/n:>9.1f}%{100*misid/n:>7.1f}%{100*risk:>14.2f}%{mark}")
+    print(f"{n:>8}{thr:>8.3f}{100 * rank1 / n:>7.1f}%{100 * correct / n:>8.1f}%"
+          f"{100 * rejected / n:>9.1f}%{100 * misid / n:>7.1f}%{100 * risk:>14.2f}%{mark}")
 
 print("\nrank1 ignores the threshold: it asks only 'was the right person nearest',")
 print("which stays high while the usable accuracy falls away underneath it.")

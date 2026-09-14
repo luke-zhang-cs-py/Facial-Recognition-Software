@@ -134,8 +134,8 @@ def report_rate(name, hits, groups, names, budget=DISPARITY_BUDGET):
         lo, hi = wilson(k, n)
         label = names[g] if g < len(names) else f"group {g}"
         rows.append({"group": label, "n": n, "rate": k / n, "ci": [lo, hi]})
-        print(f"    {label:<18}{n:>7}{100*k/n:>8.2f}%"
-              f"{f'[{100*lo:.2f}, {100*hi:.2f}]':>18}")
+        print(f"    {label:<18}{n:>7}{100 * k / n:>8.2f}%"
+              f"{f'[{100 * lo:.2f}, {100 * hi:.2f}]':>18}")
 
     if len(rows) < 2:
         return {"rows": rows, "disparity": None}
@@ -160,8 +160,8 @@ def report_rate(name, hits, groups, names, budget=DISPARITY_BUDGET):
 
     shown = "inf" if ratio == float("inf") else f"{ratio:.2f}x"
     note = "" if separated or verdict == "OK" else "  (CIs overlap)"
-    print(f"    disparity {shown}   ({worst['group']} {100*worst['rate']:.2f}% "
-          f"vs {best['group']} {100*best['rate']:.2f}%)   [{verdict}]{note}")
+    print(f"    disparity {shown}   ({worst['group']} {100 * worst['rate']:.2f}% "
+          f"vs {best['group']} {100 * best['rate']:.2f}%)   [{verdict}]{note}")
     return {"rows": rows, "disparity": ratio, "worst": worst,
             "best": best, "verdict": verdict, "ciSeparated": separated}
 

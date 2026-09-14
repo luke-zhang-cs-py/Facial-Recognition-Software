@@ -79,6 +79,7 @@ def test_overlay_colours_match_the_stylesheet_palette():
     import camera
     import re
     css = open("static/css/style.css", encoding="utf-8").read()
+
     def bgr_of(var):
         m = re.search(rf"--{var}:#([0-9a-fA-F]{{6}})", css)
         h = m.group(1)

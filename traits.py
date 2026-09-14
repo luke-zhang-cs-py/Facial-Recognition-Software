@@ -33,6 +33,7 @@ import numpy as np
 
 import calibration
 import facemodels
+import vision
 from facemodels import AGE_BUCKETS, GENDER_LABELS, CAFFE_MEAN
 
 # Thresholds used to turn raw numbers into "is this sample usable?".
@@ -105,6 +106,20 @@ MAX_ROLL = 20.0
 DETECT_SCORE = 0.30
 PERSON_SCORE = 0.70
 
+# The square input both SFace and eDifFIQA were trained on. Written out as a
+# bare (112, 112) at two call sites -- `learned_quality` and the fallback
+# path in `embed` -- where the two must agree with each other and with the
+# networks, and nothing said so. Not in vision.py: that module owns the LBPH
+# pipeline's geometry, and an SFace input size has nothing to do with an
+# LBPH crop beyond both being squares.
+SFACE_INPUT_SIZE = (112, 112)
+
+# blobFromImage wants pixels in 0..1, so the scale is 1/255. Then eDifFIQA
+# expects them centred on zero in -1..1, which is the (x - 0.5) / 0.5 below.
+PIXEL_SCALE = 1 / 255.0
+BLOB_MEAN = 0.5
+BLOB_STD = 0.5
+
 # Reported but no longer used for gating -- see the note above.
 BRIGHT_RANGE = (75.0, 180.0)
 MIN_CONTRAST = 25.0
@@ -163,7 +178,9 @@ def _haar_rows(bgr):
         return []
     gray = to_gray(bgr)
     out = []
-    for (x, y, w, h) in _cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80)):
+    for (x, y, w, h) in _cascade.detectMultiScale(
+            gray, vision.DETECT_SCALE_FACTOR,
+            vision.DETECT_MIN_NEIGHBOURS, minSize=vision.MIN_FACE_SIZE):
         row = np.zeros(15, dtype=np.float32)
         row[:4] = (x, y, w, h)
         row[14] = 0.0          # unknown confidence; never counts as a person
@@ -259,8 +276,9 @@ def learned_quality(bgr_face):
     net = facemodels.get("ediffiqa")
     if net is None:
         return None
-    blob = cv2.dnn.blobFromImage(bgr_face, 1 / 255.0, (112, 112), (0, 0, 0), swapRB=True)
-    blob = (blob - 0.5) / 0.5
+    blob = cv2.dnn.blobFromImage(bgr_face, PIXEL_SCALE, SFACE_INPUT_SIZE,
+                                 (0, 0, 0), swapRB=True)
+    blob = (blob - BLOB_MEAN) / BLOB_STD
     with facemodels.lock_for("ediffiqa"):
         net.setInput(blob)
         out = net.forward()
@@ -349,7 +367,7 @@ def embed(bgr, row=None):
         if row is not None:
             aligned = net.alignCrop(bgr, row)
         else:
-            aligned = cv2.resize(bgr, (112, 112))
+            aligned = cv2.resize(bgr, SFACE_INPUT_SIZE)
         feat = net.feature(aligned)
     vec = np.ravel(np.asarray(feat, dtype=np.float32))
     norm = float(np.linalg.norm(vec))

@@ -29,19 +29,27 @@ from datetime import datetime
 import cv2
 
 import db
-import guidance
+import enrollment
 import landmarks as facelandmarks
 import liveness as faceliveness
 import traits as facetraits
 
 import paths
+import readout
+import vision
 
 BASE_DIR = paths.BASE_DIR
 FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
-# Same tuning knobs as the CLI version. LBPH "confidence" is a distance,
-# so LOWER means a better match.
-CONFIDENCE_THRESHOLD = 70
+# The same tuning knob as the CLI version -- and now literally the same one.
+# LBPH "confidence" is a distance, so LOWER means a better match.
+#
+# "Same tuning knobs as the CLI version" was a comment asserting a property
+# nothing enforced: this file and attendance.py each declared their own 70,
+# and analytics.py reported a third literal 70 back to the user as their
+# current setting. Two of the three would have kept saying 70 after the
+# first was changed.
+CONFIDENCE_THRESHOLD = vision.CONFIDENCE_THRESHOLD
 SAMPLES_TO_CAPTURE = 30
 
 # Registration walks through poses instead of taking 30 frames of somebody
@@ -99,6 +107,7 @@ def pose_matches(key, yaw, roll, pitch, baseline_pitch):
     if key == "down":
         return pitch >= baseline_pitch + PITCH_DELTA and abs(yaw) <= TILT_MAX_YAW
     return False
+
 
 # A full trait read runs five networks and costs ~130 ms, so it cannot go on
 # every frame without collapsing the frame rate. Once a second is plenty for
@@ -425,7 +434,9 @@ class CameraManager:
                 with self._lock:
                     self._error = str(exc)
 
-            ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            ok, buf = cv2.imencode(
+                ".jpg", frame,
+                [int(cv2.IMWRITE_JPEG_QUALITY), vision.STREAM_JPEG_QUALITY])
             if ok:
                 with self._lock:
                     self._latest_jpeg = buf.tobytes()
@@ -457,61 +468,10 @@ class CameraManager:
         if t is None:
             return
 
-        geom = t.get("geometry") or {}
-        demo = t.get("demographics") or {}
-        # Keep this JSON-safe: no numpy arrays past this point.
-        summary = {
-            "detected": t["detected"],
-            "faces": t["faces"],
-            "sharpness": t["sharpness"],
-            "brightness": t["brightness"],
-            "contrast": t["contrast"],
-            "qualityScore": t["qualityScore"],
-            "facePx": t["facePx"],
-            "yaw": geom.get("yaw"),
-            "roll": geom.get("roll"),
-            "shadowClip": t.get("shadowClip"),
-            "highlightClip": t.get("highlightClip"),
-            "dynamicRange": t.get("dynamicRange"),
-            "flags": t["flags"],
-            "usable": t["usable"],
-        }
-
-        # 68-point part measurements: eyes open, mouth neutral, both halves
-        # of the face equally visible. A face can pass every geometric check
-        # and still be unusable because the person blinked.
-        try:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            rows = facetraits.detect(frame)
-            if rows:
-                box = facetraits.geometry(rows[0])["box"]
-                pts = facelandmarks.fit(gray, box)
-                pm = facelandmarks.metrics(pts)
-                if pm:
-                    summary["parts"] = pm
-                    summary["flags"] = list(summary["flags"]) + pm["flags"]
-        except Exception:
-            pass
-
         with self._lock:
             mode = self._mode
-        summary["guidance"] = guidance.instruction(
-            summary, frame_shape=frame.shape[:2], mode=mode)
-        summary["checklist"] = guidance.checklist(
-            summary, frame_shape=frame.shape[:2])
-        if t.get("demographicsSkipped"):
-            summary["demographicsSkipped"] = t["demographicsSkipped"]
-        if demo:
-            for key in ("age", "gender"):
-                if demo.get(key):
-                    summary[key] = {
-                        "label": demo[key]["label"],
-                        "confidence": demo[key]["confidence"],
-                        "uncertain": demo[key]["uncertain"],
-                        "runnerUp": demo[key]["runnerUp"],
-                    }
-            if demo.get("age", {}).get("estimate"):
-                summary["age"]["estimate"] = demo["age"]["estimate"]
+
+        summary = readout.build(t, frame, mode)
 
         with self._lock:
             self._live_traits = summary
@@ -519,14 +479,11 @@ class CameraManager:
     def _build_report(self):
         """Summarise the enrollment that just finished.
 
-        Everything here is measured from the samples on disk -- pose coverage,
-        image quality, how distinctive the face is against everyone already
-        enrolled, and what that implies for the recognition threshold. It is a
-        report on the *enrollment*, not a reading of the person.
+        The measuring is `enrollment.build`, which reads files and database
+        rows and touches nothing of the camera's. What is left here is the
+        part that genuinely is the camera's: lifting the registration state
+        out from under the lock, and putting the finished report back.
         """
-        import analytics
-        import calibration
-
         with self._lock:
             user_id = self._reg_user_id
             name = self._reg_name
@@ -534,83 +491,17 @@ class CameraManager:
             folder = self._reg_dir
 
         try:
-            records = []
-            if folder and os.path.isdir(folder):
-                for fn in sorted(os.listdir(folder)):
-                    path = os.path.join(folder, fn)
-                    if os.path.isfile(path):
-                        rec = analytics.analyze_sample(user_id, path, use_cache=False)
-                        if rec:
-                            records.append(rec)
-            if not records:
-                return
-
-            summary = analytics.summarize_user(user_id, name, records)
-
-            # Pose coverage: what the staged capture was for.
-            yaws = [p["yaw"] for p in poses if p.get("yaw") is not None]
-            stages = {}
-            for p in poses:
-                stages[p["stage"]] = stages.get(p["stage"], 0) + 1
-
-            # How separable is this person from everyone already enrolled?
-            import numpy as np
-            mine = [r["embedding"] for r in records if r["embedding"] is not None]
-            nearest = None
-            if mine:
-                centroid = np.mean(np.vstack(mine), axis=0)
-                n = float(np.linalg.norm(centroid)) or 1.0
-                centroid = centroid / n
-                best = None
-                for other_id, other_name in db.get_all_users():
-                    if other_id == user_id:
-                        continue
-                    rows = db.get_traits_for_user(other_id)
-                    vecs = [np.frombuffer(r["embedding"], dtype=np.float32)
-                            for r in rows if r["embedding"]]
-                    if not vecs:
-                        continue
-                    sim = float(np.max(np.vstack(vecs) @ centroid))
-                    if best is None or sim > best[1]:
-                        best = (other_name, sim)
-                nearest = ({"name": best[0], "similarity": round(best[1], 3)}
-                           if best else None)
-
-            gallery = len(db.get_all_users())
-            thr, risk, ok = calibration.recommend_threshold(max(gallery, 2))
-
-            report = {
-                "userId": user_id,
-                "name": name,
-                "samples": len(records),
-                "usable": summary["usable"],
-                "verdict": summary["verdict"],
-                "flags": summary["flags"],
-                "recommendations": summary["recommendations"],
-                "sharpness": summary["sharpness"],
-                "quality": summary["quality"],
-                "facePx": summary["facePx"],
-                "poseStages": stages,
-                "yawSpread": round(float(np.std(yaws)), 1) if len(yaws) > 1 else None,
-                "yawRange": ([round(min(yaws), 1), round(max(yaws), 1)]
-                             if yaws else None),
-                "nearestOther": nearest,
-                "gallerySize": gallery,
-                "threshold": thr,
-                "thresholdRisk": round(risk, 5),
-                "thresholdReachable": ok,
-                "age": summary.get("age"),
-                "fairness": calibration.FAIRNESS,
-                "sampleAdvice": calibration.describe_samples(len(records)),
-                "sampleAccuracy": round(
-                    calibration.accuracy_for_samples(len(records)), 3),
-                "sampleSaturation": calibration.SAMPLE_SATURATION,
-            }
-            with self._lock:
-                self._reg_report = report
-            self._log_event("success", f"Enrollment report ready for {name}.")
+            report = enrollment.build(user_id, name, poses, folder)
         except Exception as exc:
             self._log_event("error", f"Could not build report: {exc}")
+            return
+
+        if report is None:
+            return
+
+        with self._lock:
+            self._reg_report = report
+        self._log_event("success", f"Enrollment report ready for {name}.")
 
     def _detect(self, frame):
         """Detect faces via traits.detect, so this and the guidance panel
@@ -724,7 +615,7 @@ class CameraManager:
         if crop.size == 0:
             return
         cv2.imwrite(os.path.join(user_dir, f"{count + 1}.jpg"),
-                    cv2.resize(crop, (200, 200)))
+                    cv2.resize(crop, vision.LBPH_INPUT_SIZE))
 
         with self._lock:
             self._reg_count += 1
@@ -785,7 +676,7 @@ class CameraManager:
                 self._live_score = (round(live_score, 3)
                                     if live_score is not None else None)
 
-            face_img = cv2.resize(crop, (200, 200))
+            face_img = cv2.resize(crop, vision.LBPH_INPUT_SIZE)
             user_id, confidence = recognizer.predict(face_img)
 
             if confidence < CONFIDENCE_THRESHOLD:

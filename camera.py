@@ -133,8 +133,29 @@ class CameraError(Exception):
     """Raised for problems the user can actually act on (no camera, no model)."""
 
 
+def open_default_camera():
+    """The real device: index 0 over DirectShow.
+
+    This is the only call in this module that needs hardware, which is worth
+    stating plainly -- for a long time it made the whole file look
+    untestable and left it the least-covered module in the project.
+    Everything downstream of it (the grab loop, the mode handlers, the MJPEG
+    generator) only needs an object with `isOpened`, `read` and `release`,
+    and `read` only has to hand back a numpy frame. A webcam is one way to
+    get that. It is not the only way.
+    """
+    return cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+
 class CameraManager:
-    def __init__(self):
+    def __init__(self, capture_factory=None):
+        # Injecting that one call is what makes the capture loop reachable
+        # from a test: hand it something whose `read()` returns synthetic
+        # frames and the loop runs exactly as it does against a webcam.
+        # Existing callers are untouched -- `CameraManager()` still opens
+        # the real camera.
+        self._open_capture = capture_factory or open_default_camera
+
         self._lock = threading.Lock()
         self._cap = None
         self._thread = None
@@ -194,7 +215,7 @@ class CameraManager:
         with self._lock:
             if self._running:
                 return
-            cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            cap = self._open_capture()
             if not cap.isOpened():
                 cap.release()
                 raise CameraError(

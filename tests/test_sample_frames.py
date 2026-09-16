@@ -337,3 +337,66 @@ def test_the_default_target_is_its_own_directory():
             != os.path.normpath(corpus_paths.corpora_dir()))
     assert corpus_paths.sample_frame_dir().startswith(
         corpus_paths.corpora_dir())
+
+
+def test_scan_separates_the_usable_from_the_rejected(clip, one_face):
+    """What --dry-run reports. It had its own copy of this loop, which is
+    one more place for the two to disagree about what counts as usable."""
+    path = clip([photo(i * 3) for i in range(4)])
+    candidates, rejected = sampleframes.scan(path, stride=1)
+    assert len(candidates) == 4, rejected
+    assert rejected == {}
+
+
+def test_scan_counts_each_reason(clip, monkeypatch):
+    monkeypatch.setattr(facetraits, "detect", lambda frame: [])
+    path = clip([photo() for _ in range(3)])
+    candidates, rejected = sampleframes.scan(path, stride=1)
+    assert candidates == []
+    assert rejected == {"no face": 3}
+
+
+def test_a_nested_folder_is_walked(tmp_path):
+    """The corpora this is meant for are one folder per identity -- LFW is
+    lfw/Person_Name/Person_Name_0001.jpg -- so a top-level glob found
+    nothing in exactly the advertised case."""
+    for person in ("Ada_Lovelace", "Grace_Hopper"):
+        folder = tmp_path / "lfw" / person
+        folder.mkdir(parents=True)
+        cv2.imwrite(str(folder / f"{person}_0001.jpg"), photo())
+    assert len(list(sampleframes.frames(str(tmp_path / "lfw")))) == 2
+
+
+def test_upper_case_extensions_are_found(tmp_path):
+    """Cameras write .JPG."""
+    cv2.imwrite(str(tmp_path / "shot.JPG"), photo())
+    assert len(list(sampleframes.frames(str(tmp_path)))) == 1
+
+
+def test_a_folder_is_not_thinned_by_the_stride(tmp_path):
+    """The stride is for video. A folder is already a selection."""
+    for i in range(4):
+        cv2.imwrite(str(tmp_path / f"{i}.png"), photo(i))
+    assert len(list(sampleframes.frames(str(tmp_path), stride=5))) == 4
+
+
+def test_asking_for_more_frames_than_there_are_names(one_face, monkeypatch):
+    """--keep 10 used to write three and say nothing, because zip
+    truncates. The cap is explicit now."""
+    monkeypatch.setattr(facetraits, "embed", lambda frame, row: None)
+    cands = [sampleframes.Candidate(photo(i), 0.9 - i * 0.05, ROW.copy())
+             for i in range(8)]
+    assert len(sampleframes.choose(cands, keep=10)) == len(sampleframes.NAMES)
+
+
+def test_the_quality_read_happens_once_per_frame(one_face, monkeypatch):
+    """quality_metrics runs a network forward pass; calling it for the
+    flags and again for the score doubled the cost of the most expensive
+    step on every frame."""
+    calls = []
+    real = facetraits.quality_metrics
+    monkeypatch.setattr(facetraits, "quality_metrics",
+                        lambda crop: calls.append(1) or real(crop))
+    cand, reason = sampleframes.assess(photo())
+    assert cand is not None, reason
+    assert len(calls) == 1, f"measured {len(calls)} times"

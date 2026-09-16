@@ -23,7 +23,6 @@ a licence. The corpora in corpus_paths.py are there because they come with
 one.
 """
 import collections
-import glob
 import os
 
 import cv2
@@ -44,7 +43,7 @@ NAMES = ("best.png", "live.png", "now.png")
 # rejecting duplicate moments, not duplicate people.
 SAME_SHOT = 0.92
 
-IMAGE_TYPES = ("*.png", "*.jpg", "*.jpeg", "*.bmp")
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".bmp"})
 
 Candidate = collections.namedtuple("Candidate", "frame score row")
 
@@ -52,10 +51,21 @@ Candidate = collections.namedtuple("Candidate", "frame score row")
 def frames(path, stride=STRIDE):
     """Yield BGR frames from a video, a single image, or a folder of them."""
     if os.path.isdir(path):
-        files = []
-        for pattern in IMAGE_TYPES:
-            files.extend(glob.glob(os.path.join(path, pattern)))
-        for name in sorted(files):
+        # Walked, not globbed at the top level. The corpora this is meant to
+        # be pointed at are one folder per identity -- LFW is
+        # lfw/Person_Name/Person_Name_0001.jpg -- so a top-level glob found
+        # nothing at all in exactly the case the tool advertises. Suffixes
+        # are matched case-insensitively too: cameras write .JPG.
+        found = []
+        for folder, _subfolders, names in os.walk(path):
+            for name in names:
+                if os.path.splitext(name)[1].lower() in IMAGE_SUFFIXES:
+                    found.append(os.path.join(folder, name))
+        found.sort()
+        # No stride here. It exists because a clip hands over thirty
+        # near-identical frames a second; a folder of photographs is
+        # already somebody's selection, and thinning it just loses images.
+        for name in found:
             img = cv2.imread(name)
             if img is not None:
                 yield img
@@ -98,15 +108,19 @@ def assess(frame):
     if crop.size == 0:
         return None, "face outside the frame"
 
-    flags = facetraits.quality_flags(
-        facetraits.quality_metrics(crop), geom, grayscale_source=False)
+    # Once, not twice. quality_metrics runs eDifFIQA, a network forward
+    # pass, and this was calling it to get the flags and then again to get
+    # the score -- doubling the cost of the most expensive step on every
+    # frame of the video.
+    metrics = facetraits.quality_metrics(crop)
+
+    flags = facetraits.quality_flags(metrics, geom, grayscale_source=False)
     if flags:
         return None, ", ".join(flags)
 
     # The learned score ranks what survives. None when the model is absent,
     # in which case sharpness is the fallback ordering -- worse, but it
     # still prefers the crisper frame.
-    metrics = facetraits.quality_metrics(crop)
     score = metrics["qualityScore"]
     if score is None:
         score = metrics["sharpness"] / 1000.0
@@ -119,7 +133,11 @@ def choose(candidates, keep=len(NAMES)):
     Best first by quality, then each further frame has to be visibly
     different from the ones already chosen -- three views of one instant
     would test the detector once, not three times.
+
+    Capped at len(NAMES), because `write` has that many names and a fourth
+    frame would have nowhere to go.
     """
+    keep = min(keep, len(NAMES))
     ranked = sorted(candidates, key=lambda c: -c.score)
     chosen, vectors = [], []
     for cand in ranked:
@@ -137,7 +155,14 @@ def choose(candidates, keep=len(NAMES)):
 
 
 def write(chosen, directory=None):
-    """Write the chosen frames under the names the tests look for."""
+    """Write the chosen frames under the names the tests look for.
+
+    At most len(NAMES) of them: there are three names and nothing reads a
+    fourth file, so writing one would leave dead weight on disk. This used
+    to fall out of `zip` truncating, which meant --keep 10 quietly wrote
+    three and said nothing. `choose` is capped instead, so the count the
+    caller asks for is the count it gets or it hears why not.
+    """
     directory = directory or corpus_paths.sample_frame_dir()
     if not os.path.isdir(directory):
         os.makedirs(directory)
@@ -149,8 +174,13 @@ def write(chosen, directory=None):
     return written
 
 
-def build(path, keep=len(NAMES), stride=STRIDE, directory=None):
-    """End to end: (written paths, why frames were rejected)."""
+def scan(path, stride=STRIDE):
+    """Assess every frame: (usable candidates, why the rest were rejected).
+
+    Separate from `build` because the tool's --dry-run wants exactly this
+    and nothing after it. It had its own copy of the loop, which is one
+    more place for the two to disagree about what counts as usable.
+    """
     candidates = []
     rejected = collections.Counter()
     for frame in frames(path, stride):
@@ -159,6 +189,12 @@ def build(path, keep=len(NAMES), stride=STRIDE, directory=None):
             rejected[reason] += 1
         else:
             candidates.append(cand)
+    return candidates, rejected
+
+
+def build(path, keep=len(NAMES), stride=STRIDE, directory=None):
+    """End to end: (written paths, why frames were rejected)."""
+    candidates, rejected = scan(path, stride)
     return write(choose(candidates, keep), directory), rejected
 
 

@@ -49,15 +49,7 @@ def main(argv=None):
 
     try:
         if args.dry_run:
-            candidates, rejected = [], None
-            import collections
-            rejected = collections.Counter()
-            for frame in sampleframes.frames(args.source, args.stride):
-                cand, reason = sampleframes.assess(frame)
-                if cand is None:
-                    rejected[reason] += 1
-                else:
-                    candidates.append(cand)
+            candidates, rejected = sampleframes.scan(args.source, args.stride)
             chosen = sampleframes.choose(candidates, args.keep)
             print("%d frame(s) usable, %d would be kept"
                   % (len(candidates), len(chosen)))

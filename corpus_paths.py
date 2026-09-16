@@ -60,9 +60,20 @@ def faceage_parquet():
 
 
 def sample_frame_dir():
-    """Where the app writes best.png / live.png / now.png.
+    """Where sampleframes.py writes best.png / live.png / now.png.
 
     The tests that need a real photograph look here and skip if there is
     none, because synthesising a face a detector accepts is not realistic.
+
+    A subdirectory, not corpora_dir() itself. That was the bare temporary
+    directory, shared with every other program on the machine -- this one
+    had a purchase.png and a Windows notification icon sitting in it.
+    Anything that happened to leave a best.png there would have been picked
+    up and handed to the face tests as a sample frame.
+
+    The old docstring said "where the app writes" these, and nothing did:
+    all three imwrite calls in this project write gallery samples. So those
+    tests were not waiting for somebody to run the app, they were skipping
+    permanently. `python tools_sample_frames.py <video-or-folder>` fills it.
     """
-    return corpora_dir()
+    return os.path.join(corpora_dir(), "frames")

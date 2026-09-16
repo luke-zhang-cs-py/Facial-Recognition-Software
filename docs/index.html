@@ -398,6 +398,7 @@ var MODULES = [
   { name: 'app.py',           lines: 312, stmts: 140, missed: 40, does: 'the Flask UI; fifteen endpoints, loopback only' },
   { name: 'analyze_faces.py', lines: 237, stmts: 134, missed: 71, does: 'the console version of the analysis panel' },
   { name: 'guidance.py',      lines: 282, stmts: 101, missed:  5, does: 'turns a live trait read into one instruction to act on' },
+  { name: 'sampleframes.py',  lines: 178, stmts: 101, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
   { name: 'db.py',            lines: 295, stmts: 100, missed:  0, does: 'the schema and every query; one context manager for all access' },
   { name: 'calibration.py',   lines: 300, stmts:  81, missed: 13, does: 'the measured false-match curve and the gallery-size maths' },
   { name: 'attendance.py',    lines: 164, stmts:  79, missed: 33, does: 'the CLI attendance loop; the accept/refuse decision is now its own function' },
@@ -409,7 +410,7 @@ var MODULES = [
   { name: 'facemodels.py',    lines: 121, stmts:  46, missed:  8, does: 'lazy loader for the pretrained analysis models' },
   { name: 'train_model.py',   lines:  67, stmts:  37, missed:  2, does: 'rebuilds the LBPH recogniser from dataset/' },
   { name: 'paths.py',         lines:  54, stmts:  19, missed:  0, does: 'where the data lives — one decision, resolved per call' },
-  { name: 'corpus_paths.py',  lines:  68, stmts:  16, missed:  5, does: 'one home for the benchmark corpus locations' },
+  { name: 'corpus_paths.py',  lines:  79, stmts:  16, missed:  5, does: 'one home for the benchmark corpus locations' },
   { name: 'view_report.py',   lines:  34, stmts:  15, missed:  0, does: 'prints the users and the attendance rows' },
   { name: 'vision.py',        lines:  71, stmts:   6, missed:  0, does: 'the numbers the LBPH capture path shares — threshold, crop size, detector tuning' }
 ];
@@ -426,6 +427,7 @@ var OMITTED = [
   { name: 'tools_trials.py',          lines: 147, why: 'the 4,500-trial robustness sweep' },
   { name: 'fetch_models.py',          lines: 111, why: 'downloads the pretrained weights' },
   { name: 'tools_scale_benchmark.py', lines: 105, why: 'the gallery-size sweep' },
+  { name: 'tools_sample_frames.py', lines:  81, why: 'fills the sample-frame directory from footage you own' },
   { name: 'face_attendance.py',       lines:  64, why: 'a thin entry point, asserted by test to hold no logic' }
 ];
 
@@ -433,6 +435,7 @@ var TESTS = [
   { file: 'test_camera_modes.py',           n: 30, of: 'registration and attendance, given a face rather than a camera' },
   { file: 'test_pure_helpers.py',           n: 29, of: 'the functions with no camera, no model and no database' },
   { file: 'test_camera_capture.py',         n: 28, of: 'the grab loop and its failure branches, against a synthetic camera' },
+  { file: 'test_sample_frames.py',          n: 28, of: 'choosing sample frames, over a real video file' },
   { file: 'test_analytics.py',              n: 23, of: 'the sweeps, and refusing to trust a small one' },
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
   { file: 'test_analysis_helpers.py',       n: 19, of: 'the leave-one-out measurement, and the console report' },
@@ -453,7 +456,7 @@ var TESTS = [
   { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' }
 ];
 
-var TEST_LINES = 4373;
+var TEST_LINES = 4712;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

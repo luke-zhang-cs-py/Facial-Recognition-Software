@@ -391,7 +391,7 @@ footer a { color: inherit; }
  * rewrites them. */
 
 var MODULES = [
-  { name: 'camera.py',        lines: 750, stmts: 427, missed:  4, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
+  { name: 'camera.py',        lines: 800, stmts: 441, missed:  4, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
   { name: 'analytics.py',     lines: 679, stmts: 262, missed: 85, does: 'dataset-wide enrollment quality and threshold sweeps' },
   { name: 'traits.py',        lines: 526, stmts: 204, missed: 64, does: 'per-face quality, pose, embedding and demographics' },
   { name: 'landmarks.py',     lines: 391, stmts: 184, missed: 26, does: 'the face mesh, and the overlay drawn on the frame' },
@@ -430,10 +430,10 @@ var OMITTED = [
 ];
 
 var TESTS = [
+  { file: 'test_camera_modes.py',           n: 30, of: 'registration and attendance, given a face rather than a camera' },
   { file: 'test_pure_helpers.py',           n: 29, of: 'the functions with no camera, no model and no database' },
   { file: 'test_camera_capture.py',         n: 28, of: 'the grab loop and its failure branches, against a synthetic camera' },
   { file: 'test_analytics.py',              n: 23, of: 'the sweeps, and refusing to trust a small one' },
-  { file: 'test_camera_modes.py',           n: 23, of: 'registration and attendance, given a face rather than a camera' },
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
   { file: 'test_analysis_helpers.py',       n: 19, of: 'the leave-one-out measurement, and the console report' },
   { file: 'test_attendance_decision.py',    n: 19, of: 'the accept/refuse decision, and writing a gallery sample' },
@@ -453,7 +453,7 @@ var TESTS = [
   { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' }
 ];
 
-var TEST_LINES = 4240;
+var TEST_LINES = 4373;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

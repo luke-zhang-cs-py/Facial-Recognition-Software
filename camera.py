@@ -88,6 +88,36 @@ CAPTURE_PLAN = [
 ]
 
 
+# Two of traits.quality_flags' reasons are about where the head is pointing,
+# and registration deliberately asks for off-axis frames: MAX_YAW is 30 while
+# the left and right stages accept 13 to 38 degrees. Gating on those would
+# reject the frames CAPTURE_PLAN exists to collect. Pose is already the
+# stage's own job, via pose_matches.
+POSE_FLAGS = frozenset({"turned away", "head tilted"})
+
+
+def weak_photograph(bgr_face, face):
+    """Why this crop is a poor photograph, ignoring where the head points.
+
+    Deliberately `traits.quality_flags` rather than a threshold of its own.
+    Those thresholds are already argued for and already measured: nothing
+    there gates on absolute brightness or contrast, because benchmarking
+    found both encode skin tone (2.15x and 1.61x disparity across race
+    groups), so gating on them rejects people instead of photographs. A
+    second set of numbers here would be a second thing to keep honest, and
+    the one that had not been bias-tested.
+    """
+    if bgr_face is None or getattr(bgr_face, "size", 0) == 0:
+        return []
+    metrics = facetraits.quality_metrics(bgr_face)
+    x, y, w, h = face["box"]
+    geom = {"facePx": int(max(w, h)),
+            "yaw": face.get("yaw") or 0.0,
+            "roll": face.get("roll") or 0.0}
+    flags = facetraits.quality_flags(metrics, geom, grayscale_source=False)
+    return [f for f in flags if f not in POSE_FLAGS]
+
+
 def pose_matches(key, yaw, roll, pitch, baseline_pitch):
     """Is the current head pose the one this stage is asking for?"""
     if yaw is None:
@@ -623,6 +653,29 @@ class CameraManager:
         stage = CAPTURE_PLAN[stage_idx]
 
         matched = pose_matches(stage["key"], yaw, roll, pitch, baseline)
+
+        x, y, w, h = face["box"]
+        x0, y0 = max(0, x), max(0, y)
+        crop = gray[y0:y + h, x0:x + w]
+        # Colour, and taken before _draw_face paints over `frame`. The
+        # learned quality model wants the image the camera saw, not the one
+        # with a wireframe on it -- the same reason the trait read gets its
+        # own clean copy in _capture_loop.
+        bgr_crop = frame[y0:y + h, x0:x + w].copy()
+
+        # The gallery used to accept any frame whose head was in the right
+        # position, however badly photographed. enrollment.build then
+        # measured the sharpness and the quality score and reported them --
+        # after the samples were already on disk. The measuring was the only
+        # part missing from the gate, and it was already being done.
+        weak = weak_photograph(bgr_crop, face) if (matched and crop.size) else []
+        if weak:
+            # Said out loud, not silently skipped. A stalled counter with no
+            # reason on screen looks like the capture has broken; "too dark"
+            # is something a person can act on.
+            self._draw_face(frame, face, RED, label="; ".join(weak))
+            return
+
         colour = GREEN if matched else AMBER
         self._draw_face(frame, face, colour,
                         label=f"{stage['label']}  {stage_count}/{stage['count']}")
@@ -630,9 +683,6 @@ class CameraManager:
         if not matched:
             return
 
-        x, y, w, h = face["box"]
-        x0, y0 = max(0, x), max(0, y)
-        crop = gray[y0:y + h, x0:x + w]
         if crop.size == 0:
             return
         cv2.imwrite(os.path.join(user_dir, f"{count + 1}.jpg"),

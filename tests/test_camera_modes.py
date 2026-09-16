@@ -19,6 +19,7 @@ is present, and skips when it is not.
 """
 import os
 
+import cv2
 import numpy as np
 import pytest
 
@@ -43,6 +44,32 @@ def yunet_row(nose_x=300.0, nose_y=260.0, eye_y=210.0, score=0.99):
 FRONTAL = yunet_row()
 TURNED_RIGHT = yunet_row(nose_x=340.0)     # nose 40px off centre -> yaw 30
 LOOKING_DOWN = yunet_row(nose_y=285.0)     # nose lower -> pitchRatio 0.75
+
+
+def photo_frame():
+    """A frame that passes the sample-quality gate, fresh on every call.
+
+    Two things this fixes about using `blank_frame` for registration. A flat
+    grey rectangle is not a photograph of anything -- 0 sharpness, 0 tonal
+    range -- so the gate rejects it, correctly. And a *shared* frame is
+    worse than unrealistic: `_handle_register` draws its overlay onto the
+    frame it is handed, so reusing one array meant the label drawn on a
+    rejected frame became the texture that let the next call through. A
+    camera hands over a new frame every iteration; so does this.
+    """
+    ramp = np.tile(np.linspace(20, 235, 640, dtype=np.uint8), (480, 1))
+    frame = cv2.cvtColor(ramp, cv2.COLOR_GRAY2BGR)
+    # Structure at roughly face scale, inside the box the fake rows report.
+    for cx, cy, r in ((260, 220, 26), (340, 220, 26),
+                      (300, 270, 18), (300, 310, 34)):
+        cv2.circle(frame, (cx, cy), r, (40, 45, 60), -1)
+    return cv2.GaussianBlur(frame, (5, 5), 0)
+
+
+@pytest.fixture
+def photo():
+    """Hand out a fresh passing frame on demand."""
+    return photo_frame
 
 
 @pytest.fixture
@@ -78,9 +105,9 @@ def registering(mgr, isolated_root):
 # ------------------------------------------------------------ registration
 
 
-def test_the_right_pose_writes_a_sample(registering, faces, blank_frame):
+def test_the_right_pose_writes_a_sample(registering, faces, photo):
     faces(FRONTAL)
-    registering._handle_register(blank_frame)
+    registering._handle_register(photo())
 
     assert registering._reg_count == 1
     assert registering._reg_stage_count == 1
@@ -90,12 +117,12 @@ def test_the_right_pose_writes_a_sample(registering, faces, blank_frame):
 
 
 def test_the_wrong_pose_is_ignored_rather_than_counted(registering, faces,
-                                                       blank_frame):
+                                                       photo):
     """Stage 0 asks for a frontal face; a turned head is not a failure to
     report, it is a frame to skip. The instruction on screen already says
     what to do."""
     faces(TURNED_RIGHT)
-    registering._handle_register(blank_frame)
+    registering._handle_register(photo())
 
     assert registering._reg_count == 0
     assert os.listdir(registering._reg_dir) == []
@@ -116,14 +143,14 @@ def test_a_finished_plan_stops_capturing(registering, faces, blank_frame):
 
 
 def test_completing_a_stage_advances_and_sets_the_baseline(registering, faces,
-                                                           blank_frame):
+                                                           photo):
     """The neutral pitch measured during the front stage is what the up and
     down stages are later compared against, so it has to be recorded when
     that stage closes."""
     faces(FRONTAL)
     wanted = camera.CAPTURE_PLAN[0]["count"]
     for _ in range(wanted):
-        registering._handle_register(blank_frame)
+        registering._handle_register(photo())
 
     assert registering._reg_count == wanted
     assert registering._reg_stage == 1, "the stage did not advance"
@@ -133,12 +160,12 @@ def test_completing_a_stage_advances_and_sets_the_baseline(registering, faces,
 
 
 def test_the_pitch_baseline_is_the_median_not_the_last(registering, faces,
-                                                       blank_frame):
+                                                       photo):
     """One bad frame at the end of the stage must not become the neutral."""
     wanted = camera.CAPTURE_PLAN[0]["count"]
     for i in range(wanted):
         faces(FRONTAL if i < wanted - 1 else LOOKING_DOWN)
-        registering._handle_register(blank_frame)
+        registering._handle_register(photo())
 
     assert registering._reg_baseline_pitch == pytest.approx(0.5, abs=0.01), (
         "the outlier frame became the baseline")
@@ -375,7 +402,7 @@ def test_finishing_every_stage_closes_the_registration(mgr, faces,
                                                        isolated_db,
                                                        isolated_root,
                                                        monkeypatch,
-                                                       blank_frame):
+                                                       photo):
     """The last sample of the last pose returns to idle, retrains, and
     leaves a report -- the whole point of the walkthrough."""
     monkeypatch.setattr(camera.enrollment, "build",
@@ -392,7 +419,7 @@ def test_finishing_every_stage_closes_the_registration(mgr, faces,
     for stage in camera.CAPTURE_PLAN:
         faces(POSE_FOR_STAGE[stage["key"]])
         for _ in range(stage["count"]):
-            mgr._handle_register(blank_frame)
+            mgr._handle_register(photo())
 
     status = mgr.status()
     total = sum(p["count"] for p in camera.CAPTURE_PLAN)
@@ -439,3 +466,96 @@ def test_an_unknown_stage_key_matches_nothing(mgr):
     """A defensive default: every key in CAPTURE_PLAN is handled above it,
     so this only fires if somebody adds a stage and forgets the gate."""
     assert camera.pose_matches("sideways", 0.0, 0.0, 0.5, 0.5) is False
+
+
+# ------------------------------------------------- the sample-quality gate
+#
+# Registration used to accept any frame whose head was in the right
+# position. enrollment.build then measured the sharpness and the quality
+# score of what had already been written. The measurement was the only part
+# the gate was missing, and it was being taken anyway.
+
+
+def test_a_badly_photographed_frame_is_not_written(registering, faces,
+                                                   blank_frame):
+    """Flat grey is the degenerate case: no sharpness, no tonal range. It
+    is not a photograph of anybody and does not belong in a gallery."""
+    faces(FRONTAL)
+    registering._handle_register(blank_frame)
+
+    assert registering._reg_count == 0
+    assert os.listdir(registering._reg_dir) == [], "a blank frame was enrolled"
+
+
+def test_the_reason_is_put_on_screen(registering, faces, blank_frame,
+                                     monkeypatch):
+    """A counter that stops moving with no reason shown looks like the
+    capture has broken. "too dark" is something a person can act on."""
+    labels = []
+    monkeypatch.setattr(registering, "_draw_face",
+                        lambda frame, face, colour, label=None:
+                        labels.append((colour, label)))
+    faces(FRONTAL)
+    registering._handle_register(blank_frame)
+
+    assert labels, "nothing was drawn at all"
+    colour, label = labels[-1]
+    assert colour == camera.RED, "a rejected frame was not marked as rejected"
+    assert "blurry" in label, label
+
+
+def test_a_good_frame_still_gets_through(registering, faces, photo):
+    """The gate has to reject bad photographs without rejecting the good
+    ones -- a filter that takes nothing is not a filter."""
+    faces(FRONTAL)
+    registering._handle_register(photo())
+    assert registering._reg_count == 1
+
+
+def test_the_turn_stages_are_not_rejected_for_turning(registering, faces,
+                                                      photo):
+    """traits.MAX_YAW is 30 and the turn stages accept 13 to 38, so gating
+    on the pose flags would reject the frames CAPTURE_PLAN exists to
+    collect. Pose is the stage's job; this gate is about the photograph."""
+    registering._reg_stage = 2                      # the "right" stage
+    faces(yunet_row(nose_x=345.0))                  # yaw ~34, past MAX_YAW
+    registering._handle_register(photo())
+
+    assert registering._reg_count == 1, (
+        "a deliberately turned head was rejected as 'turned away'")
+
+
+def test_the_gate_reads_the_frame_before_the_overlay(registering, faces,
+                                                     monkeypatch):
+    """The quality score has to be measured on what the camera saw. Drawing
+    first and measuring after cost 0.434 -> 0.407 on a real frame, which is
+    the same mistake the trait read used to make."""
+    seen = []
+    real = camera.facetraits.quality_metrics
+    monkeypatch.setattr(camera.facetraits, "quality_metrics",
+                        lambda crop: seen.append(crop.copy()) or real(crop))
+    faces(FRONTAL)
+    frame = photo_frame()
+    registering._handle_register(frame)
+
+    assert seen, "quality was never measured"
+    # The overlay draws in fixed palette colours; none should be present in
+    # the crop the gate looked at.
+    for colour in (camera.GREEN, camera.RED, camera.AMBER):
+        assert not (seen[0] == np.array(colour, np.uint8)).all(axis=2).any(), (
+            "the gate measured a frame that had already been drawn on")
+
+
+def test_pose_flags_are_the_only_ones_dropped():
+    """If traits grows a new reason, it should reach the gate rather than be
+    silently filtered out with the pose ones."""
+    assert camera.POSE_FLAGS == {"turned away", "head tilted"}
+
+
+def test_an_empty_crop_is_not_judged(mgr):
+    """Called directly, the gate has to survive a zero-size crop rather
+    than handing it to the quality model. _handle_register already checks,
+    so this is the belt to that braces."""
+    empty = np.zeros((0, 0, 3), np.uint8)
+    assert camera.weak_photograph(empty, {"box": (0, 0, 0, 0)}) == []
+    assert camera.weak_photograph(None, {"box": (0, 0, 0, 0)}) == []

@@ -335,3 +335,82 @@ def test_the_default_factory_is_the_real_camera():
     passed, the manager still reaches for the webcam."""
     mgr = camera.CameraManager()
     assert mgr._open_capture is camera.open_default_camera
+
+
+# ------------------------------------------------- the trait readout's guards
+#
+# "The readout and the overlay are cosmetic; a failure in either must not
+# take the video feed down with it." These two pin that.
+
+
+def test_a_failed_trait_read_is_reported_not_raised(manager, blank_frame,
+                                                    monkeypatch):
+    monkeypatch.setattr(camera.facetraits, "analyze",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            RuntimeError("model missing")))
+    manager._last_trait_at = 0.0
+    manager._maybe_traits(blank_frame)
+
+    assert manager.status()["liveTraits"] == {"error": "model missing"}
+
+
+def test_no_face_means_no_readout_rather_than_an_empty_one(manager,
+                                                           blank_frame,
+                                                           monkeypatch):
+    """`analyze` returns None when it was told detection is required and
+    found none. A blank panel would imply a measurement was taken."""
+    monkeypatch.setattr(camera.facetraits, "analyze", lambda *a, **k: None)
+    manager._last_trait_at = 0.0
+    manager._maybe_traits(blank_frame)
+
+    assert manager.status()["liveTraits"] is None
+
+
+def test_the_readout_is_throttled(manager, blank_frame, monkeypatch):
+    """A full trait read runs five networks at ~130 ms; once a second is
+    plenty for something a human is reading."""
+    calls = []
+    monkeypatch.setattr(camera.facetraits, "analyze",
+                        lambda *a, **k: calls.append(1) or None)
+    manager._last_trait_at = 0.0
+    manager._maybe_traits(blank_frame)
+    manager._maybe_traits(blank_frame)      # immediately again
+
+    assert len(calls) == 1, "the throttle let a second read through"
+
+
+# ------------------------------------------------------- the landmark mesh
+
+
+def test_the_mesh_is_drawn_when_the_fit_succeeded(manager, blank_frame,
+                                                  monkeypatch):
+    """With 68 points available the overlay draws the mesh rather than the
+    five-dot fallback, and the colour carries the capture state."""
+    drawn = []
+    monkeypatch.setattr(camera.facelandmarks, "draw",
+                        lambda frame, pts, colour: drawn.append(colour))
+    face = {"box": (200, 150, 200, 200),
+            "landmarks": [[250, 210], [350, 210], [300, 260],
+                          [265, 310], [335, 310]],
+            "points68": np.zeros((68, 2), np.float32)}
+
+    manager._draw_face(blank_frame, face, camera.GREEN)
+
+    assert drawn == [camera.GREEN], "the mesh was not drawn in the state colour"
+
+
+def test_a_failed_landmark_fit_is_not_fatal(manager, blank_frame, monkeypatch):
+    """The 68-point fit is an extra on top of detection. Losing it should
+    cost the mesh, not the face."""
+    row = [200.0, 150.0, 200.0, 200.0,
+           250.0, 210.0, 350.0, 210.0, 300.0, 260.0,
+           265.0, 310.0, 335.0, 310.0, 0.99]
+    monkeypatch.setattr(camera.facetraits, "detect", lambda frame: [row])
+    monkeypatch.setattr(camera.facelandmarks, "fit",
+                        lambda gray, box: (_ for _ in ()).throw(
+                            RuntimeError("no landmark model")))
+
+    _gray, faces = manager._detect(blank_frame)
+
+    assert len(faces) == 1, "the face was lost with the mesh"
+    assert faces[0]["points68"] is None

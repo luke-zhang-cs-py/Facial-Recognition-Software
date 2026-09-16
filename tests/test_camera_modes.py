@@ -243,3 +243,199 @@ def test_a_face_outside_the_frame_is_skipped(attending, faces, monkeypatch):
 
     assert attending._recognizer.calls == 0
     assert attending._marked_session == set()
+
+
+# ---------------------------------------------------------- entering a mode
+#
+# `start()` is covered against a synthetic device in test_camera_capture.py.
+# Here it is replaced by a recorder: what these tests are about is the state
+# each mode sets up, and the assertion that the camera is asked to open at
+# all -- not the grab thread, which would only make them slow and racy.
+
+
+@pytest.fixture
+def opens(mgr, monkeypatch):
+    """Record that the camera was asked to start, without starting it."""
+    calls = []
+    monkeypatch.setattr(mgr, "start", lambda: calls.append(True))
+    return calls
+
+
+def test_registering_needs_a_name(mgr, opens, isolated_db):
+    for blank in ("", "   ", None):
+        with pytest.raises(camera.CameraError) as raised:
+            mgr.start_register(blank)
+        assert "name" in str(raised.value).lower()
+    assert opens == [], "it opened the camera before checking the name"
+    assert mgr.status()["mode"] == camera.MODE_IDLE
+
+
+def test_registering_creates_the_user_and_its_folder(mgr, opens, isolated_db,
+                                                     isolated_root):
+    user_id = mgr.start_register("Ada Lovelace")
+
+    assert opens == [True], "the camera was not started"
+    assert isolated_db.get_user_name(user_id) == "Ada Lovelace"
+    # Spaces become underscores so the folder name stays one token, and the
+    # id leads so train_model can parse the label back out of it.
+    expected = os.path.join(camera.paths.dataset_dir(),
+                            f"{user_id}_Ada_Lovelace")
+    assert os.path.isdir(expected), os.listdir(camera.paths.dataset_dir())
+
+    status = mgr.status()
+    assert status["mode"] == camera.MODE_REGISTER
+    assert status["register"]["name"] == "Ada Lovelace"
+    assert status["register"]["captured"] == 0
+
+
+def test_registering_again_clears_the_last_run(mgr, opens, isolated_db,
+                                               isolated_root):
+    """Stale counters from a previous registration would make the progress
+    bar start part-full."""
+    mgr.start_register("Ada")
+    mgr._reg_count = 17
+    mgr._reg_stage = 3
+    mgr._reg_finished = True
+    mgr._reg_report = {"stale": True}
+    mgr._reg_poses = [{"stage": "front"}]
+
+    mgr.start_register("Grace")
+
+    status = mgr.status()
+    assert status["register"]["captured"] == 0
+    assert status["register"]["stage"] == 0
+    assert status["register"]["finished"] is False
+    assert status["report"] is None
+    assert mgr._reg_poses == []
+
+
+def test_attendance_refuses_when_nobody_is_enrolled(mgr, opens, isolated_root):
+    """No model and nothing to train from is the one case that genuinely
+    cannot proceed."""
+    with pytest.raises(camera.CameraError) as raised:
+        mgr.start_attendance()
+    assert "enrolled" in str(raised.value).lower()
+    assert opens == [], "it opened the camera for a mode it could not enter"
+
+
+def test_attendance_trains_on_demand_rather_than_refusing(mgr, opens,
+                                                          isolated_root):
+    """Samples on disk but no trainer.yml used to send the user off to press
+    a button this can press itself."""
+    folder = os.path.join(camera.paths.dataset_dir(), "1_Ada")
+    os.makedirs(folder, exist_ok=True)
+    rng = np.random.RandomState(0)
+    import cv2
+    for i in range(2):
+        cv2.imwrite(os.path.join(folder, f"{i}.jpg"),
+                    rng.randint(0, 255, (200, 200), dtype=np.uint8))
+
+    mgr.start_attendance()
+
+    assert os.path.exists(camera.paths.model_path()), "it did not train"
+    assert mgr.status()["mode"] == camera.MODE_ATTENDANCE
+    assert opens == [True]
+    assert mgr._recognizer is not None, "the fresh model was not loaded"
+
+
+def test_attendance_starts_a_clean_session(mgr, opens, isolated_root):
+    """Yesterday's marked set must not suppress today's first sighting."""
+    folder = os.path.join(camera.paths.dataset_dir(), "1_Ada")
+    os.makedirs(folder, exist_ok=True)
+    rng = np.random.RandomState(1)
+    import cv2
+    cv2.imwrite(os.path.join(folder, "0.jpg"),
+                rng.randint(0, 255, (200, 200), dtype=np.uint8))
+    mgr.start_attendance()
+
+    mgr._marked_session.add(99)
+    mgr._live_verdict = "spoof"
+    mgr.start_attendance()
+
+    assert mgr._marked_session == set(), "a stale session survived"
+    assert mgr.status()["liveness"]["verdict"] == "unknown"
+
+
+# ------------------------------------------------- the whole plan, end to end
+#
+# Poses chosen against the gate's own constants: TURN_MIN 13 / TURN_MAX 38
+# for the turns, PITCH_DELTA 0.055 either side of the 0.5 neutral for the
+# chin stages, TILT_MAX_YAW 22 so those stay roughly frontal.
+
+POSE_FOR_STAGE = {
+    "front": FRONTAL,                        # yaw 0
+    "left": yunet_row(nose_x=260.0),         # yaw -30
+    "right": yunet_row(nose_x=340.0),        # yaw +30
+    "up": yunet_row(nose_y=240.0),           # pitch 0.30, below 0.445
+    "down": yunet_row(nose_y=280.0),         # pitch 0.70, above 0.555
+}
+
+
+def test_finishing_every_stage_closes_the_registration(mgr, faces,
+                                                       isolated_db,
+                                                       isolated_root,
+                                                       monkeypatch,
+                                                       blank_frame):
+    """The last sample of the last pose returns to idle, retrains, and
+    leaves a report -- the whole point of the walkthrough."""
+    monkeypatch.setattr(camera.enrollment, "build",
+                        lambda uid, name, poses, folder: {"poses": len(poses)})
+    user_id = isolated_db.add_user("Ada")
+    folder = os.path.join(camera.paths.dataset_dir(), f"{user_id}_Ada")
+    os.makedirs(folder, exist_ok=True)
+
+    mgr._mode = camera.MODE_REGISTER
+    mgr._reg_name = "Ada"
+    mgr._reg_user_id = user_id
+    mgr._reg_dir = folder
+
+    for stage in camera.CAPTURE_PLAN:
+        faces(POSE_FOR_STAGE[stage["key"]])
+        for _ in range(stage["count"]):
+            mgr._handle_register(blank_frame)
+
+    status = mgr.status()
+    total = sum(p["count"] for p in camera.CAPTURE_PLAN)
+    assert status["register"]["captured"] == total, (
+        f"a stage stalled: {status['register']}")
+    assert status["register"]["finished"] is True
+    assert status["mode"] == camera.MODE_IDLE, "it stayed in register mode"
+    assert status["report"] == {"poses": total}
+    assert any(f"Captured {total} samples" in e["message"]
+               for e in status["events"])
+
+
+def test_a_face_off_the_edge_writes_nothing(registering, faces):
+    """An empty crop cannot be saved as a sample."""
+    faces(FRONTAL)
+    tiny = np.full((40, 40, 3), 90, np.uint8)     # the box is at (200, 150)
+    registering._handle_register(tiny)
+    assert registering._reg_count == 0
+    assert os.listdir(registering._reg_dir) == []
+
+
+def test_already_marked_today_is_said_once(attending, faces, blank_frame,
+                                           monkeypatch, isolated_db):
+    """A second day's session re-marking somebody the database already has
+    is not an error, and not a success either."""
+    set_verdict(attending, monkeypatch, "genuine")
+    monkeypatch.setattr(camera.db, "log_attendance",
+                        lambda uid, conf: False)
+    faces(FRONTAL)
+    attending._handle_attendance(blank_frame)
+
+    assert any("already marked today" in e["message"]
+               for e in attending.status()["events"])
+
+
+def test_idle_mode_outlines_a_face_it_finds(mgr, faces, blank_frame):
+    before = blank_frame.copy()
+    faces(FRONTAL)
+    mgr._handle_idle(blank_frame)
+    assert not np.array_equal(blank_frame, before), "no outline was drawn"
+
+
+def test_an_unknown_stage_key_matches_nothing(mgr):
+    """A defensive default: every key in CAPTURE_PLAN is handled above it,
+    so this only fires if somebody adds a stage and forgets the gate."""
+    assert camera.pose_matches("sideways", 0.0, 0.0, 0.5, 0.5) is False

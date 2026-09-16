@@ -391,7 +391,7 @@ footer a { color: inherit; }
  * rewrites them. */
 
 var MODULES = [
-  { name: 'camera.py',        lines: 750, stmts: 427, missed: 108, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
+  { name: 'camera.py',        lines: 750, stmts: 427, missed:  4, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
   { name: 'analytics.py',     lines: 679, stmts: 262, missed: 85, does: 'dataset-wide enrollment quality and threshold sweeps' },
   { name: 'traits.py',        lines: 526, stmts: 204, missed: 64, does: 'per-face quality, pose, embedding and demographics' },
   { name: 'landmarks.py',     lines: 391, stmts: 184, missed: 26, does: 'the face mesh, and the overlay drawn on the frame' },
@@ -407,7 +407,7 @@ var MODULES = [
   { name: 'readout.py',       lines: 145, stmts:  53, missed:  7, does: 'the live sidebar payload, assembled from one frame' },
   { name: 'recognition.py',   lines: 130, stmts:  48, missed:  5, does: 'identification by SFace embedding, against the gallery threshold' },
   { name: 'facemodels.py',    lines: 121, stmts:  46, missed:  8, does: 'lazy loader for the pretrained analysis models' },
-  { name: 'train_model.py',   lines:  67, stmts:  37, missed: 14, does: 'rebuilds the LBPH recogniser from dataset/' },
+  { name: 'train_model.py',   lines:  67, stmts:  37, missed:  2, does: 'rebuilds the LBPH recogniser from dataset/' },
   { name: 'paths.py',         lines:  54, stmts:  19, missed:  0, does: 'where the data lives — one decision, resolved per call' },
   { name: 'corpus_paths.py',  lines:  68, stmts:  16, missed:  5, does: 'one home for the benchmark corpus locations' },
   { name: 'view_report.py',   lines:  34, stmts:  15, missed:  0, does: 'prints the users and the attendance rows' },
@@ -431,18 +431,19 @@ var OMITTED = [
 
 var TESTS = [
   { file: 'test_pure_helpers.py',           n: 29, of: 'the functions with no camera, no model and no database' },
+  { file: 'test_camera_capture.py',         n: 28, of: 'the grab loop and its failure branches, against a synthetic camera' },
   { file: 'test_analytics.py',              n: 23, of: 'the sweeps, and refusing to trust a small one' },
-  { file: 'test_camera_capture.py',         n: 23, of: 'the grab loop and its failure branches, against a synthetic camera' },
+  { file: 'test_camera_modes.py',           n: 23, of: 'registration and attendance, given a face rather than a camera' },
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
   { file: 'test_analysis_helpers.py',       n: 19, of: 'the leave-one-out measurement, and the console report' },
   { file: 'test_attendance_decision.py',    n: 19, of: 'the accept/refuse decision, and writing a gallery sample' },
   { file: 'test_calibration.py',            n: 16, of: 'the measured false-match curve and the gallery maths' },
+  { file: 'test_camera_model_lifecycle.py', n: 16, of: 'training, loading and the enrollment report' },
   { file: 'test_camera_logic.py',           n: 15, of: 'the pose gate and the overlay, as pure functions' },
   { file: 'test_nonfinite.py',              n: 15, of: 'that no endpoint can emit NaN into JSON' },
   { file: 'test_app_routes.py',             n: 13, of: 'the HTTP surface' },
   { file: 'test_frontend_escaping.py',      n: 13, of: 'that a registered name cannot become script' },
   { file: 'test_shared_constants.py',       n: 13, of: 'that one number lives in one place' },
-  { file: 'test_camera_modes.py',           n: 12, of: 'registration and attendance, given a face rather than a camera' },
   { file: 'test_guidance.py',               n: 12, of: 'which instruction wins, and what is never said' },
   { file: 'test_published_figures.py',      n: 11, of: 'the numbers on this page, against a fresh measurement' },
   { file: 'test_db.py',                     n: 10, of: 'the schema, and that a failed write closes its connection' },
@@ -452,7 +453,7 @@ var TESTS = [
   { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' }
 ];
 
-var TEST_LINES = 3736;
+var TEST_LINES = 4240;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

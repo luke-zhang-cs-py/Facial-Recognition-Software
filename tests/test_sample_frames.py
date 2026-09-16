@@ -400,3 +400,89 @@ def test_the_quality_read_happens_once_per_frame(one_face, monkeypatch):
     cand, reason = sampleframes.assess(photo())
     assert cand is not None, reason
     assert len(calls) == 1, f"measured {len(calls)} times"
+
+
+# ------------------------------------------------------------ corpus shards
+
+
+def parquet_of(images, path):
+    """A shard shaped like the HuggingFace image columns the corpora use."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    cells = []
+    for img in images:
+        ok, buf = cv2.imencode(".png", img)
+        assert ok
+        cells.append({"bytes": buf.tobytes(), "path": "x.png"})
+    table = pa.table({"image": pa.array(cells)})
+    pq.write_table(table, path)
+    return path
+
+
+def test_a_corpus_shard_is_read_directly(tmp_path):
+    """The corpora are parquet, not folders. Handing the path to
+    cv2.VideoCapture, which cannot read one, was advice that did not
+    work."""
+    path = parquet_of([photo(i) for i in range(4)],
+                      str(tmp_path / "corpus.parquet"))
+    got = list(sampleframes.frames(path))
+    assert len(got) == 4
+    assert got[0].shape == (480, 640, 3)
+
+
+def test_a_shard_without_an_image_column_says_which_columns_it_has(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    path = str(tmp_path / "wrong.parquet")
+    pq.write_table(pa.table({"label": pa.array([1, 2])}), path)
+    with pytest.raises(ValueError) as raised:
+        list(sampleframes.frames(path))
+    assert "label" in str(raised.value)
+
+
+def test_a_missing_shard_says_so(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        list(sampleframes.frames(str(tmp_path / "absent.parquet")))
+
+
+def test_an_undecodable_cell_is_skipped(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    ok, buf = cv2.imencode(".png", photo())
+    cells = [{"bytes": buf.tobytes(), "path": "good.png"},
+             {"bytes": b"not an image", "path": "bad.png"},
+             None]
+    path = str(tmp_path / "mixed.parquet")
+    pq.write_table(pa.table({"image": pa.array(cells)}), path)
+    assert len(list(sampleframes.frames(path))) == 1
+
+
+# -------------------------------------------------------------- the limit
+
+
+def test_the_limit_stops_the_scan(clip, one_face):
+    """A corpus shard holds thousands of rows and only three are kept, so
+    examining the lot is hours of network forward passes for no better
+    answer."""
+    path = clip([photo(i) for i in range(10)])
+    candidates, _ = sampleframes.scan(path, stride=1, limit=4)
+    assert len(candidates) == 4
+
+
+def test_a_limit_of_zero_examines_everything(clip, one_face):
+    path = clip([photo(i) for i in range(6)])
+    candidates, _ = sampleframes.scan(path, stride=1, limit=0)
+    assert len(candidates) == 6
+
+
+def test_an_empty_cell_is_skipped(tmp_path):
+    """A row present but with no bytes in it: not a decode failure, just
+    nothing to decode."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    ok, buf = cv2.imencode(".png", photo())
+    cells = [{"bytes": b"", "path": "empty.png"},
+             {"bytes": buf.tobytes(), "path": "good.png"}]
+    path = str(tmp_path / "empty.parquet")
+    pq.write_table(pa.table({"image": pa.array(cells)}), path)
+    assert len(list(sampleframes.frames(path))) == 1

@@ -392,7 +392,7 @@ pytest -q
 pytest -q --cov=. --cov-report=term-missing
 ```
 
-375 tests, 81% of 2,275 statements. That figure is itself checked:
+382 tests, 81% of 2,302 statements. That figure is itself checked:
 `tests/test_published_figures.py` measures the repository and compares it
 with what the [published overview](https://luke-zhang-cs-py.github.io/Facial-Recognition-Software/)
 claims, and `python tools/refresh_figures.py` rewrites them.

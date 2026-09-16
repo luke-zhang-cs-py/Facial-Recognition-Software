@@ -2,6 +2,7 @@
 
     python tools_sample_frames.py clip.mp4
     python tools_sample_frames.py ~/photos --keep 3 --stride 10
+    python tools_sample_frames.py %TEMP%/lfw/lfw.parquet
     python tools_sample_frames.py clip.mp4 --dry-run
 
 Three tests skip without a real photograph of a face, and nothing in this
@@ -11,8 +12,9 @@ Bring your own footage. This deliberately downloads nothing: scraping faces
 off the internet to build a face-recognition database is prohibited under
 the EU AI Act, and a face template is special-category data under UK GDPR,
 so a public URL is not a licence. A clip of yourself works. So do the still
-corpora the benchmark tools already fetch, which come with licences --
-point this at the folder once one is unpacked.
+corpora the benchmark tools already fetch, which come with licences.
+Those arrive as parquet, and this reads them directly -- seed_demo.py
+prints the one-line curl that fetches the LFW shard.
 
 The filtering is sampleframes.py, which is the project's own quality gate:
 one face in shot, sharp enough, exposed, frontal, and not three copies of
@@ -38,6 +40,11 @@ def main(argv=None):
     parser.add_argument("--into", default=None,
                         help="write somewhere other than the sample-frame "
                              "directory")
+    parser.add_argument("--limit", type=int, default=sampleframes.LIMIT,
+                        help="stop after examining N frames; 0 for all "
+                             "(default %d, because a corpus shard holds "
+                             "thousands and only %d are kept)"
+                             % (sampleframes.LIMIT, len(sampleframes.NAMES)))
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would be kept, write nothing")
     args = parser.parse_args(argv)
@@ -49,7 +56,8 @@ def main(argv=None):
 
     try:
         if args.dry_run:
-            candidates, rejected = sampleframes.scan(args.source, args.stride)
+            candidates, rejected = sampleframes.scan(
+                args.source, args.stride, args.limit)
             chosen = sampleframes.choose(candidates, args.keep)
             print("%d frame(s) usable, %d would be kept"
                   % (len(candidates), len(chosen)))
@@ -59,7 +67,7 @@ def main(argv=None):
 
         written, rejected = sampleframes.build(
             args.source, keep=args.keep, stride=args.stride,
-            directory=args.into)
+            directory=args.into, limit=args.limit)
     except (FileNotFoundError, ValueError) as exc:
         print("could not read the source: %s" % exc, file=sys.stderr)
         return 1

@@ -26,6 +26,7 @@ import collections
 import os
 
 import cv2
+import numpy as np
 
 import corpus_paths
 import traits as facetraits
@@ -45,11 +46,62 @@ SAME_SHOT = 0.92
 
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".bmp"})
 
+# Rows read from a corpus shard at a time.
+PARQUET_BATCH = 64
+
+# Frames examined before stopping, when a caller does not say.
+# An LFW shard is 13,233 rows and each one costs a network
+# forward pass, so scanning the lot to keep three is hours of
+# work for no better answer. 0 means no limit.
+LIMIT = 200
+
 Candidate = collections.namedtuple("Candidate", "frame score row")
 
 
+def parquet_frames(path):
+    """Yield BGR images out of a corpus shard.
+
+    The corpora this tool points at are parquet, not folders: LFW arrives
+    as one file of 13,233 rows with an `image` column of encoded bytes.
+    Telling somebody to point this at a licensed corpus and then handing
+    the path to cv2.VideoCapture, which cannot read parquet, was advice
+    that did not work -- proven by having to write this extraction by hand
+    to use it.
+
+    pyarrow is imported here rather than at the top: it is what the
+    benchmark tools use, and a video or a folder should not need it
+    installed.
+    """
+    import pyarrow.parquet as pq
+
+    handle = pq.ParquetFile(path)
+    if "image" not in handle.schema_arrow.names:
+        raise ValueError("%s has no 'image' column; its columns are %s"
+                         % (path, handle.schema_arrow.names))
+    for batch in handle.iter_batches(batch_size=PARQUET_BATCH):
+        for cell in batch.column("image"):
+            value = cell.as_py()
+            if value is None:
+                continue
+            # HuggingFace image columns are {bytes, path}; a plain bytes
+            # column is also allowed.
+            raw = value["bytes"] if isinstance(value, dict) else value
+            if not raw:
+                continue
+            img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if img is not None:
+                yield img
+
+
 def frames(path, stride=STRIDE):
-    """Yield BGR frames from a video, a single image, or a folder of them."""
+    """Yield BGR frames from a video, an image, a folder, or a corpus shard."""
+    if os.path.splitext(path)[1].lower() == ".parquet":
+        if not os.path.exists(path):
+            raise FileNotFoundError(path)
+        for img in parquet_frames(path):
+            yield img
+        return
+
     if os.path.isdir(path):
         # Walked, not globbed at the top level. The corpora this is meant to
         # be pointed at are one folder per identity -- LFW is
@@ -174,16 +226,21 @@ def write(chosen, directory=None):
     return written
 
 
-def scan(path, stride=STRIDE):
-    """Assess every frame: (usable candidates, why the rest were rejected).
+def scan(path, stride=STRIDE, limit=LIMIT):
+    """Assess frames: (usable candidates, why the rest were rejected).
 
     Separate from `build` because the tool's --dry-run wants exactly this
     and nothing after it. It had its own copy of the loop, which is one
     more place for the two to disagree about what counts as usable.
+
+    `limit` caps how many frames are examined, because a corpus shard has
+    thousands of rows and only three are ever kept. 0 examines everything.
     """
     candidates = []
     rejected = collections.Counter()
-    for frame in frames(path, stride):
+    for seen, frame in enumerate(frames(path, stride)):
+        if limit and seen >= limit:
+            break
         cand, reason = assess(frame)
         if cand is None:
             rejected[reason] += 1
@@ -192,9 +249,9 @@ def scan(path, stride=STRIDE):
     return candidates, rejected
 
 
-def build(path, keep=len(NAMES), stride=STRIDE, directory=None):
+def build(path, keep=len(NAMES), stride=STRIDE, directory=None, limit=LIMIT):
     """End to end: (written paths, why frames were rejected)."""
-    candidates, rejected = scan(path, stride)
+    candidates, rejected = scan(path, stride, limit)
     return write(choose(candidates, keep), directory), rejected
 
 

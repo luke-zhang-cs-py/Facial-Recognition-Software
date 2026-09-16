@@ -405,6 +405,18 @@ def test_the_quality_read_happens_once_per_frame(one_face, monkeypatch):
 # ------------------------------------------------------------ corpus shards
 
 
+try:
+    import pyarrow.parquet          # noqa: F401
+    HAVE_PYARROW = True
+except Exception:                   # pragma: no cover - depends on the env
+    HAVE_PYARROW = False
+
+needs_parquet = pytest.mark.skipif(
+    not HAVE_PYARROW,
+    reason="pyarrow is not installed; the parquet path exists for the "
+           "benchmark corpora and imports it on demand")
+
+
 def parquet_of(images, path):
     """A shard shaped like the HuggingFace image columns the corpora use."""
     import pyarrow as pa
@@ -419,6 +431,7 @@ def parquet_of(images, path):
     return path
 
 
+@needs_parquet
 def test_a_corpus_shard_is_read_directly(tmp_path):
     """The corpora are parquet, not folders. Handing the path to
     cv2.VideoCapture, which cannot read one, was advice that did not
@@ -430,6 +443,7 @@ def test_a_corpus_shard_is_read_directly(tmp_path):
     assert got[0].shape == (480, 640, 3)
 
 
+@needs_parquet
 def test_a_shard_without_an_image_column_says_which_columns_it_has(tmp_path):
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -445,6 +459,7 @@ def test_a_missing_shard_says_so(tmp_path):
         list(sampleframes.frames(str(tmp_path / "absent.parquet")))
 
 
+@needs_parquet
 def test_an_undecodable_cell_is_skipped(tmp_path):
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -475,6 +490,7 @@ def test_a_limit_of_zero_examines_everything(clip, one_face):
     assert len(candidates) == 6
 
 
+@needs_parquet
 def test_an_empty_cell_is_skipped(tmp_path):
     """A row present but with no bytes in it: not a decode failure, just
     nothing to decode."""

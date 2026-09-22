@@ -187,7 +187,8 @@ def api_train():
     if not faces:
         return fail("No face samples on disk yet — register someone first.")
 
-    camera.retrain(reason="(manual)")
+    if not camera.retrain(reason="(manual)"):
+        return fail("Training failed — check the logs for details.")
     return jsonify({
         "ok": True,
         "images": len(faces),

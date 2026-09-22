@@ -273,7 +273,7 @@ def _recommendations(records, flags, usable, yaw_spread):
             f"{soft} samples are noticeably softer than the rest — hold still, or add "
             f"light so the camera picks a shorter exposure.")
 
-    if flags.get("too dark", 0) > total * DARK_FRACTION or flags.get("flat contrast", 0):
+    if flags.get("underexposed", 0) > total * DARK_FRACTION or flags.get("no tonal range", 0):
         advice.append("Add light in front of the face, not behind it.")
 
     if yaw_spread is not None and yaw_spread < FLAT_POSE_DEGREES:

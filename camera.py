@@ -729,12 +729,31 @@ class CameraManager:
             recognizer = self._recognizer
         if recognizer is None:
             return
+        if not faces:
+            return
+
+        # self._liveness / self._live_verdict / self._live_score are one
+        # shared instance per camera, not per face -- and status() only ever
+        # reports a single verdict/score for the whole camera anyway. Scoring
+        # every face in the frame against that one shared vote would blend
+        # unrelated people's liveness samples into a single verdict, which is
+        # worse than useless with more than one face in view. Rather than a
+        # deeper per-face-tracking refactor, attendance and liveness are
+        # decided against the single largest face in the frame -- the one
+        # most likely to be the person actually presenting -- and any other
+        # faces are drawn (so they are not silently invisible) but not
+        # recognised, scored, or marked present.
+        primary = max(faces, key=lambda f: f["box"][2] * f["box"][3])
 
         for face in faces:
             x, y, w, h = face["box"]
             x0, y0 = max(0, x), max(0, y)
             crop = gray[y0:y + h, x0:x + w]
             if crop.size == 0:
+                continue
+
+            if face is not primary:
+                self._draw_face(frame, face, AMBER, label="Other face")
                 continue
 
             # Person, or a picture of one? Scored before recognition, because

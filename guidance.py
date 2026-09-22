@@ -49,6 +49,13 @@ MIN_SHARPNESS = 25.0
 MAX_SHADOW_CLIP = 0.45
 MAX_HIGHLIGHT_CLIP = 0.30
 
+# Same value as landmarks.ASYMMETRY_LIMIT, duplicated rather than imported so
+# this module stays free of the cv2/numpy dependency chain. `eyeMismatch` is
+# the per-eye half of that asymmetry measurement (traits["parts"]["eyeMismatch"])
+# -- the actual signal that catches one eye reading very differently from the
+# other, which is what sunglasses or a shading brim over one eye look like.
+EYE_MISMATCH_LIMIT = 0.28
+
 # Instructions are two or three words. A 300px sidebar and a bar burned into a
 # 640px frame are both too narrow for a sentence, and someone squinting at a
 # webcam does not read prose -- they read a verb. The longer explanation goes
@@ -257,7 +264,9 @@ def checklist(traits, frame_shape=None):
     px = traits.get("facePx") or 0
     yaw, roll = traits.get("yaw"), traits.get("roll")
     q, sharp = traits.get("qualityScore"), traits.get("sharpness")
-    pflags = (traits.get("parts") or {}).get("flags") or []
+    parts = traits.get("parts") or {}
+    pflags = parts.get("flags") or []
+    eye_mismatch = parts.get("eyeMismatch")
 
     items = [
         ("Face visible", detected and faces >= 1,
@@ -268,7 +277,7 @@ def checklist(traits, frame_shape=None):
          "Turn to face the camera"),
         ("Head upright", roll is None or abs(roll) <= MAX_ROLL,
          "Straighten your head"),
-        ("Eyes unobstructed", detected and faces >= 1,
+        ("Eyes unobstructed", eye_mismatch is None or eye_mismatch <= EYE_MISMATCH_LIMIT,
          "Remove sunglasses or a shading brim"),
         ("Eyes open", "eyes closed" not in pflags and "one eye closed" not in pflags,
          "Open both eyes"),

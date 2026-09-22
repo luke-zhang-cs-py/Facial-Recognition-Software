@@ -18,7 +18,7 @@ const errBox = $('err');
 
 let state = { running: false, mode: 'idle' };
 
-async /* Text that came from a person, on its way into innerHTML.
+/* Text that came from a person, on its way into innerHTML.
  *
  * Registered names are stored exactly as typed and rendered straight into the
  * dashboard, so a name of `<img src=x onerror=...>` was script that ran in
@@ -31,7 +31,7 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
 
-function post(url, body) {
+async function post(url, body) {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

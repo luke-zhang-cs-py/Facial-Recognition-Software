@@ -4,7 +4,7 @@ import pytest
 
 
 def test_identify_reports_unknown_when_nobody_is_enrolled(isolated_db, blank_frame):
-    import recognition
+    from pipeline import recognition
     r = recognition.identify(blank_frame, gal={})
     assert r["ok"] is False
 
@@ -13,7 +13,7 @@ def test_identify_declines_an_ambiguous_match():
     """Clearing the threshold is not enough. Two near-identical scores mean
     the pair is being separated by noise, and naming a winner presents a coin
     toss as an identification."""
-    import recognition
+    from pipeline import recognition
     v = np.zeros(128, np.float32)
     v[0] = 1.0
     a = np.zeros(128, np.float32)
@@ -34,7 +34,7 @@ def test_identify_declines_an_ambiguous_match():
 
 
 def test_identify_accepts_a_clear_match():
-    import recognition
+    from pipeline import recognition
     import unittest.mock as mock
     v = np.zeros(128, np.float32)
     v[0] = 1.0
@@ -51,7 +51,7 @@ def test_identify_accepts_a_clear_match():
 
 
 def test_identify_threshold_follows_gallery_size():
-    import recognition
+    from pipeline import recognition
     import unittest.mock as mock
     v = np.zeros(128, np.float32)
     v[0] = 1.0
@@ -70,7 +70,7 @@ def test_identify_threshold_follows_gallery_size():
 
 
 def test_liveness_vote_needs_evidence_before_deciding():
-    import liveness
+    from pipeline import liveness
     v = liveness.LivenessVote(window=7, required=4)
     assert v.verdict() == "unknown"
     v.push(0.9)
@@ -82,7 +82,7 @@ def test_liveness_vote_needs_evidence_before_deciding():
 
 
 def test_liveness_vote_calls_a_spoof():
-    import liveness
+    from pipeline import liveness
     v = liveness.LivenessVote(window=7, required=4)
     for _ in range(7):
         v.push(0.01)
@@ -90,7 +90,7 @@ def test_liveness_vote_calls_a_spoof():
 
 
 def test_liveness_vote_window_slides():
-    import liveness
+    from pipeline import liveness
     v = liveness.LivenessVote(window=4, required=3)
     for _ in range(10):
         v.push(0.99)
@@ -99,7 +99,7 @@ def test_liveness_vote_window_slides():
 
 
 def test_liveness_vote_ignores_none_scores():
-    import liveness
+    from pipeline import liveness
     v = liveness.LivenessVote()
     v.push(None)
     v.push(None)
@@ -107,7 +107,7 @@ def test_liveness_vote_ignores_none_scores():
 
 
 def test_liveness_reset_clears_history():
-    import liveness
+    from pipeline import liveness
     v = liveness.LivenessVote()
     for _ in range(5):
         v.push(0.9)
@@ -116,8 +116,8 @@ def test_liveness_reset_clears_history():
 
 
 def test_liveness_scores_a_real_frame_as_live(face_image):
-    import liveness
-    import traits
+    from pipeline import liveness
+    from pipeline import traits
     if not liveness.available():
         pytest.skip("liveness model not downloaded")
     rows = traits.detect(face_image)

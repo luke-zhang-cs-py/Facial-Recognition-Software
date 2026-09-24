@@ -4,12 +4,12 @@ import pytest
 
 
 def test_capture_plan_totals_the_advertised_sample_count():
-    import camera
+    from pipeline import camera
     assert sum(s["count"] for s in camera.CAPTURE_PLAN) == camera.SAMPLES_TO_CAPTURE
 
 
 def test_capture_plan_covers_distinct_poses():
-    import camera
+    from pipeline import camera
     keys = [s["key"] for s in camera.CAPTURE_PLAN]
     assert len(keys) == len(set(keys))
     assert keys[0] == "front", "the neutral pitch baseline comes from the front stage"
@@ -21,13 +21,13 @@ def test_capture_plan_covers_distinct_poses():
     ("right", 20, True), ("right", -20, False),
 ])
 def test_pose_gate_yaw(key, yaw, ok):
-    import camera
+    from pipeline import camera
     assert camera.pose_matches(key, yaw, 0.0, 0.5, 0.5) is ok
 
 
 def test_pose_gate_pitch_is_relative_to_the_persons_own_neutral():
     """Absolute pitch would encode face proportions, not head position."""
-    import camera
+    from pipeline import camera
     base = 0.50
     assert camera.pose_matches("up", 0, 0, base - 0.10, base)
     assert not camera.pose_matches("up", 0, 0, base, base)
@@ -38,17 +38,17 @@ def test_pose_gate_pitch_is_relative_to_the_persons_own_neutral():
 
 
 def test_pose_gate_needs_a_baseline_before_judging_pitch():
-    import camera
+    from pipeline import camera
     assert not camera.pose_matches("up", 0, 0, 0.4, None)
 
 
 def test_pose_gate_rejects_missing_yaw():
-    import camera
+    from pipeline import camera
     assert not camera.pose_matches("front", None, 0, 0.5, 0.5)
 
 
 def test_draw_face_marks_points_without_a_full_box():
-    import camera
+    from pipeline import camera
     mgr = camera.CameraManager.__new__(camera.CameraManager)
     frame = np.full((480, 640, 3), 60, np.uint8)
     face = {"box": (240, 150, 160, 190),
@@ -68,7 +68,7 @@ def test_draw_face_marks_points_without_a_full_box():
 
 
 def test_draw_face_survives_missing_landmarks():
-    import camera
+    from pipeline import camera
     mgr = camera.CameraManager.__new__(camera.CameraManager)
     frame = np.full((100, 100, 3), 60, np.uint8)
     mgr._draw_face(frame, {"box": (10, 10, 40, 40), "landmarks": None,
@@ -76,7 +76,7 @@ def test_draw_face_survives_missing_landmarks():
 
 
 def test_overlay_colours_match_the_stylesheet_palette():
-    import camera
+    from pipeline import camera
     import re
     css = open("static/css/style.css", encoding="utf-8").read()
 

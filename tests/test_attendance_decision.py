@@ -21,8 +21,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import attendance                       # noqa: E402
-import vision                           # noqa: E402
+from cli import attendance                       # noqa: E402
+from core import vision                           # noqa: E402
 
 BOX = (10, 20, 60, 60)
 
@@ -173,10 +173,28 @@ def test_the_two_verdict_colours_are_distinct():
 
 def test_no_trained_model_says_what_to_run_instead_of_failing(isolated_root,
                                                               capsys):
-    """The state of every fresh clone: trainer.yml is gitignored."""
+    """The state of every fresh clone: trainer.yml is gitignored.
+
+    The advice has to name two modules, and -- since they now live in
+    packages and are run with `-m` -- it has to name them the way they are
+    actually invoked. Asserting the bare filenames was enough while the
+    modules sat in the root; it would now pass on a message telling somebody
+    to run `python register_user.py`, which fails with "no such file".
+
+    So each named module is also imported. A message that names something
+    unimportable is the failure this is really about, and a string check
+    alone cannot see it.
+    """
+    import importlib
+
     assert attendance._load_recognizer() is None
     printed = capsys.readouterr().out
-    assert "register_user.py" in printed and "train_model.py" in printed
+
+    wanted = ("cli.register_user", "pipeline.train_model")
+    for module in wanted:
+        assert module in printed, (
+            "the advice does not say to run %s:\n%s" % (module, printed))
+        importlib.import_module(module)      # so the advice is runnable
 
 
 def test_run_attendance_gives_up_cleanly_with_no_model(isolated_root, capsys):
@@ -194,7 +212,7 @@ def test_run_attendance_gives_up_cleanly_with_no_model(isolated_root, capsys):
 
 def test_creating_a_user_makes_both_the_row_and_the_folder(isolated_db,
                                                            capsys):
-    import register_user
+    from cli import register_user
 
     user_id, folder = register_user.create_user("Grace Hopper")
     assert isolated_db.get_user_name(user_id) == "Grace Hopper"
@@ -211,7 +229,7 @@ def test_a_saved_sample_is_the_shared_lbph_geometry(isolated_db, gray,
     disagree about the size, recognition gets worse with nothing to point
     at -- which is why both read it from vision.py."""
     import cv2
-    import register_user
+    from cli import register_user
 
     path = register_user.save_sample(gray, BOX, str(tmp_path), 1)
     assert os.path.isfile(path)
@@ -223,7 +241,7 @@ def test_a_saved_sample_is_the_shared_lbph_geometry(isolated_db, gray,
 
 
 def test_samples_are_numbered_from_one_per_user(isolated_db, gray, tmp_path):
-    import register_user
+    from cli import register_user
 
     names = [os.path.basename(register_user.save_sample(
         gray, BOX, str(tmp_path), i)) for i in (1, 2, 3)]
@@ -233,7 +251,7 @@ def test_samples_are_numbered_from_one_per_user(isolated_db, gray, tmp_path):
 def test_capturing_nothing_says_the_registration_is_incomplete(capsys):
     """The row and the folder exist, so this "succeeded" -- and training on
     it would train on nothing. It gets its own message for that reason."""
-    import register_user
+    from cli import register_user
 
     register_user.report(0, "Grace Hopper", 1)
     printed = capsys.readouterr().out
@@ -243,7 +261,7 @@ def test_capturing_nothing_says_the_registration_is_incomplete(capsys):
 
 
 def test_capturing_samples_points_at_the_next_step(capsys):
-    import register_user
+    from cli import register_user
 
     register_user.report(30, "Grace Hopper", 7)
     printed = capsys.readouterr().out
@@ -252,7 +270,7 @@ def test_capturing_samples_points_at_the_next_step(capsys):
 
 
 def test_the_preview_overlay_shows_progress_out_of_the_target(capsys):
-    import register_user
+    from cli import register_user
 
     frame = np.zeros((120, 160, 3), np.uint8)
     register_user.annotate(frame, BOX, 5)
@@ -262,7 +280,7 @@ def test_the_preview_overlay_shows_progress_out_of_the_target(capsys):
 def test_the_cli_requires_exactly_one_name(capsys):
     """Quoting a two-word name is the obvious thing to get wrong, and the
     message has to show the quotes."""
-    import register_user
+    from cli import register_user
 
     assert register_user.main([]) == 1
     assert "Full Name" in capsys.readouterr().out

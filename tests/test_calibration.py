@@ -3,7 +3,7 @@ in the project to get subtly wrong and the hardest to notice, since a wrong
 threshold still returns a plausible number."""
 import pytest
 
-import calibration as c
+from analysis import calibration as c
 
 
 def test_fmr_is_monotonic_in_threshold():

@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 import pytest
 
-import camera
+from pipeline import camera
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def seed_dataset(root, user_id=1, name="Ada", count=3):
 def train_a_real_model(root):
     """Produce a genuine trainer.yml at the isolated model path."""
     seed_dataset(root)
-    import train_model
+    from pipeline import train_model
     train_model.train()
     assert os.path.exists(camera.paths.model_path()), "no model was written"
 
@@ -121,7 +121,7 @@ def test_a_failed_training_run_is_reported_and_survived(mgr, isolated_root,
                                                         monkeypatch):
     """This runs on the capture thread. An exception escaping here would
     take the video feed down with it."""
-    import train_model
+    from pipeline import train_model
     seed_dataset(isolated_root)
     monkeypatch.setattr(train_model, "train",
                         lambda: (_ for _ in ()).throw(RuntimeError("disk full")))

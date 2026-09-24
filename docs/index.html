@@ -181,6 +181,8 @@ footer a { color: inherit; }
     <button id="themeBtn" type="button">Theme</button>
     <button id="tableBtn" type="button" aria-pressed="false">Table view</button>
     <a class="btn" href="https://github.com/luke-zhang-cs-py/Facial-Recognition-Software">Repository</a>
+    <a class="btn" href="app/"
+       title="The guidance and calibration arithmetic, in the browser. No face recognition: that needs OpenCV, a camera and the trained model.">Guidance &amp; calibration demo</a>
     <a class="btn" id="localBtn" href="http://127.0.0.1:5001/"
        title="Only works on a machine that is running the app, with a webcam">Open app (local)</a>
   </div>
@@ -391,28 +393,28 @@ footer a { color: inherit; }
  * rewrites them. */
 
 var MODULES = [
-  { name: 'camera.py',        lines: 819, stmts: 447, missed:  7, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
-  { name: 'analytics.py',     lines: 679, stmts: 262, missed: 85, does: 'dataset-wide enrollment quality and threshold sweeps' },
-  { name: 'traits.py',        lines: 526, stmts: 204, missed: 64, does: 'per-face quality, pose, embedding and demographics' },
-  { name: 'landmarks.py',     lines: 391, stmts: 184, missed: 26, does: 'the face mesh, and the overlay drawn on the frame' },
-  { name: 'app.py',           lines: 313, stmts: 141, missed: 41, does: 'the Flask UI; fifteen endpoints, loopback only' },
-  { name: 'analyze_faces.py', lines: 237, stmts: 134, missed: 71, does: 'the console version of the analysis panel' },
-  { name: 'sampleframes.py',  lines: 271, stmts: 134, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
-  { name: 'guidance.py',      lines: 291, stmts: 104, missed:  5, does: 'turns a live trait read into one instruction to act on' },
-  { name: 'db.py',            lines: 295, stmts: 100, missed:  0, does: 'the schema and every query; one context manager for all access' },
-  { name: 'calibration.py',   lines: 300, stmts:  81, missed: 13, does: 'the measured false-match curve and the gallery-size maths' },
-  { name: 'attendance.py',    lines: 164, stmts:  79, missed: 33, does: 'the CLI attendance loop; the accept/refuse decision is now its own function' },
-  { name: 'register_user.py', lines: 148, stmts:  74, missed: 32, does: 'the CLI capture loop; writing a gallery sample is now its own function' },
-  { name: 'liveness.py',      lines: 140, stmts:  66, missed: 25, does: 'is this a person or a photograph of one' },
-  { name: 'enrollment.py',    lines: 177, stmts:  62, missed: 12, does: 'the post-capture report: pose coverage, and who this face sits closest to' },
-  { name: 'readout.py',       lines: 145, stmts:  53, missed:  7, does: 'the live sidebar payload, assembled from one frame' },
-  { name: 'recognition.py',   lines: 130, stmts:  48, missed:  5, does: 'identification by SFace embedding, against the gallery threshold' },
-  { name: 'facemodels.py',    lines: 121, stmts:  46, missed:  8, does: 'lazy loader for the pretrained analysis models' },
-  { name: 'train_model.py',   lines:  67, stmts:  37, missed:  2, does: 'rebuilds the LBPH recogniser from dataset/' },
-  { name: 'paths.py',         lines:  54, stmts:  19, missed:  0, does: 'where the data lives — one decision, resolved per call' },
-  { name: 'corpus_paths.py',  lines:  79, stmts:  16, missed:  5, does: 'one home for the benchmark corpus locations' },
-  { name: 'view_report.py',   lines:  34, stmts:  15, missed:  0, does: 'prints the users and the attendance rows' },
-  { name: 'vision.py',        lines:  71, stmts:   6, missed:  0, does: 'the numbers the LBPH capture path shares — threshold, crop size, detector tuning' }
+  { name: 'pipeline/camera.py',       lines: 819, stmts: 447, missed:  7, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
+  { name: 'analysis/analytics.py',    lines: 679, stmts: 262, missed: 85, does: 'dataset-wide enrollment quality and threshold sweeps' },
+  { name: 'pipeline/traits.py',       lines: 526, stmts: 204, missed: 64, does: 'per-face quality, pose, embedding and demographics' },
+  { name: 'pipeline/landmarks.py',    lines: 403, stmts: 185, missed: 27, does: 'the face mesh, and the overlay drawn on the frame' },
+  { name: 'app.py',                   lines: 313, stmts: 141, missed: 41, does: 'the Flask UI; fifteen endpoints, loopback only' },
+  { name: 'cli/analyze_faces.py',     lines: 238, stmts: 134, missed: 71, does: 'the console version of the analysis panel' },
+  { name: 'pipeline/sampleframes.py', lines: 271, stmts: 134, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
+  { name: 'pipeline/guidance.py',     lines: 291, stmts: 104, missed:  5, does: 'turns a live trait read into one instruction to act on' },
+  { name: 'core/db.py',               lines: 295, stmts: 100, missed:  0, does: 'the schema and every query; one context manager for all access' },
+  { name: 'analysis/calibration.py',  lines: 300, stmts:  81, missed: 13, does: 'the measured false-match curve and the gallery-size maths' },
+  { name: 'cli/attendance.py',        lines: 165, stmts:  79, missed: 33, does: 'the CLI attendance loop; the accept/refuse decision is now its own function' },
+  { name: 'cli/register_user.py',     lines: 148, stmts:  74, missed: 32, does: 'the CLI capture loop; writing a gallery sample is now its own function' },
+  { name: 'pipeline/liveness.py',     lines: 150, stmts:  67, missed: 25, does: 'is this a person or a photograph of one' },
+  { name: 'pipeline/enrollment.py',   lines: 177, stmts:  62, missed: 12, does: 'the post-capture report: pose coverage, and who this face sits closest to' },
+  { name: 'pipeline/readout.py',      lines: 145, stmts:  53, missed:  7, does: 'the live sidebar payload, assembled from one frame' },
+  { name: 'pipeline/recognition.py',  lines: 130, stmts:  48, missed:  5, does: 'identification by SFace embedding, against the gallery threshold' },
+  { name: 'core/facemodels.py',       lines: 132, stmts:  47, missed:  8, does: 'lazy loader for the pretrained analysis models' },
+  { name: 'pipeline/train_model.py',  lines:  68, stmts:  37, missed:  2, does: 'rebuilds the LBPH recogniser from dataset/' },
+  { name: 'core/paths.py',            lines:  60, stmts:  19, missed:  0, does: 'where the data lives — one decision, resolved per call' },
+  { name: 'core/corpus_paths.py',     lines:  79, stmts:  16, missed:  5, does: 'one home for the benchmark corpus locations' },
+  { name: 'cli/view_report.py',       lines:  34, stmts:  15, missed:  0, does: 'prints the users and the attendance rows' },
+  { name: 'core/vision.py',           lines:  71, stmts:   6, missed:  0, does: 'the numbers the LBPH capture path shares — threshold, crop size, detector tuning' }
 ];
 
 /* Left out of coverage on purpose: each one downloads something, streams a
@@ -420,15 +422,17 @@ var MODULES = [
  * shipping gigabytes or owning hardware. Named here so the omission is
  * visible rather than silent. */
 var OMITTED = [
-  { name: 'tools_benchmark_loop.py',  lines: 599, why: 'the continuous benchmark runner' },
-  { name: 'fairness_benchmark.py',    lines: 256, why: 'the stratified FairFace run' },
-  { name: 'seed_demo.py',             lines: 288, why: 'enrolls faces from LFW for testing' },
-  { name: 'tools_build_gallery.py',   lines: 213, why: 'builds a 10,590-identity gallery from CASIA-WebFace' },
-  { name: 'tools_trials.py',          lines: 147, why: 'the 4,500-trial robustness sweep' },
-  { name: 'fetch_models.py',          lines: 111, why: 'downloads the pretrained weights' },
-  { name: 'tools_scale_benchmark.py', lines: 105, why: 'the gallery-size sweep' },
-  { name: 'tools_sample_frames.py', lines:  81, why: 'fills the sample-frame directory from footage you own' },
-  { name: 'face_attendance.py',       lines:  64, why: 'a thin entry point, asserted by test to hold no logic' }
+  { name: 'tools/build_static.py',          lines: 1158, why: 'generates the browser demo, and fails if its JS disagrees with the Python' },
+  { name: 'tools/benchmark_loop.py',        lines: 600, why: 'the continuous benchmark runner' },
+  { name: 'tools/refresh_figures.py',       lines: 348, why: 'measures and rewrites the figures on this page' },
+  { name: 'cli/seed_demo.py',               lines: 289, why: 'enrolls faces from LFW for testing' },
+  { name: 'analysis/fairness_benchmark.py', lines: 257, why: 'the stratified FairFace run' },
+  { name: 'tools/build_gallery.py',         lines: 216, why: 'builds a 10,590-identity gallery from CASIA-WebFace' },
+  { name: 'tools/trials.py',                lines: 148, why: 'the 4,500-trial robustness sweep' },
+  { name: 'cli/fetch_models.py',            lines: 111, why: 'downloads the pretrained weights' },
+  { name: 'tools/scale_benchmark.py',       lines: 106, why: 'the gallery-size sweep' },
+  { name: 'tools/sample_frames.py',         lines:  88, why: 'fills the sample-frame directory from footage you own' },
+  { name: 'cli/face_attendance.py',         lines:  64, why: 'a thin entry point, asserted by test to hold no logic' }
 ];
 
 var TESTS = [
@@ -456,7 +460,7 @@ var TESTS = [
   { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' }
 ];
 
-var TEST_LINES = 4877;
+var TEST_LINES = 5016;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so
@@ -539,11 +543,11 @@ var BUGS = [
   ['A registered name was script',
    'Names are stored exactly as typed, which is right — a name is not the system’s to rewrite, and names contain apostrophes and ampersands — and the dashboard rendered them straight into <code>innerHTML</code>. Registering somebody as <code>&lt;img src=x onerror=...&gt;</code> put running script in every browser that opened the page, and registering people is what this application is <em>for</em>. There was no escaping helper at all; there is one now, applied to 26 sites.',
    'Writing the test for it — which found five more sites missed on the first pass', 'fixed'],
-  ['<code>db.py</code> leaked a connection on any error',
+  ['<code>core/db.py</code> leaked a connection on any error',
    'Every function closed its connection only on the success path, so one failed write left a connection open with its transaction, and SQLite refused every later write with "database is locked". One bad row poisoned the process. All access goes through a context manager now that closes and rolls back.',
    'Running the engine over 97,698 images', 'fixed'],
   ['<code>paths.use()</code> did not work',
-   'Its own docstring describes the failure it was written to prevent — "a test could point the database at a temporary file and still read the real dataset/ off disk" — and seven modules had reintroduced exactly that by reading their path once at import. Two more never used <code>paths.py</code> at all and held bare relative names, so they only worked if you happened to be standing in the project directory.',
+   'Its own docstring describes the failure it was written to prevent — "a test could point the database at a temporary file and still read the real dataset/ off disk" — and seven modules had reintroduced exactly that by reading their path once at import. Two more never used <code>core/paths.py</code> at all and held bare relative names, so they only worked if you happened to be standing in the project directory.',
    'Trying to point the app at a copy of the data', 'fixed'],
   ['One orphan folder crashed the whole analysis',
    'A <code>dataset/</code> folder naming a user id with no <code>users</code> row failed a foreign key and took the entire scan with it. Reported now, and returned under <code>orphanFolders</code>.',
@@ -552,7 +556,7 @@ var BUGS = [
    'A 0.20% against 0.00% detection gap is an infinite ratio and means nothing. A verdict now requires both an effect over budget <em>and</em> non-overlapping confidence intervals, or it reads INCONCLUSIVE.',
    'Reading its own output sceptically', 'fixed'],
   ['The threshold was tuned on three people',
-   'The earlier recommendation of 0.5 came from a sweep over three enrolled identities — with three people there are three ways to be wrong, so almost any threshold scores zero false matches and the sweep recommends the loosest one. <code>analytics.py</code> now refuses to trust a local sweep below 15 enrolled and defers to the measured curve.',
+   'The earlier recommendation of 0.5 came from a sweep over three enrolled identities — with three people there are three ways to be wrong, so almost any threshold scores zero false matches and the sweep recommends the loosest one. <code>analysis/analytics.py</code> now refuses to trust a local sweep below 15 enrolled and defers to the measured curve.',
    '4.77 billion impostor comparisons', 'fixed'],
   ['Face detection was rejecting real faces on webcam frames',
    'And trait analysis ran on frames that had already been drawn on, so it measured the overlay as well as the face.',
@@ -621,7 +625,7 @@ function drawTiles() {
     ' are never imported by a test. ' + hidden + ' statements of shipped ' +
     'code were missing from the report rather than showing as uncovered, ' +
     'which flattered exactly the code that needed the most attention. They ' +
-    'are in the table now, at 0%. The rest of the gap is camera.py, which ' +
+    'are in the table now, at 0%. The rest of the gap is pipeline/camera.py, which ' +
     'cannot be driven without a webcam on the machine.';
 }
 
@@ -648,7 +652,7 @@ function drawModules() {
   el('moduleSub').textContent =
     'By executable statements, largest first. One measure, so one colour and ' +
     'no legend — the heading names it, and every bar is labelled directly. ' +
-    'The widest by a distance is camera.py at ' + rows[0].stmts + ': owning ' +
+    'The widest by a distance is pipeline/camera.py at ' + rows[0].stmts + ': owning ' +
     'one webcam across capture, streaming, registration and recognition is ' +
     'most of this project’s difficulty, and it is also the hardest thing ' +
     'here to test without hardware.';
@@ -737,7 +741,7 @@ function drawFmr() {
   el('thresholdNote').innerHTML =
     'The threshold the reference implementation suggests, 0.363, gives a ' +
     '41.9% chance of a false match in a gallery of a hundred people. ' +
-    '<code>calibration.py</code> carries the measured curve now, and the ' +
+    '<code>analysis/calibration.py</code> carries the measured curve now, and the ' +
     'recommendation is a function of gallery size rather than a constant:';
 
   el('galleryKv').innerHTML = GALLERY.map(function (pair) {

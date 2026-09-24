@@ -8,14 +8,20 @@
 # the most attention.
 source = .
 
+# Package-relative now that the modules are grouped. The five `tools_*.py`
+# scripts moved into tools/, which `tools/*` already covered; the four
+# shipped-but-omitted modules moved into cli/ and analysis/.
+#
+# A stale name here does not fail: `omit` that matches nothing is silently
+# ignored, the module rejoins the report, and the published coverage
+# percentage moves for reasons that have nothing to do with the tests.
 omit =
     tests/*
     tools/*
-    tools_*.py
-    face_attendance.py
-    seed_demo.py
-    fetch_models.py
-    fairness_benchmark.py
+    cli/face_attendance.py
+    cli/seed_demo.py
+    cli/fetch_models.py
+    analysis/fairness_benchmark.py
     .venv/*
     docs/*
 

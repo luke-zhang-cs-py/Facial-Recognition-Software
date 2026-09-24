@@ -25,8 +25,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import enrollment                      # noqa: E402
-import readout                         # noqa: E402
+from pipeline import enrollment                      # noqa: E402
+from pipeline import readout                         # noqa: E402
 
 
 def trait_result(**overrides):

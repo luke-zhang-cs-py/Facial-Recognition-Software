@@ -10,7 +10,7 @@ import pytest
 def test_geometry_yaw_is_bounded_even_when_the_eyes_coincide():
     """Regression: yaw divided by inter-eye distance and ran to -689..+470
     when a head turned towards profile."""
-    import traits
+    from pipeline import traits
     row = np.zeros(15, np.float32)
     row[:4] = [200, 150, 160, 190]
     row[4:14] = [250, 215, 250, 215, 400, 258, 210, 300, 260, 300]  # eyes on top of each other
@@ -21,7 +21,7 @@ def test_geometry_yaw_is_bounded_even_when_the_eyes_coincide():
 
 
 def test_geometry_frontal_face_reads_near_zero_yaw():
-    import traits
+    from pipeline import traits
     row = np.zeros(15, np.float32)
     row[:4] = [200, 150, 160, 190]
     row[4:14] = [250, 215, 320, 215, 285, 258, 262, 300, 308, 300]
@@ -31,12 +31,12 @@ def test_geometry_frontal_face_reads_near_zero_yaw():
 
 def test_detection_and_person_thresholds_are_distinct():
     """One number doing both jobs is what made a real face at 0.575 vanish."""
-    import traits
+    from pipeline import traits
     assert traits.DETECT_SCORE < traits.PERSON_SCORE
 
 
 def test_count_people_ignores_haar_rows():
-    import traits
+    from pipeline import traits
     haar = np.zeros(15, np.float32)          # score 0
     strong = np.zeros(15, np.float32)
     strong[14] = 0.95
@@ -46,7 +46,7 @@ def test_count_people_ignores_haar_rows():
 
 def test_brightness_and_contrast_are_reported_but_never_gate():
     """They encode skin tone. Reported yes, decisive no."""
-    import traits
+    from pipeline import traits
     metrics = {"sharpness": 500.0, "brightness": 20.0, "contrast": 5.0,
                "qualityScore": 0.9, "shadowClip": 0.0, "highlightClip": 0.0,
                "dynamicRange": 200.0}
@@ -54,7 +54,7 @@ def test_brightness_and_contrast_are_reported_but_never_gate():
 
 
 def test_exposure_flags_fire_on_clipping(blank_frame):
-    import traits
+    from pipeline import traits
     crushed = {"sharpness": 500.0, "brightness": 5.0, "contrast": 1.0,
                "qualityScore": 0.9, "shadowClip": 0.99, "highlightClip": 0.0,
                "dynamicRange": 200.0}
@@ -62,7 +62,7 @@ def test_exposure_flags_fire_on_clipping(blank_frame):
 
 
 def test_analyze_on_a_blank_frame_reports_no_face(blank_frame):
-    import traits
+    from pipeline import traits
     t = traits.analyze(blank_frame, want_embedding=False,
                        want_demographics=True, require_detection=True)
     assert t["detected"] is False
@@ -74,8 +74,8 @@ def test_landmark_metrics_are_json_serialisable(face_image):
     """Regression: one numpy float32 in this dict returned HTTP 500 for the
     whole status endpoint, and only when a face was actually present."""
     import cv2
-    import traits
-    import landmarks
+    from pipeline import traits
+    from pipeline import landmarks
     rows = traits.detect(face_image)
     if not rows:
         pytest.skip("no face detected in the sample image")
@@ -91,8 +91,8 @@ def test_landmark_metrics_are_json_serialisable(face_image):
 
 def test_derived_points_sit_where_anatomy_says_they_should(face_image):
     import cv2
-    import traits
-    import landmarks
+    from pipeline import traits
+    from pipeline import landmarks
     rows = traits.detect(face_image)
     if not rows:
         pytest.skip("no face detected")
@@ -111,6 +111,6 @@ def test_derived_points_sit_where_anatomy_says_they_should(face_image):
 
 
 def test_metrics_returns_none_for_bad_input():
-    import landmarks
+    from pipeline import landmarks
     assert landmarks.metrics(None) is None
     assert landmarks.metrics(np.zeros((10, 2), np.float32)) is None

@@ -24,12 +24,25 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import vision                                   # noqa: E402
+import layout                                             # noqa: E402
 
-# Modules that read the shared geometry. tools_* are developer scripts and
-# deliberately not in scope; tests/ is where literals belong.
-SHIPPED = [name for name in sorted(os.listdir(ROOT))
-           if name.endswith(".py") and not name.startswith("tools")]
+from core import vision                                   # noqa: E402
+
+# The module the shared numbers live in, root-relative. Named once because
+# three checks below exempt it: it is the one file allowed to write them out.
+VISION = "core/vision.py"
+
+# Modules that read the shared geometry. tools/ holds developer scripts and
+# is deliberately not in scope; tests/ is where literals belong.
+#
+# This was `os.listdir(ROOT)` filtered by `not name.startswith("tools")`,
+# which said "every shipped module" only for as long as every shipped module
+# sat in the root. Once they moved into core/, pipeline/, analysis/ and cli/
+# it still returned a list -- `["app.py"]` -- and every loop below still ran,
+# still passed, and checked one file out of twenty-six. layout.shipped_modules()
+# walks the packages and asserts it found something, so the scan cannot
+# quietly shrink again.
+SHIPPED = layout.shipped_modules()
 
 
 def code_of(name):
@@ -37,11 +50,11 @@ def code_of(name):
 
     Every guard in this family that grepped raw source got a false pass or a
     false failure from prose describing the very thing being searched for --
-    `vision.py`'s own docstring quotes `CONFIDENCE_THRESHOLD = 70`, and
+    `core/vision.py`'s own docstring quotes `CONFIDENCE_THRESHOLD = 70`, and
     three other modules explain the history in comments. Parse, then
     unparse, and only executable code is left.
     """
-    tree = ast.parse(io.open(os.path.join(ROOT, name), encoding="utf-8").read())
+    tree = ast.parse(layout.source_of(name))
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
                                  ast.AsyncFunctionDef)):
@@ -68,8 +81,8 @@ def test_only_vision_puts_a_number_on_the_confidence_threshold():
             if match and "vision." not in match.group(1):
                 offenders.append("%s: %s" % (name, line.strip()))
 
-    assert offenders == ["vision.py: CONFIDENCE_THRESHOLD = 70"], (
-        "the threshold is defined outside vision.py: %s" % offenders)
+    assert offenders == ["%s: CONFIDENCE_THRESHOLD = 70" % VISION], (
+        "the threshold is defined outside %s: %s" % (VISION, offenders))
 
 
 def test_the_analysis_reports_the_threshold_it_reads_rather_than_a_literal():
@@ -80,13 +93,13 @@ def test_the_analysis_reports_the_threshold_it_reads_rather_than_a_literal():
     under test. If someone puts the literal back, this sees the old value
     while vision says the new one.
     """
-    import analytics
+    from analysis import analytics
 
-    source = code_of("analytics.py")
+    source = code_of("analysis/analytics.py")
     assert '"currentThreshold": 70' not in source.replace("'", '"'), (
-        "analytics.py reports a typed threshold again")
+        "analysis/analytics.py reports a typed threshold again")
     assert "vision.CONFIDENCE_THRESHOLD" in source, (
-        "analytics.py no longer reads the shared threshold")
+        "analysis/analytics.py no longer reads the shared threshold")
 
     # And the value that reaches the report is the shared one, whatever it is.
     assert analytics.vision.CONFIDENCE_THRESHOLD is vision.CONFIDENCE_THRESHOLD
@@ -95,14 +108,14 @@ def test_the_analysis_reports_the_threshold_it_reads_rather_than_a_literal():
 def test_the_advice_line_and_the_recogniser_cannot_disagree():
     """`analyze_faces.py` prints "attendance.py has CONFIDENCE_THRESHOLD = N".
     That sentence names a module, so it had better be that module's value."""
-    import attendance
+    from cli import attendance
 
     assert attendance.CONFIDENCE_THRESHOLD == vision.CONFIDENCE_THRESHOLD
 
 
 def test_every_module_that_matches_a_face_uses_the_same_threshold():
-    import attendance
-    import camera
+    from cli import attendance
+    from pipeline import camera
 
     assert camera.CONFIDENCE_THRESHOLD == attendance.CONFIDENCE_THRESHOLD
     # Identity, not equality: two separately declared numbers that happen to
@@ -118,7 +131,7 @@ def test_no_shipped_module_writes_out_the_crop_size():
     seventh that did not would have shown up only as worse accuracy."""
     offenders = []
     for name in SHIPPED:
-        if name == "vision.py":
+        if name == VISION:
             continue
         source = code_of(name)
         if re.search(r"\(\s*200\s*,\s*200\s*\)", source):
@@ -134,7 +147,7 @@ def test_no_shipped_module_writes_out_the_detector_tuning():
     detector, not a slightly slower one."""
     offenders = []
     for name in SHIPPED:
-        if name == "vision.py":
+        if name == VISION:
             continue
         source = code_of(name)
         if re.search(r"minSize\s*=\s*\(\s*80\s*,\s*80\s*\)", source):
@@ -171,8 +184,7 @@ def test_the_shared_module_holds_nothing_but_constants():
     are not: a function here would be a second place for behaviour to live,
     and the module is imported by six others precisely because it is inert.
     """
-    tree = ast.parse(io.open(os.path.join(ROOT, "vision.py"),
-                             encoding="utf-8").read())
+    tree = ast.parse(layout.source_of(VISION))
     kinds = {type(node).__name__ for node in tree.body}
     assert kinds <= {"Expr", "Assign", "AnnAssign", "ImportFrom", "Import"}, (
-        "vision.py has grown something other than constants: %s" % kinds)
+        "%s has grown something other than constants: %s" % (VISION, kinds))

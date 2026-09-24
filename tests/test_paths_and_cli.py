@@ -2,7 +2,9 @@
 CLI modules had no coverage at all."""
 import os
 
-import paths
+import layout
+
+from core import paths
 
 
 def test_all_paths_move_together():
@@ -44,7 +46,7 @@ def test_user_folder_is_filesystem_safe():
 def test_train_model_reports_nothing_to_train(isolated_root, capsys):
     """Redirected with paths.use() rather than by patching train_model's own
     copy of the path -- it does not keep one any more."""
-    import train_model
+    from pipeline import train_model
     assert not os.path.exists(paths.dataset_dir())
     faces, labels = train_model.load_training_data()
     assert faces == [] and labels == []
@@ -53,21 +55,21 @@ def test_train_model_reports_nothing_to_train(isolated_root, capsys):
 
 
 def test_train_model_skips_folders_without_an_id(isolated_root, capsys):
-    import train_model
+    from pipeline import train_model
     os.makedirs(os.path.join(paths.dataset_dir(), "junk"))
     train_model.load_training_data()
     assert "Skipping" in capsys.readouterr().out
 
 
 def test_view_report_on_an_empty_database(isolated_db, capsys):
-    import view_report
+    from cli import view_report
     view_report.main()
     out = capsys.readouterr().out
     assert "none yet" in out and "no attendance logged" in out
 
 
 def test_view_report_lists_users_and_records(isolated_db, capsys):
-    import view_report
+    from cli import view_report
     uid = isolated_db.add_user("Zoe")
     isolated_db.log_attendance(uid, 33.3)
     view_report.main()
@@ -76,18 +78,26 @@ def test_view_report_lists_users_and_records(isolated_db, capsys):
 
 
 def test_face_attendance_requires_a_subcommand():
-    """The thin front end must not silently do nothing."""
+    """The thin front end must not silently do nothing.
+
+    Run as `-m cli.face_attendance` from the project root, which is how it is
+    invoked now that it lives in a package. The old spelling passed a bare
+    filename with `cwd=os.getcwd()`, so it depended on pytest happening to be
+    started from the root -- and anywhere else the failure it saw was "no
+    such file", which would satisfy `returncode != 0` for the wrong reason.
+    """
     import subprocess
     import sys
-    r = subprocess.run([sys.executable, "face_attendance.py"],
-                       capture_output=True, text=True, cwd=os.getcwd())
-    assert r.returncode != 0
+    r = subprocess.run([sys.executable, "-m", "cli.face_attendance"],
+                       capture_output=True, text=True, cwd=layout.ROOT)
+    assert r.returncode != 0, (
+        "it exited 0 with no subcommand: " + (r.stdout + r.stderr))
     assert "command" in (r.stderr + r.stdout).lower()
 
 
 def test_face_attendance_defines_no_duplicated_logic():
     """It used to re-implement twelve functions that already existed."""
     import ast
-    tree = ast.parse(open("face_attendance.py", encoding="utf-8").read())
+    tree = ast.parse(layout.source_of("cli/face_attendance.py"))
     funcs = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
     assert funcs == {"main"}, f"logic crept back in: {funcs}"

@@ -18,7 +18,7 @@ def isolated_root():
     fixed, so the redirection is the one call it was always supposed to be,
     and the database and the dataset can no longer end up in different places.
     """
-    import paths
+    from core import paths
     tmp = tempfile.mkdtemp()
     previous = paths.use(tmp)
     try:
@@ -30,7 +30,7 @@ def isolated_root():
 @pytest.fixture
 def isolated_db(isolated_root):
     """A throwaway database, so tests never touch the real attendance.db."""
-    import db
+    from core import db
     db.init_db()
     return db
 
@@ -43,7 +43,7 @@ def face_image():
     that need one use a genuine frame if the corpus is present and skip
     otherwise rather than asserting against a fake.
     """
-    import corpus_paths
+    from core import corpus_paths
     import cv2
     # The fallback was ".", so off Windows this looked for sample frames in
     # the current directory and always skipped.

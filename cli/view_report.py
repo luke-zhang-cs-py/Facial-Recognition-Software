@@ -1,0 +1,34 @@
+"""
+cli/view_report.py
+------------------
+Quick CLI to inspect what's in the SQL database — all users, and every
+attendance record (not just today's). Handy for demos and debugging.
+
+Usage:
+    python -m cli.view_report
+"""
+
+from core import db
+
+
+def main():
+    db.init_db()
+
+    print("=== Registered Users ===")
+    users = db.get_all_users()
+    if not users:
+        print("  (none yet — run register_user.py)")
+    for user_id, name in users:
+        print(f"  [{user_id}] {name}")
+
+    print("\n=== All Attendance Records ===")
+    rows = db.get_all_attendance()
+
+    if not rows:
+        print("  (no attendance logged yet)")
+    for name, timestamp, confidence in rows:
+        print(f"  {timestamp}  |  {name}  |  confidence={confidence:.1f}")
+
+
+if __name__ == "__main__":
+    main()

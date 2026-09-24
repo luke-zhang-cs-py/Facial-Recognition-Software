@@ -45,8 +45,15 @@ PAGE = os.path.join(ROOT, "docs", "index.html")
 
 # Directories that hold no shipped module. tests/ is excluded from coverage by
 # the config too; the rest are never source.
+#
+# tools/ is deliberately *not* skipped. The five developer scripts used to sit
+# in the root as `tools_*.py`, so this walk found them and the page had to
+# list them -- under OMITTED, with a reason, which is the whole point of that
+# block. Skipping the directory they moved into would have quietly dropped
+# five files off a page whose first rule is that nothing is missing from it,
+# and the only visible sign would have been the page getting shorter.
 SKIP_DIRS = {".git", "__pycache__", "tests", "htmlcov", ".venv", "venv",
-             "node_modules", "docs", "tools", "data", "static", "templates"}
+             "node_modules", "docs", "data", "static", "templates"}
 
 # The page's own history: counts that describe what a figure *used to* say.
 # These are the only numbers on the page allowed to be wrong, because being
@@ -152,8 +159,16 @@ def published_pages():
     A glob rather than the PAGE constant because more than one project here
     publishes a second page, and a check that names one file stops checking
     the moment a second appears.
+
+    Recursive, because `docs/*.html` is not "every page in docs/" -- it is
+    every page in the top level of it, and the generated demo lives in
+    `docs/app/`. It was not covered, and it shipped with exactly the defect
+    these two checks exist to catch: `renderCalibration` assigned into an id
+    that was not in the markup, threw, and left the two charts and the risk
+    table empty on a page that otherwise looked finished.
     """
-    return sorted(glob.glob(os.path.join(ROOT, "docs", "*.html")))
+    return sorted(glob.glob(os.path.join(ROOT, "docs", "**", "*.html"),
+                            recursive=True))
 
 
 def script_body(text):

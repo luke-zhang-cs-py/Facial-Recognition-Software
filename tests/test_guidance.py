@@ -1,7 +1,7 @@
 """guidance.py decides what a person is told to do. Its ordering is the whole
 point: telling somebody their lighting is poor while the camera cannot see
 them at all is noise."""
-import guidance
+from pipeline import guidance
 
 
 def base(**over):

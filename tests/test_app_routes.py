@@ -19,7 +19,7 @@ def client(isolated_root, tmp_path):
     Fixing that at the source turned three patches into one redirect, which
     is what paths.use() was written to be.
     """
-    import db
+    from core import db
     db.init_db()
     import app as flask_app
     flask_app.app.config["TESTING"] = True

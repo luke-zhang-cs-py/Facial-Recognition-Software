@@ -15,7 +15,7 @@ import json
 import numpy as np
 import pytest
 
-import analytics
+from analysis import analytics
 import app as web
 
 

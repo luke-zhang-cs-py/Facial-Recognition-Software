@@ -20,9 +20,9 @@ import cv2
 import numpy as np
 import pytest
 
-import corpus_paths
-import sampleframes
-import traits as facetraits
+from core import corpus_paths
+from pipeline import sampleframes
+from pipeline import traits as facetraits
 
 
 # The same synthetic YuNet row the camera tests use: a frontal face at

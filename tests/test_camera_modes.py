@@ -23,7 +23,7 @@ import cv2
 import numpy as np
 import pytest
 
-import camera
+from pipeline import camera
 
 
 # A frontal face, 200x200 at (200, 150). Eyes level and 100px apart, nose on

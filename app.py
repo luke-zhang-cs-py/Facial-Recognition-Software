@@ -47,13 +47,13 @@ from flask import Flask, jsonify, render_template, request, Response
 # effect of an import moves the ground under everything else in it.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-import db                                  # noqa: E402
-import paths                               # noqa: E402
-import train_model                         # noqa: E402
-import analytics                           # noqa: E402
-import recognition                         # noqa: E402
-import facemodels                          # noqa: E402
-from camera import camera, CameraError     # noqa: E402
+from core import db                                  # noqa: E402
+from core import paths                               # noqa: E402
+from pipeline import train_model                         # noqa: E402
+from analysis import analytics                           # noqa: E402
+from pipeline import recognition                         # noqa: E402
+from core import facemodels                          # noqa: E402
+from pipeline.camera import camera, CameraError     # noqa: E402
 
 app = Flask(__name__)
 

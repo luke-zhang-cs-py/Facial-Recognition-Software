@@ -5,8 +5,8 @@ import os
 import numpy as np
 import pytest
 
-import analytics
-import paths
+from analysis import analytics
+from core import paths
 
 
 def rec(**over):
@@ -197,8 +197,8 @@ def test_the_intended_sample_count_matches_the_capture_plan():
     Not an import at runtime -- analytics is used by scripts that never open
     a camera -- so this is where the two are kept honest.
     """
-    import analytics
-    from camera import CAPTURE_PLAN
+    from analysis import analytics
+    from pipeline.camera import CAPTURE_PLAN
     assert analytics.INTENDED_SAMPLES == sum(p["count"] for p in CAPTURE_PLAN)
     assert analytics.EXPECTED_SAMPLES < analytics.INTENDED_SAMPLES, (
         "the complain-at threshold has to be below the target")

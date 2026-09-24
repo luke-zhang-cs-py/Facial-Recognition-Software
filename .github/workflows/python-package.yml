@@ -44,7 +44,7 @@ jobs:
 
       - name: Run tests
         # Note what this runner does not have. models/ holds ~134 MB of
-        # third-party weights fetched by fetch_models.py, and dataset/ holds
+        # third-party weights fetched by cli/fetch_models.py, and dataset/ holds
         # captured images of real people -- both gitignored, the second
         # deliberately so. The handful of tests that need those weights skip
         # rather than fail, which is what makes this runnable at all.

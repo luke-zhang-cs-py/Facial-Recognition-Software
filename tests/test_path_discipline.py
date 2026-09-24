@@ -21,9 +21,22 @@ standing in the project directory.
 import os
 import re
 
-import paths
+import layout
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from core import paths
+
+ROOT = layout.ROOT
+
+# Every module in the project, developer scripts included: tools/ resolves
+# paths too, and the rule is the same there.
+#
+# This was `os.listdir(ROOT)`, which named every module only while every
+# module was in the root. After the move into core/, pipeline/, analysis/,
+# cli/ and tools/ it still returned a list and both loops below still ran --
+# over `app.py` alone. They would have gone on passing while checking one
+# file in twenty-six. layout.project_modules() walks the packages and
+# asserts it found something.
+SCANNED = layout.project_modules()
 
 # Filenames paths.py is the authority on. Anything else naming them is a
 # second opinion about where they live.
@@ -32,12 +45,11 @@ OWNED = re.compile(r"""["'](?:trainer\.yml|attendance\.db)["']"""
 
 # Modules that legitimately name them: paths.py decides, and the tests here
 # are allowed to talk about the mistake.
-ALLOWED = {"paths.py"}
+ALLOWED = {"core/paths.py"}
 
 
 def source_lines(name):
-    text = open(os.path.join(ROOT, name), encoding="utf-8").read()
-    for line in text.split("\n"):
+    for line in layout.source_of(name).split("\n"):
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             yield line
@@ -45,8 +57,8 @@ def source_lines(name):
 
 def test_no_module_names_a_path_that_paths_owns():
     offenders = []
-    for name in sorted(os.listdir(ROOT)):
-        if not name.endswith(".py") or name in ALLOWED:
+    for name in SCANNED:
+        if name in ALLOWED:
             continue
         for line in source_lines(name):
             if OWNED.search(line):
@@ -59,11 +71,10 @@ def test_no_module_holds_an_import_time_copy_of_a_path():
     never moves, which is what broke use()."""
     captured = re.compile(r"^[A-Z_]+\s*=\s*paths\.\w+\(\)", re.M)
     offenders = []
-    for name in sorted(os.listdir(ROOT)):
-        if not name.endswith(".py") or name in ALLOWED:
+    for name in SCANNED:
+        if name in ALLOWED:
             continue
-        text = open(os.path.join(ROOT, name), encoding="utf-8").read()
-        for match in captured.finditer(text):
+        for match in captured.finditer(layout.source_of(name)):
             offenders.append(f"{name}: {match.group(0)}")
     assert not offenders, ("resolve per call, not at import:\n  "
                            + "\n  ".join(offenders))
@@ -71,8 +82,8 @@ def test_no_module_holds_an_import_time_copy_of_a_path():
 
 def test_use_moves_every_store_together(tmp_path):
     """The contract, end to end."""
-    import db
-    import train_model
+    from core import db
+    from pipeline import train_model
 
     previous = paths.use(str(tmp_path))
     try:

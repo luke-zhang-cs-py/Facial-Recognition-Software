@@ -20,8 +20,8 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import analytics                        # noqa: E402
-import analyze_faces                    # noqa: E402
+from analysis import analytics                        # noqa: E402
+from cli import analyze_faces                    # noqa: E402
 
 
 def similarity_matrix(vectors):

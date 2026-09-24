@@ -23,7 +23,7 @@ import cv2
 import numpy as np
 import pytest
 
-import camera
+from pipeline import camera
 
 
 class FakeCapture:

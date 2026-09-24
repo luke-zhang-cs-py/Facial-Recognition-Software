@@ -8,7 +8,7 @@ and nine age bands. 39.8 minutes at 41 img/s on 10 cores, followed by
 Reproduce the fairness half with:
 
 ```bash
-python fairness_benchmark.py --corpus <dir-of-parquet> --per-group 800
+python -m analysis.fairness_benchmark --corpus <dir-of-parquet> --per-group 800
 ```
 
 FairFace was chosen because it is openly licensed, demographically labelled,
@@ -83,7 +83,7 @@ The earlier recommendation of 0.5 came from a sweep over three enrolled people
 — with three identities there are three ways to be wrong, so almost any
 threshold scores zero false matches and the sweep recommends the loosest one.
 
-`calibration.py` now carries the measured curve, and `analytics.py` refuses to
+`analysis/calibration.py` now carries the measured curve, and `analysis/analytics.py` refuses to
 trust a local sweep below 15 enrolled people, deferring to it instead. The
 recommendation is a function of gallery size:
 
@@ -127,7 +127,7 @@ are minor (12.8–15.0).
 
 Running at scale broke things that a 45-image test never would:
 
-- **`db.py` leaked connections on any error.** Every function closed its
+- **`core/db.py` leaked connections on any error.** Every function closed its
   connection only on the success path, so one failed write left a connection
   open with its transaction, and SQLite then refused every later write with
   "database is locked". One bad row poisoned the process. All access now goes
@@ -143,12 +143,12 @@ Running at scale broke things that a 45-image test never would:
 
 # Recognition at scale
 
-Identification uses SFace embeddings (`recognition.py`) with the gallery-size
-threshold from `calibration.py`. Two questions matter: how often is it right,
+Identification uses SFace embeddings (`pipeline/recognition.py`) with the gallery-size
+threshold from `analysis/calibration.py`. Two questions matter: how often is it right,
 and does that hold as more people enroll.
 
-Reproduce with `tools_trials.py` (robustness) and `tools_build_gallery.py` +
-`tools_scale_benchmark.py` (scale).
+Reproduce with `tools/trials.py` (robustness) and `tools/build_gallery.py` +
+`tools/scale_benchmark.py` (scale).
 
 ## 4,500 randomised trials, 45 enrolled people
 
@@ -192,7 +192,7 @@ matches down, and past a few hundred people it rises faster than the genuine
 scores do.
 
 Past 2,500 enrolled, no measured threshold keeps the false-match risk under
-1% at all. `calibration.py` predicted this arithmetically from FairFace
+1% at all. `analysis/calibration.py` predicted this arithmetically from FairFace
 impostor pairs before any of it was measured here; the measurement agrees.
 
 **What this means in practice.** The system is sound for a class, a team, an

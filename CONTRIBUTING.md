@@ -4,7 +4,7 @@
 
 ```bash
 pip install -r requirements.txt
-python fetch_models.py   # ~134 MB of third-party weights
+python -m cli.fetch_models   # ~134 MB of third-party weights
 python app.py            # http://127.0.0.1:5001
 ```
 
@@ -39,7 +39,7 @@ you what skipped and why.
 ## Benchmark corpora
 
 LFW, FairFace, faceage and the CASIA gallery are downloaded on demand and
-cached under the system temporary directory. `corpus_paths.py` is the only
+cached under the system temporary directory. `core/corpus_paths.py` is the only
 place that decides where:
 
 | Variable | Effect |
@@ -63,7 +63,33 @@ pytest -q -rs
 python -m flake8 . --select=E9,F63,F7,F82
 ```
 
-182 tests locally; 179 and 3 skipped without the weights. Both must pass.
+382 tests locally; 379 pass and 3 skip without the weights.
+
+`python tools/refresh_figures.py` rewrites that sentence, the figures on
+`docs/index.html` and the one in the README from a real measured run — do
+not edit any of them by hand. The sentence above was four times out of date
+before the script owned it.
+
+## The published demo
+
+`docs/app/` is generated. Edit `tools/static_src/`, then:
+
+```bash
+python tools/build_static.py            # rebuild
+python tools/build_static.py --prove    # and check the checks still bite
+```
+
+The build runs the JavaScript it is about to publish in a real browser and
+compares it against the Python it was ported from, over a matrix of
+measurement combinations; a single disagreement and it writes nothing. It
+needs `pip install playwright && python -m playwright install chromium`,
+which is a build-time dependency only — `pytest` does not need it.
+
+The demo covers `pipeline/guidance.py` and `analysis/calibration.py` and
+nothing else, because those two are the only modules that import neither
+`cv2` nor `numpy`. **Do not extend it to anything that would imply the
+browser is recognising faces.** It is not, it cannot, and a page that
+suggested otherwise would be worse than no page.
 
 ## Conventions
 

@@ -29,17 +29,30 @@ every bug this has had. (Or open [`docs/index.html`](docs/index.html) locally.)
 
 ## Run it
 
-Needs a machine with a webcam — this won't work in a cloud sandbox.
+**It needs a real webcam.** The camera is opened by the *server* process, not
+the browser, so this has to run on the machine the camera is plugged into —
+a cloud sandbox or a remote host cannot do it, and neither can a published
+page. That constraint is the whole reason the
+[demo above](#-try-the-guidance--calibration-demo-) covers only the two
+modules that are pure arithmetic.
 
 ```bash
 pip install -r requirements.txt
+python -m cli.fetch_models         # ~134 MB of pretrained weights, once
 python app.py                      # http://127.0.0.1:5001
 ```
 
-Register a person, capture ~30 samples, and the LBPH model retrains itself.
-Then start attendance: recognised faces get one `attendance` row per person per
-day. The CLI does the same four steps (`python -m cli.register_user`,
-`cli.attendance`, `cli.view_report`).
+**Don't skip the middle line.** Detection and attendance work without it, but
+the trait readout, liveness, quality scoring and SFace identification all need
+those weights and degrade quietly without them — which looks like the app
+being broken rather than the app being incomplete. `GET /api/models` reports
+exactly which are missing, and `python -m cli.analyze_faces` prints the same
+note before it runs.
+
+Then: register a person, capture ~30 samples, and the LBPH model retrains
+itself. Start attendance and recognised faces get one `attendance` row per
+person per day. The CLI does the same four steps — `python -m cli.register_user`,
+`cli.attendance`, `cli.view_report`.
 
 To try recognition without registering anyone, enroll from LFW:
 

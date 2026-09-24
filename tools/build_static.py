@@ -1,7 +1,25 @@
-"""Build the browser demo of the two pure-arithmetic modules into docs/app/.
+"""Build the browser demos into docs/app/ and docs/camera/.
 
     python tools/build_static.py
     python tools/build_static.py --prove     (see "Proving it bites", below)
+
+Two bundles, one rule engine.
+
+  docs/app/     the two pure-arithmetic modules driven by sliders. Opens off
+                the filesystem: every asset is a relative js/ or css/ file
+                and it fetches nothing.
+
+  docs/camera/  the same guidance port driven by the visitor's own webcam,
+                with MediaPipe Face Landmarker supplying the measurements.
+                It needs https and a WebAssembly download, so it cannot make
+                the file:// promise docs/app/ makes -- which is exactly why
+                it is a separate directory rather than a page inside it.
+
+js/constants.js and js/guidance.js are written to both, byte for byte, from
+the same source, and `check_camera_shares_the_checked_port` refuses to
+publish if they ever differ. There is one ported guidance implementation in
+this repository and it is the one the checks below run against; the camera
+page's claim to be running it is asserted, not asserted-in-prose.
 
 --------------------------------------------------------------------------
 What this publishes, and what it refuses to pretend
@@ -175,7 +193,30 @@ sys.path.insert(0, ROOT)
 OUT = os.path.join(ROOT, "docs", "app")
 SRC = os.path.join(ROOT, "tools", "static_src")
 
+# The second bundle: the same guidance port, driven by a real face instead of
+# sliders. Kept out of docs/app/ on purpose. That directory is built to open
+# straight off the filesystem -- every asset it names is a relative js/ or
+# css/ file and it fetches nothing, so a file:// copy of it works. The camera
+# page cannot honour that: it needs a WebAssembly runtime and a model over
+# https, and a secure context before a browser will hand it a camera at all.
+# Two different guarantees, so two different directories.
+CAMERA_OUT = os.path.join(ROOT, "docs", "camera")
+CAMERA_SRC = os.path.join(SRC, "camera")
+
 REPO = "https://github.com/luke-zhang-cs-py/Facial-Recognition-Software"
+
+# MediaPipe, pinned. Not vendored: the two WebAssembly builds and the model
+# come to roughly 23 MB, and committing that much third-party binary to serve
+# one demo page is a worse trade than naming an exact version. Pinned rather
+# than floating so the page cannot change behaviour underneath the repository
+# -- an @latest URL would make this demo a moving target nothing here tests.
+VISION_VERSION = "0.10.14"
+VISION_BASE = ("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@%s"
+               % VISION_VERSION)
+VISION_MODULE = VISION_BASE + "/vision_bundle.mjs"
+WASM_ROOT = VISION_BASE + "/wasm"
+MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker"
+             "/face_landmarker/float16/1/face_landmarker.task")
 
 # Where Chrome lives on the machine this is developed on. Optional:
 # Playwright ships its own Chromium and that is used when this is not here,
@@ -191,6 +232,13 @@ SCRIPT_ORDER = ["js/constants.js", "js/guidance.js", "js/calibration.js",
 # decides nothing, and loading it outside a page would only fail on a
 # missing document.
 CHECKED_JS = ["js/constants.js", "js/guidance.js", "js/calibration.js"]
+
+# The files docs/camera/ takes unchanged from docs/app/. Copied rather than
+# reimplemented, and asserted identical below, so there is exactly one ported
+# guidance implementation in the repository and it is the one the checks
+# above run against. A second copy that drifted would be a rule engine nobody
+# had compared to anything.
+SHARED_WITH_CAMERA = ["js/constants.js", "js/guidance.js"]
 
 
 def read(path):
@@ -291,6 +339,58 @@ def constants_file(constants):
                       ensure_ascii=True),
            json.dumps(constants["calibration"], separators=(",", ":"),
                       ensure_ascii=True)))
+
+
+# ---------------------------------------------------------------------------
+# The numbers the camera page needs and guidance.py does not export
+# ---------------------------------------------------------------------------
+# guidance.py reads `parts.flags`; something else has to produce them. In the
+# app that is pipeline/landmarks.py, and the two detection scores live in
+# pipeline/traits.py. The camera page recomputes those flags from MediaPipe's
+# mesh, so it needs the same thresholds -- read off the modules by name here
+# for the same reason the guidance ones are, so that a constant renamed in
+# Python stops this build rather than leaving a retyped copy behind on a
+# page that claims not to have one.
+LANDMARK_NAMES = (("pipeline.landmarks",
+                   ("EAR_CLOSED", "MAR_OPEN", "ASYMMETRY_LIMIT")),
+                  ("pipeline.traits", ("DETECT_SCORE", "PERSON_SCORE")))
+
+
+def collect_landmark_constants():
+    import importlib
+
+    values = {}
+    for module_name, names in LANDMARK_NAMES:
+        module = importlib.import_module(module_name)
+        for name in names:
+            if not hasattr(module, name):
+                stop("%s no longer defines %s, which the camera page's "
+                     "js/measure.js reads. Port the change before rebuilding."
+                     % (module_name.replace(".", "/") + ".py", name))
+            values[name] = getattr(module, name)
+    return values
+
+
+def landmark_constants_file(values):
+    """The landmark thresholds, exported rather than retyped.
+
+    A separate file from js/constants.js on purpose: that one is shared
+    byte-for-byte with docs/app/ and is the file the equivalence checks run
+    against. Appending to it would make the two copies differ and quietly
+    break the claim that there is one checked port.
+    """
+    return (
+        "/* Generated by tools/build_static.py from pipeline/landmarks.py and\n"
+        " * pipeline/traits.py -- do not edit.\n"
+        " *\n"
+        " * The thresholds that decide `parts.flags`, which guidance.py reads\n"
+        " * but does not compute, plus the two detection scores. js/measure.js\n"
+        " * applies them to MediaPipe's landmarks instead of the LBF model's,\n"
+        " * so the numbers are this project's and the points they are applied\n"
+        " * to are not -- which is what the page's provenance column says.\n"
+        " */\n"
+        "const LANDMARK_CONSTANTS = %s;\n"
+        % json.dumps(values, separators=(",", ":"), ensure_ascii=True))
 
 
 # ---------------------------------------------------------------------------
@@ -1083,21 +1183,142 @@ def collect(constants):
     return written
 
 
-def prune(kept):
-    """Delete anything left in docs/app/ from an older build.
+# ---------------------------------------------------------------------------
+# The camera page
+# ---------------------------------------------------------------------------
+# Same rule engine, a real face instead of sliders. What it adds is a
+# translation layer -- MediaPipe's landmarks into the measurements
+# guidance.py reads -- and the whole risk of the thing lives there: a real
+# rule engine handed a plausible number returns a real-looking verdict and
+# nothing on screen distinguishes it from a true one. js/measure.js carries a
+# provenance label for every field and the page prints them, so an
+# approximation is visible rather than implied.
+CAMERA_SCRIPTS = ["js/constants.js", "js/landmark-constants.js",
+                  "js/guidance.js", "js/measure.js"]
+
+
+def camera_js(template):
+    """Point the page's one import at the pinned MediaPipe version."""
+    for anchor, value, what in (
+            ("'@VISION_MODULE@'", VISION_MODULE, "pin the library URL"),
+            ("'@WASM_ROOT@'", WASM_ROOT, "pin the WebAssembly directory"),
+            ("'@MODEL_URL@'", MODEL_URL, "pin the landmark model URL")):
+        template = replace_once(template, anchor, "'%s'" % value, what)
+    return template
+
+
+def camera_html(template):
+    text = replace_once(
+        template,
+        '<link rel="stylesheet" href="css/camera.css">',
+        '<link rel="stylesheet" href="css/camera.css">\n'
+        '<!-- Generated by tools/build_static.py from\n'
+        '     tools/static_src/camera/ -- do not edit this copy; edit the\n'
+        '     source and rebuild. -->',
+        "mark the camera page as generated")
+
+    text = replace_once(
+        text, '<a id="repoLink" href="#">',
+        '<a id="repoLink" href="%s">' % REPO,
+        "point the camera banner link at the repository")
+
+    scripts = "\n".join('<script src="%s"></script>' % name
+                        for name in CAMERA_SCRIPTS)
+    text = replace_once(
+        text, "</body>",
+        "<!-- Classic scripts first, so their globals exist before the\n"
+        "     module runs: constants.js and guidance.js are the same two\n"
+        "     files docs/app/ loads, byte for byte, and js/camera.js reads\n"
+        "     the Guidance object they define rather than deciding anything\n"
+        "     itself. The module is deferred by definition, so it runs\n"
+        "     after all four. -->\n"
+        + scripts + "\n"
+        '<script type="module" src="js/camera.js"></script>\n\n</body>',
+        "add the camera script tags")
+    return text
+
+
+# The four things the camera page's banner has to keep saying. A live face on
+# screen invites exactly the assumption this project's documentation spends
+# its time refusing, and the sentence that refuses it is the one most easily
+# lost in an edit. Checked as text so losing one stops the build.
+CAMERA_CLAIMS = (
+    ("whose engine it is", "The eyes are MediaPipe&rsquo;s."),
+    ("whose rules they are", "The rules are this project&rsquo;s."),
+    ("that nobody is identified", "There is no recognition here."),
+    ("that nothing is sent", "Nothing is uploaded."),
+)
+
+
+def check_camera_says_what_it_is(text):
+    missing = [what for what, sentence in CAMERA_CLAIMS
+               if sentence not in text]
+    if missing:
+        stop("the camera page no longer states: %s. Those four sentences are "
+             "the reason it is publishable; put them back before rebuilding."
+             % ", ".join(missing))
+
+
+def collect_camera(app_bundle):
+    """The camera bundle, as {path in docs/camera: text}.
+
+    Takes the app bundle rather than rebuilding the shared files, so the copy
+    published here cannot be a different port of guidance.py from the one the
+    checks just ran against. It is the same string.
+    """
+    written = {}
+    for name in SHARED_WITH_CAMERA:
+        if name not in app_bundle:
+            stop("%s is no longer part of the docs/app bundle, so the camera "
+                 "page cannot share it. Fix SHARED_WITH_CAMERA." % name)
+        written[name] = app_bundle[name]
+
+    written["js/landmark-constants.js"] = landmark_constants_file(
+        collect_landmark_constants())
+    written["js/measure.js"] = read(os.path.join(CAMERA_SRC, "js",
+                                                 "measure.js"))
+    written["js/camera.js"] = camera_js(
+        read(os.path.join(CAMERA_SRC, "js", "camera.js")))
+    written["css/camera.css"] = read(os.path.join(CAMERA_SRC, "css",
+                                                  "camera.css"))
+    page = camera_html(read(os.path.join(CAMERA_SRC, "index.html")))
+    check_camera_says_what_it_is(page)
+    written["index.html"] = page
+    return written
+
+
+def check_camera_shares_the_checked_port(app_bundle, camera_bundle):
+    """The one invariant the camera page rests on.
+
+    Its banner says the rules are this project's and that the file running is
+    the checked one. That is only true while these two strings are equal, so
+    it is asserted rather than assumed -- a copy that drifted would be a rule
+    engine nobody had compared to any Python, published under a claim that it
+    had been.
+    """
+    for name in SHARED_WITH_CAMERA:
+        if app_bundle[name] != camera_bundle.get(name):
+            stop("docs/camera/%s is not the same file as docs/app/%s. The "
+                 "camera page claims to run the checked port; it would not "
+                 "be." % (name, name))
+    return len(SHARED_WITH_CAMERA)
+
+
+def prune(out, kept):
+    """Delete anything left in a generated directory from an older build.
 
     Without this a renamed file lives on and is still loaded, which is the
     one failure mode a generated directory has that a hand-written one does
     not.
     """
-    if not os.path.isdir(OUT):
+    if not os.path.isdir(out):
         return
-    for here, _dirs, names in os.walk(OUT):
+    for here, _dirs, names in os.walk(out):
         for name in names:
             path = os.path.join(here, name)
-            if os.path.relpath(path, OUT).replace("\\", "/") not in kept:
+            if os.path.relpath(path, out).replace("\\", "/") not in kept:
                 os.remove(path)
-                print("  removed stale %s" % os.path.relpath(path, OUT))
+                print("  removed stale %s" % os.path.relpath(path, out))
 
 
 def sizes(written):
@@ -1106,6 +1327,16 @@ def sizes(written):
         raw = body.encode("utf-8")
         rows.append((name, len(raw), len(gzip.compress(raw, 9))))
     return rows
+
+
+def report_sizes(where, rows):
+    print("wrote %d files to %s" % (len(rows), where))
+    for name, raw, packed in rows:
+        print("  %-24s %7.1f KB  %6.1f KB gzipped"
+              % (name, raw / 1024.0, packed / 1024.0))
+    print("  %-24s %7.1f KB  %6.1f KB gzipped"
+          % ("total", sum(r[1] for r in rows) / 1024.0,
+             sum(r[2] for r in rows) / 1024.0))
 
 
 def main(argv):
@@ -1138,20 +1369,29 @@ def main(argv):
             print()
             prove(instance, written, bundle)
 
+    camera = collect_camera(written)
+    shared = check_camera_shares_the_checked_port(written, camera)
+
     for name, body in sorted(written.items()):
         write(os.path.join(OUT, name.replace("/", os.sep)), body)
-    prune(set(written))
+    prune(OUT, set(written))
 
-    rows = sizes(written)
-    print("wrote %d files to docs/app" % len(rows))
-    for name, raw, packed in rows:
-        print("  %-22s %7.1f KB  %6.1f KB gzipped"
-              % (name, raw / 1024.0, packed / 1024.0))
-    print("  %-22s %7.1f KB  %6.1f KB gzipped"
-          % ("total", sum(r[1] for r in rows) / 1024.0,
-             sum(r[2] for r in rows) / 1024.0))
+    for name, body in sorted(camera.items()):
+        write(os.path.join(CAMERA_OUT, name.replace("/", os.sep)), body)
+    prune(CAMERA_OUT, set(camera))
+
+    report_sizes("docs/app", sizes(written))
     print("  serve it:  python -m http.server -d docs 8000  ->  "
           "http://127.0.0.1:8000/app/")
+    print()
+    report_sizes("docs/camera", sizes(camera))
+    print("  %d file%s shared byte-for-byte with docs/app: %s"
+          % (shared, "" if shared == 1 else "s",
+             ", ".join(SHARED_WITH_CAMERA)))
+    print("  MediaPipe is not vendored; pinned at tasks-vision@%s"
+          % VISION_VERSION)
+    print("  needs https or localhost -- getUserMedia will not run from "
+          "file://")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,209 @@
+/* The same palette as css/demo.css on the slider page -- one categorical
+ * slot, the fixed status colours for pass/warn/block, and the chrome ink --
+ * so the two demos read as the same system. Duplicated rather than imported
+ * because this page is a separate bundle with a separate asset story, and an
+ * @import of a stylesheet in a sibling directory is a request that can fail
+ * on its own. */
+.viz-root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --plane: #f9f9f7;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --plane: #0d0d0d;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 20px 60px;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+.pageHead { max-width: 1180px; margin: 0 auto; padding: 26px 0 10px; }
+.pageHead h1 { font-size: 26px; margin: 0; font-weight: 650; }
+.pageHead em {
+  display: block; font-style: normal; font-size: 15px;
+  color: var(--ink-2); font-weight: 400; margin-top: 4px;
+}
+
+/* ---------------------------------------------------------------- banner */
+.banner {
+  max-width: 1180px; margin: 0 auto 26px; padding: 16px 20px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--critical);
+  border-radius: 8px;
+}
+.honesty { margin: 0 0 12px; padding-left: 20px; }
+.honesty li { margin: 0 0 9px; color: var(--ink-2); }
+.honesty li:last-child { margin-bottom: 0; }
+.honesty b { color: var(--ink); }
+.bannerLinks { font-size: 14px; margin: 0; color: var(--ink-2); }
+.bannerLinks a { color: var(--series-1); }
+.bannerLinks .sep { color: var(--muted); margin: 0 8px; }
+
+/* ----------------------------------------------------------------- panels */
+main { max-width: 1180px; margin: 0 auto; }
+.panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px 22px;
+  margin: 0 0 22px;
+}
+.panel h2 { font-size: 19px; margin: 0 0 6px; font-weight: 620; }
+.panel h3 {
+  font-size: 13px; margin: 18px 0 8px; font-weight: 620;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+}
+.panel h3 .src, .panel h2 .src {
+  text-transform: none; letter-spacing: 0; font-weight: 400;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted); font-size: 11px; margin-left: 6px;
+}
+.lede { color: var(--ink-2); margin: 0 0 14px; max-width: 78ch; }
+.panel p { color: var(--ink-2); max-width: 82ch; }
+
+/* --------------------------------------------------------------- controls */
+.controls {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.btn {
+  font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--plane); color: var(--ink);
+}
+.btn--go { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.status { font-size: 14px; color: var(--ink-2); flex: 1 1 260px; }
+.status--good { color: var(--good); }
+.status--bad { color: var(--critical); }
+.status--busy { color: var(--warning); }
+.fps {
+  font-size: 12px; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ------------------------------------------------------------------- live */
+.live { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.stageWrap {
+  flex: 1 1 520px; min-width: 300px;
+  background: #000; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+/* The video is a sink for the stream, never shown: everything on screen is
+   the canvas, so what you see is exactly what was measured. */
+#video { display: none; }
+#stage { display: block; width: 100%; height: auto; }
+
+.sidebar { flex: 1 1 300px; min-width: 260px; }
+
+.verdict {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; background: var(--plane);
+}
+.sev {
+  display: inline-block; font-size: 11px; letter-spacing: 0.06em;
+  text-transform: uppercase; font-weight: 650; padding: 2px 8px;
+  border-radius: 999px; color: #fff; background: var(--muted);
+}
+.sev--ok { background: var(--good); }
+.sev--warn { background: var(--warning); color: #241a00; }
+.sev--block { background: var(--critical); }
+.msg { font-size: 21px; font-weight: 640; margin: 8px 0 0; }
+.det { font-size: 13px; color: var(--ink-2); margin: 6px 0 0; }
+
+/* -------------------------------------------------------------- checklist */
+.checks { list-style: none; margin: 0; padding: 0; }
+.chk {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 4px 0; border-bottom: 1px solid var(--grid); font-size: 13px;
+}
+.chk:last-child { border-bottom: none; }
+.chk__mark { width: 14px; text-align: center; font-weight: 700; }
+.chk--ok .chk__mark { color: var(--good); }
+.chk--bad .chk__mark { color: var(--critical); }
+.chk--none .chk__mark { color: var(--muted); }
+.chk--none .chk__body b { color: var(--muted); }
+.chk__body { flex: 1; }
+.chk__note { color: var(--muted); font-style: italic; font-size: 12px; }
+.chk__fix { display: block; color: var(--ink-2); font-size: 12px; }
+
+/* ------------------------------------------------------------- rule chain */
+.rules {
+  list-style: decimal inside; margin: 0; padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.rule { padding: 2px 6px; border-radius: 4px; color: var(--muted); }
+.rule code { color: inherit; }
+.rule--queued { color: var(--ink-2); }
+.rule--chosen {
+  color: var(--ink); font-weight: 650;
+  background: color-mix(in srgb, var(--series-1) 14%, transparent);
+}
+.rule__tag {
+  float: right; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--muted);
+}
+.rule--clear { color: var(--good); }
+
+/* -------------------------------------------------------- provenance table */
+.provTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.provTable th, .provTable td {
+  text-align: left; padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--grid); vertical-align: top;
+}
+.provTable thead th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); font-weight: 600;
+}
+.provTable tbody th {
+  font-weight: 500; white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.provTable .num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.provTable .note { color: var(--ink-2); font-size: 12px; min-width: 24ch; }
+.tag {
+  display: inline-block; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.05em; font-weight: 650; padding: 2px 7px;
+  border-radius: 999px; white-space: nowrap;
+}
+.tag--exact { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.tag--approximate { background: color-mix(in srgb, var(--warning) 22%, transparent); color: #8a6100; }
+.tag--unavailable { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical); }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .tag--approximate { color: var(--warning); }
+}
+
+@media (max-width: 720px) {
+  .provTable .note { display: none; }
+}

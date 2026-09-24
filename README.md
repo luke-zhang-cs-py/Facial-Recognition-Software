@@ -9,6 +9,7 @@ and logs each one to SQLite. Everything stays on the machine — no cloud, no
 face data leaving the room.
 
 ### ▶ [Try the guidance & calibration demo →](https://luke-zhang-cs-py.github.io/Facial-Recognition-Software/app/)
+### ▶ [Or drive the same rules with your own webcam →](https://luke-zhang-cs-py.github.io/Facial-Recognition-Software/camera/)
 
 ![Pushing one measurement at a time past its threshold: the instruction changes from Ready to Move closer to Look at the centre of the camera, and the priority chain shows which rules are firing underneath the one being shown](docs/demo.gif)
 
@@ -22,6 +23,16 @@ fit in a tab. What's there is the two modules that import neither `cv2` nor
 `numpy`: `pipeline/guidance.py` and `analysis/calibration.py`.
 `tools/build_static.py` runs the JavaScript against the Python over a matrix of
 measurements and refuses to publish if they disagree.
+
+The second demo swaps the sliders for a real face. The measurements come from
+MediaPipe Face Landmarker running as WebAssembly in your own tab — **a
+different engine from this project's**, which detects with YuNet or Haar and
+fits 68 points with OpenCV's LBF model — and they are fed into the same
+checked `guidance.js`, byte for byte the file the slider page runs. Still no
+recognition: detection and landmarks only, nobody is identified, and no frame
+leaves the tab. Every input is listed on the page with whether it is the same
+measurement, an approximation, or — for the eDifFIQA quality score — not
+measured at all and passed as `null`.
 
 **[Read the full write-up →](https://luke-zhang-cs-py.github.io/Facial-Recognition-Software/)**
 — what the 97,698-face benchmark found, where recognition stops working, and

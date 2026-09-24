@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live guidance &mdash; your camera, this project&rsquo;s rules</title>
+<!-- An empty data URI, so the browser stops asking a static host for a
+     favicon and reporting the 404 as a console error on a page whose
+     console is meant to be clean. -->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/camera.css">
+</head>
+<body class="viz-root">
+
+<header class="pageHead">
+  <h1>Live guidance<em>your webcam, a different engine&rsquo;s eyes, and this
+    project&rsquo;s rules</em></h1>
+</header>
+
+<!-- The banner. Four things, said before anything moves, because a page with
+     a live face on it invites exactly the assumption this project spends its
+     documentation refusing. -->
+<div class="banner" id="banner">
+  <ul class="honesty">
+    <li><b>The eyes are MediaPipe&rsquo;s.</b> Face detection and the 478-point
+      mesh come from Google&rsquo;s MediaPipe Face Landmarker, running as
+      WebAssembly in this tab. That is <em>a different engine from this
+      project&rsquo;s</em>, which detects with YuNet or an OpenCV Haar cascade
+      and fits 68 points with OpenCV&rsquo;s LBF model. Its numbers are not
+      their numbers.</li>
+    <li><b>The rules are this project&rsquo;s.</b> The instruction, its
+      severity, the priority chain and every checklist row come from
+      <code>js/guidance.js</code> &mdash; the port of
+      <code>pipeline/guidance.py</code> that
+      <code>tools/build_static.py</code> checks case by case against the
+      Python before publishing. This page runs a byte-identical copy of the
+      file the slider demo runs. Nothing on it decides anything for
+      itself.</li>
+    <li><b>There is no recognition here.</b> No identification, no matching
+      against anybody, no enrolment, no LBPH, no
+      <code>trainer.yml</code>. Detection and landmarks only. The page cannot
+      tell who you are and is not trying to.</li>
+    <li><b>Nothing is uploaded.</b> The video never leaves the tab and no
+      frame is sent anywhere. The only network requests this page makes are
+      for the MediaPipe runtime and the landmark model, both named below; the
+      camera stream goes straight into a canvas in your own browser and is
+      thrown away frame by frame.</li>
+  </ul>
+  <p class="bannerLinks">
+    <a id="repoLink" href="#">Source, and the app this is taken from &rarr;</a>
+    <span class="sep">&middot;</span>
+    <a href="../app/">The same rules driven by sliders instead &rarr;</a>
+    <span class="sep">&middot;</span>
+    <span>Run the whole thing locally: <code>python app.py</code> &rarr;
+      <code>http://127.0.0.1:5001</code></span>
+  </p>
+</div>
+
+<main>
+
+<section class="panel">
+  <div class="controls">
+    <button type="button" id="startBtn" class="btn btn--go">Start camera</button>
+    <button type="button" id="stopBtn" class="btn" disabled>Stop camera</button>
+    <span class="status" id="status"></span>
+    <span class="fps" id="fps"></span>
+  </div>
+
+  <div class="live">
+    <div class="stageWrap">
+      <!-- The video element is only a sink for the MediaStream. Every pixel
+           shown, measured and drawn on goes through the canvas, which is
+           mirrored on the way in the same way pipeline/camera.py mirrors its
+           frames before measuring them. -->
+      <video id="video" playsinline muted autoplay></video>
+      <canvas id="stage" width="640" height="480"></canvas>
+    </div>
+
+    <aside class="sidebar">
+      <div class="verdict">
+        <span class="sev" id="severity"></span>
+        <div class="msg" id="message"></div>
+        <p class="det" id="detail"></p>
+      </div>
+
+      <h3>Checklist <span class="src">guidance.checklist()</span></h3>
+      <ul class="checks" id="checklist"></ul>
+
+      <h3>Rules that fired <span class="src">priority order</span></h3>
+      <ol class="rules" id="chain"></ol>
+    </aside>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>What is actually being fed to the rules</h2>
+  <p class="lede">A real rule engine given a plausible-looking number returns
+  a real-looking verdict, and there is no way to tell it apart from a true
+  one. So every input is listed with where it came from. <b>Same
+  measurement</b> means the definition in <code>pipeline/traits.py</code>,
+  recomputed here on this page&rsquo;s own pixels. <b>Approximated</b> means
+  this project&rsquo;s formula applied to a different model&rsquo;s landmarks
+  &mdash; the arithmetic is the same, the inputs are not, and a threshold
+  tuned against the other model does not mean quite the same thing.
+  <b>Not measured</b> means exactly that: the value is passed as
+  <code>null</code>, and <code>guidance.py</code> skips a rule whose input is
+  <code>None</code> rather than judging on a guess.</p>
+
+  <table class="provTable">
+    <thead>
+      <tr><th scope="col">input</th><th scope="col">value</th>
+        <th scope="col">provenance</th><th scope="col">how it is obtained</th></tr>
+    </thead>
+    <tbody id="measurements"></tbody>
+  </table>
+
+  <h3>The one that is missing</h3>
+  <p>The app&rsquo;s <code>qualityScore</code> is eDifFIQA, a neural network
+  scored over the face crop, and it was the fairest of the quality signals
+  this project measured (1.21&times; across race groups, against 2.15&times;
+  for the brightness gate it replaced). There is no landmark arithmetic that
+  approximates it, so it is not approximated. It is <code>null</code>, which
+  means the <code>quality</code> rule never fires on this page and the
+  &ldquo;Good quality&rdquo; checklist row is an absence rather than a
+  pass &mdash; the row says so.</p>
+
+  <h3>Where the assets come from</h3>
+  <p id="assetNote">The MediaPipe runtime and the landmark model are loaded
+  from a <b>pinned CDN version</b> rather than vendored into this repository.
+  Together they are about 23&nbsp;MB &mdash; roughly 9.4&nbsp;MB of
+  WebAssembly for each of the SIMD and non-SIMD builds, plus a 3.7&nbsp;MB
+  model &mdash; and committing that much third-party binary to source control
+  to serve one demo page is a worse trade than pinning an exact version. The
+  version is fixed, not floating, so the page cannot change behaviour under
+  you. If the CDN is unreachable the page says so plainly at the top and
+  disables the Start button; it does not fall back to anything, because there
+  is nothing honest to fall back to.</p>
+</section>
+
+<section class="panel">
+  <h2>What this is not showing you</h2>
+  <p>The part of this project that is genuinely hard is not on this page and
+  cannot be. Recognition here is an LBPH model held in a 328&nbsp;MB
+  <code>trainer.yml</code>, built from enrolled photographs and matched
+  against a gallery, with a confidence threshold that has to scale with how
+  many people are enrolled. None of that runs in a tab, and a page that mimed
+  it &mdash; a box drawn on a face, a name chosen from a list, a confidence
+  number invented to sit beside it &mdash; would be telling you something
+  untrue about the system it claims to demonstrate.</p>
+  <p>What is real here is the decision layer. The rules you are watching fire
+  are the ones that run in front of the camera the server owns, in the same
+  order, against the same thresholds, and the measurements they are reading
+  are labelled with exactly how close they are to the ones the real pipeline
+  would hand them.</p>
+</section>
+
+</main>
+
+</body>
+</html>

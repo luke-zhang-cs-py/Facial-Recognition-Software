@@ -183,6 +183,8 @@ footer a { color: inherit; }
     <a class="btn" href="https://github.com/luke-zhang-cs-py/Facial-Recognition-Software">Repository</a>
     <a class="btn" href="app/"
        title="The guidance and calibration arithmetic, in the browser. No face recognition: that needs OpenCV, a camera and the trained model.">Guidance &amp; calibration demo</a>
+    <a class="btn" href="camera/"
+       title="The same guidance rules, driven by your own webcam through MediaPipe. Still no face recognition, and nothing is uploaded.">Live guidance demo</a>
     <a class="btn" id="localBtn" href="http://127.0.0.1:5001/"
        title="Only works on a machine that is running the app, with a webcam">Open app (local)</a>
   </div>
@@ -422,7 +424,7 @@ var MODULES = [
  * shipping gigabytes or owning hardware. Named here so the omission is
  * visible rather than silent. */
 var OMITTED = [
-  { name: 'tools/build_static.py',          lines: 1158, why: 'generates the browser demo, and fails if its JS disagrees with the Python' },
+  { name: 'tools/build_static.py',          lines: 1398, why: 'generates the browser demo, and fails if its JS disagrees with the Python' },
   { name: 'tools/benchmark_loop.py',        lines: 600, why: 'the continuous benchmark runner' },
   { name: 'tools/refresh_figures.py',       lines: 348, why: 'measures and rewrites the figures on this page' },
   { name: 'cli/seed_demo.py',               lines: 289, why: 'enrolls faces from LFW for testing' },

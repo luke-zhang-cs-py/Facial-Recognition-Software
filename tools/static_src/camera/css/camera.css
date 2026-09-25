@@ -36,7 +36,7 @@
 
 body {
   margin: 0;
-  padding: 0 20px 60px;
+  padding: 0 20px 34px;
   background: var(--plane);
   color: var(--ink);
   font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -44,7 +44,7 @@ body {
 
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
-.pageHead { max-width: 1180px; margin: 0 auto; padding: 26px 0 10px; }
+.pageHead { max-width: 1180px; margin: 0 auto; padding: 20px 0 8px; }
 .pageHead h1 { font-size: 26px; margin: 0; font-weight: 650; }
 .pageHead em {
   display: block; font-style: normal; font-size: 15px;
@@ -53,14 +53,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 /* ---------------------------------------------------------------- banner */
 .banner {
-  max-width: 1180px; margin: 0 auto 26px; padding: 16px 20px;
+  max-width: 1180px; margin: 0 auto 16px; padding: 14px 18px;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-left: 4px solid var(--critical);
   border-radius: 8px;
 }
-.honesty { margin: 0 0 12px; padding-left: 20px; }
-.honesty li { margin: 0 0 9px; color: var(--ink-2); }
+/* Four bullets stacked made a wall of text as tall as the video beside
+   it. Two by two on a wide screen says the same thing in half the height. */
+.honesty {
+  margin: 0 0 10px; padding-left: 20px;
+  display: grid; gap: 2px 30px; font-size: 14px;
+}
+@media (min-width: 900px) { .honesty { grid-template-columns: 1fr 1fr; } }
+.honesty li { margin: 0 0 7px; color: var(--ink-2); }
 .honesty li:last-child { margin-bottom: 0; }
 .honesty b { color: var(--ink); }
 .bannerLinks { font-size: 14px; margin: 0; color: var(--ink-2); }
@@ -73,12 +79,12 @@ main { max-width: 1180px; margin: 0 auto; }
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 18px 20px 22px;
-  margin: 0 0 22px;
+  padding: 14px 18px 16px;
+  margin: 0 0 14px;
 }
 .panel h2 { font-size: 19px; margin: 0 0 6px; font-weight: 620; }
 .panel h3 {
-  font-size: 13px; margin: 18px 0 8px; font-weight: 620;
+  font-size: 13px; margin: 14px 0 6px; font-weight: 620;
   text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
 }
 .panel h3 .src, .panel h2 .src {
@@ -86,13 +92,21 @@ main { max-width: 1180px; margin: 0 auto; }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: var(--muted); font-size: 11px; margin-left: 6px;
 }
-.lede { color: var(--ink-2); margin: 0 0 14px; max-width: 78ch; }
-.panel p { color: var(--ink-2); max-width: 82ch; }
+.lede { color: var(--ink-2); margin: 0 0 12px; max-width: 78ch; }
+.panel p { color: var(--ink-2); max-width: 82ch; margin: 0 0 10px; }
+.panel p:last-child { margin-bottom: 0; }
+
+/* Prose set to 82ch inside a 1180px panel leaves a third of the panel
+   empty. Two columns use it. */
+.cols2 { display: grid; gap: 4px 34px; }
+@media (min-width: 900px) { .cols2 { grid-template-columns: 1fr 1fr; } }
+.cols2 > div > :first-child, .cols2 > p:first-child { margin-top: 0; }
+.cols2 h3:first-child { margin-top: 0; }
 
 /* --------------------------------------------------------------- controls */
 .controls {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 .btn {
   font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
@@ -110,9 +124,16 @@ main { max-width: 1180px; margin: 0 auto; }
 }
 
 /* ------------------------------------------------------------------- live */
-.live { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.live { display: grid; gap: 16px; align-items: start; }
+@media (min-width: 880px) {
+  .live { grid-template-columns: minmax(0, 1.55fr) minmax(290px, 1fr); }
+}
+.stageCol { min-width: 0; }
+.stageNote {
+  font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 62ch;
+}
 .stageWrap {
-  flex: 1 1 520px; min-width: 300px;
+  min-width: 0;
   background: #000; border-radius: 8px; overflow: hidden;
   border: 1px solid var(--border);
 }
@@ -121,11 +142,11 @@ main { max-width: 1180px; margin: 0 auto; }
 #video { display: none; }
 #stage { display: block; width: 100%; height: auto; }
 
-.sidebar { flex: 1 1 300px; min-width: 260px; }
+.sidebar { min-width: 0; }
 
 .verdict {
   border: 1px solid var(--border); border-radius: 8px;
-  padding: 12px 14px; background: var(--plane);
+  padding: 10px 12px; background: var(--plane);
 }
 .sev {
   display: inline-block; font-size: 11px; letter-spacing: 0.06em;
@@ -157,6 +178,7 @@ main { max-width: 1180px; margin: 0 auto; }
 /* ------------------------------------------------------------- rule chain */
 .rules {
   list-style: decimal inside; margin: 0; padding: 0;
+  columns: 2; column-gap: 16px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
@@ -207,3 +229,28 @@ main { max-width: 1180px; margin: 0 auto; }
 @media (max-width: 720px) {
   .provTable .note { display: none; }
 }
+
+/* ---------------------------------------------------------- feature list */
+/* Ten short blocks, so they tile rather than stack: a single column of these
+   would be most of the page's height for something read a line at a time. */
+.features {
+  list-style: none; margin: 0 0 12px; padding: 0;
+  display: grid; gap: 12px 26px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.features li {
+  border-top: 1px solid var(--grid); padding-top: 9px;
+}
+.features b { display: block; font-size: 14px; font-weight: 640; }
+.features p {
+  margin: 4px 0 0; font-size: 13px; color: var(--ink-2); max-width: none;
+}
+.api {
+  display: block; margin-top: 2px; font-size: 11px; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.featNote {
+  margin: 0; font-size: 13px; color: var(--ink-2);
+  border-top: 1px solid var(--grid); padding-top: 10px;
+}
+.featNote a { color: var(--series-1); }

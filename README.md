@@ -58,6 +58,10 @@ does the same four steps — `cli.register_user`, `cli.attendance`,
 `python -m cli.seed_demo --people 40 --samples 10` enrolls from LFW, and
 `--remove` undoes it.
 
+Every feature, with the endpoint and the command-line equivalent behind it, is
+listed at the foot of the
+[camera page](https://luke-zhang-cs-py.github.io/Facial-Recognition-Software/camera/#features).
+
 ## Measured, not assumed
 
 Benchmarked against all 97,698 images of FairFace. Full results in

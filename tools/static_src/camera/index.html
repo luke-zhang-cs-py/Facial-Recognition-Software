@@ -67,13 +67,22 @@
   </div>
 
   <div class="live">
-    <div class="stageWrap">
-      <!-- The video element is only a sink for the MediaStream. Every pixel
-           shown, measured and drawn on goes through the canvas, which is
-           mirrored on the way in the same way pipeline/camera.py mirrors its
-           frames before measuring them. -->
-      <video id="video" playsinline muted autoplay></video>
-      <canvas id="stage" width="640" height="480"></canvas>
+    <div class="stageCol">
+      <div class="stageWrap">
+        <!-- The video element is only a sink for the MediaStream. Every pixel
+             shown, measured and drawn on goes through the canvas, which is
+             mirrored on the way in the same way pipeline/camera.py mirrors its
+             frames before measuring them. -->
+        <video id="video" playsinline muted autoplay></video>
+        <canvas id="stage" width="640" height="480"></canvas>
+      </div>
+      <!-- Sits under the stage because that column is shorter than the
+           sidebar beside it, and an empty rectangle under a video reads as
+           something failing to load. -->
+      <p class="stageNote">The frame is mirrored on the way in, the way
+        <code>pipeline/camera.py</code> mirrors its frames before measuring
+        them &mdash; so what you are looking at is exactly what was measured.
+        It is thrown away immediately afterwards and never leaves the tab.</p>
     </div>
 
     <aside class="sidebar">
@@ -114,6 +123,8 @@
     <tbody id="measurements"></tbody>
   </table>
 
+  <div class="cols2">
+  <div>
   <h3>The one that is missing</h3>
   <p>The app&rsquo;s <code>qualityScore</code> is eDifFIQA, a neural network
   scored over the face crop, and it was the fairest of the quality signals
@@ -123,7 +134,9 @@
   means the <code>quality</code> rule never fires on this page and the
   &ldquo;Good quality&rdquo; checklist row is an absence rather than a
   pass &mdash; the row says so.</p>
+  </div>
 
+  <div>
   <h3>Where the assets come from</h3>
   <p id="assetNote">The MediaPipe runtime and the landmark model are loaded
   from a <b>pinned CDN version</b> rather than vendored into this repository.
@@ -135,10 +148,13 @@
   you. If the CDN is unreachable the page says so plainly at the top and
   disables the Start button; it does not fall back to anything, because there
   is nothing honest to fall back to.</p>
+  </div>
+  </div>
 </section>
 
 <section class="panel">
   <h2>What this is not showing you</h2>
+  <div class="cols2">
   <p>The part of this project that is genuinely hard is not on this page and
   cannot be. Recognition here is an LBPH model held in a 328&nbsp;MB
   <code>trainer.yml</code>, built from enrolled photographs and matched
@@ -152,6 +168,126 @@
   order, against the same thresholds, and the measurements they are reading
   are labelled with exactly how close they are to the ones the real pipeline
   would hand them.</p>
+  </div>
+</section>
+
+<!-- The features themselves, last, because everything above is about what
+     this page can and cannot honestly show -- and somebody who read all of
+     that has been told what the attendance system is not, which is not the
+     same as being told what it is. Every line names the endpoint or the
+     command that does it, so none of it has to be taken on trust. -->
+<section class="panel" id="features">
+  <h2>What the attendance system does</h2>
+  <p class="lede">None of it on this page: it needs the camera the server
+  owns, ~134&nbsp;MB of pretrained weights and a 328&nbsp;MB
+  <code>trainer.yml</code>. This is what <code>python app.py</code> puts on
+  <code>127.0.0.1:5001</code>, and every item names the endpoint and the
+  command-line equivalent that does it.</p>
+
+  <ul class="features">
+    <li>
+      <b>Register a person</b>
+      <span class="api">POST /api/register &middot; cli.register_user</span>
+      <p>Thirty cropped frames across five head poses &mdash; front, turned
+      left, turned right, chin up, chin down &mdash; each one past
+      <code>traits.quality_flags</code>, the same gate the rules on this page
+      read, minus its two pose reasons: the capture plan is deliberately
+      asking for off-axis frames.</p>
+    </li>
+    <li>
+      <b>Retrain</b>
+      <span class="api">POST /api/train</span>
+      <p>Rebuilds the LBPH model from every sample on disk and reports how
+      many images and how many identities went into it. Registering somebody
+      retrains automatically; this is the manual one.</p>
+    </li>
+    <li>
+      <b>Take attendance</b>
+      <span class="api">POST /api/attendance/start &middot; cli.attendance</span>
+      <p>Recognises faces from the live feed and writes one
+      <code>attendance</code> row per person per day, with the confidence it
+      was marked at. A second sighting the same day is logged as already
+      marked rather than recorded twice.</p>
+    </li>
+    <li>
+      <b>Refuse a photograph</b>
+      <span class="api">pipeline/liveness.py</span>
+      <p>MiniFASNet V2, 1.7&nbsp;MB, passive: it decides from a single frame,
+      so nobody is asked to blink or turn on command. Without it, holding up
+      a phone showing someone&rsquo;s photo marks them present, and
+      recognition accuracy stops meaning anything.</p>
+    </li>
+    <li>
+      <b>Live trait readout</b>
+      <span class="api">POST /api/traits</span>
+      <p>Age estimate and apparent gender beside the face, and a switch to
+      turn them off. Both are weak &mdash; 12.4 years mean error, and 43.7%
+      for Black women, worse than chance &mdash; which the write-up states
+      rather than hides.</p>
+    </li>
+    <li>
+      <b>Identify a still image</b>
+      <span class="api">POST /api/identify</span>
+      <p>Separate from the camera path and deliberately not gated on
+      liveness, because a photograph is refused at the camera and testing
+      recognition against stills would otherwise be impossible. It never
+      writes to the attendance table.</p>
+    </li>
+    <li>
+      <b>Enrollment analysis</b>
+      <span class="api">GET /api/analysis &middot; cli.analyze_faces</span>
+      <p>Walks the dataset on a background thread and reports what each
+      person&rsquo;s samples are actually like &mdash; blur, exposure, pose
+      spread &mdash; then sweeps the confidence threshold their data
+      justifies. Held out both ways: leave-one-out for SFace, five-fold for
+      LBPH, so no image is scored by a model that had already seen it. Bad
+      enrolment is the usual cause of &ldquo;it keeps saying Unknown&rdquo;,
+      and it is invisible until measured.</p>
+    </li>
+    <li>
+      <b>Reports</b>
+      <span class="api">GET /api/report &middot; cli.view_report</span>
+      <p>Today and all-time, per person, each row carrying the confidence the
+      mark was made at rather than just a tick.</p>
+    </li>
+    <li>
+      <b>Model inventory</b>
+      <span class="api">GET /api/models &middot; cli.fetch_models</span>
+      <p>Names exactly which weights are missing. Detection and attendance
+      run without them; traits, liveness, quality scoring and SFace
+      identification degrade quietly, which looks like the app being broken
+      rather than incomplete.</p>
+    </li>
+    <li>
+      <b>The camera goes off when you stop</b>
+      <span class="api">POST /api/camera/start &middot; /api/camera/stop</span>
+      <p>The device is opened and released explicitly rather than held for
+      the lifetime of the process, so leaving the page does not leave the
+      camera light on.</p>
+    </li>
+    <li>
+      <b>Try it without registering anyone</b>
+      <span class="api">cli.seed_demo --people 40 --samples 10</span>
+      <p>Enrolls forty identities out of LFW so recognition can be exercised
+      end to end on a machine nobody has been photographed on, and
+      <code>--remove</code> takes them all back out again.</p>
+    </li>
+    <li>
+      <b>Local storage, and nothing else</b>
+      <span class="api">core/db.py &middot; SQLite</span>
+      <p>Three tables &mdash; <code>users</code>, <code>attendance</code>,
+      <code>sample_traits</code> &mdash; in a file beside the code. Face
+      images live in <code>dataset/</code>, the model in
+      <code>trainer.yml</code>, and both are treated as biometric data: git
+      ignores them, and deleting a person means deleting their folder and
+      retraining.</p>
+    </li>
+  </ul>
+
+  <p class="featNote">The threshold those matches are compared against is not
+  a constant &mdash; it scales with how many people are enrolled, and past
+  about 1,646 there is no sufficient threshold at all.
+  <a href="../app/">The slider demo plots that curve &rarr;</a></p>
 </section>
 
 </main>

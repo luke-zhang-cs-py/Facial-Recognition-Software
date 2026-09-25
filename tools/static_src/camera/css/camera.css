@@ -1,10 +1,28 @@
-/* The same palette as css/demo.css on the slider page -- one categorical
- * slot, the fixed status colours for pass/warn/block, and the chrome ink --
- * so the two demos read as the same system. Duplicated rather than imported
- * because this page is a separate bundle with a separate asset story, and an
- * @import of a stylesheet in a sibling directory is a request that can fail
- * on its own. */
+/* One palette, and it is the app's. static/css/style.css has been dark since
+ * the first commit, and these two pages -- which exist to show that app --
+ * were light, so the demo looked like a different product from the thing it
+ * demonstrates. The hues below are style.css's, re-expressed as the roles
+ * this stylesheet uses. A visitor who genuinely wants light can set
+ * data-theme="light"; nothing else switches it, because following the
+ * operating system would mean the screenshots in the README match for some
+ * readers and not others.
+ */
 .viz-root {
+  color-scheme: dark;
+  --surface-1: #131820;
+  --plane: #0d1117;
+  --ink: #e6edf3;
+  --ink-2: #b6c2d1;
+  --muted: #8b96a5;
+  --grid: #1f2630;
+  --border: rgba(230, 237, 243, 0.10);
+  --series-1: #4da3ff;
+  --good: #5ec98a;
+  --warning: #e0c04a;
+  --critical: #df6a5e;
+}
+
+:root[data-theme="light"] .viz-root {
   color-scheme: light;
   --surface-1: #fcfcfb;
   --plane: #f9f9f7;
@@ -17,19 +35,6 @@
   --good: #0ca30c;
   --warning: #fab219;
   --critical: #d03b3b;
-}
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) .viz-root {
-    color-scheme: dark;
-    --surface-1: #1a1a19;
-    --plane: #0d0d0d;
-    --ink: #ffffff;
-    --ink-2: #c3c2b7;
-    --muted: #898781;
-    --grid: #2c2c2a;
-    --border: rgba(255, 255, 255, 0.10);
-    --series-1: #3987e5;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -220,11 +225,11 @@ main { max-width: 1180px; margin: 0 auto; }
   border-radius: 999px; white-space: nowrap;
 }
 .tag--exact { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
-.tag--approximate { background: color-mix(in srgb, var(--warning) 22%, transparent); color: #8a6100; }
+.tag--approximate { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--warning); }
 .tag--unavailable { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical); }
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) .tag--approximate { color: var(--warning); }
-}
+/* Amber text on a light surface needs to be darkened to stay readable; on
+   the dark one it does not, so this override belongs with the light theme. */
+:root[data-theme="light"] .tag--approximate { color: #8a6100; }
 
 @media (max-width: 720px) {
   .provTable .note { display: none; }

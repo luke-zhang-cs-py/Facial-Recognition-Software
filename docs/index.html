@@ -25,38 +25,32 @@
  * to: status is not a categorical palette, and amber is legal only with a
  * glyph and a word beside it. Every use of it here has both.
  *
- * Dark is a selected set stepped for the dark surface, not an inversion. */
+ * The palette is static/css/style.css's, so the write-up, the two demos
+ * and the app itself are one product. Light is still selectable with
+ * data-theme="light" but nothing switches to it on its own. */
 .viz-root {
-  color-scheme: light;
-  --plane:     #ece6d6;
-  --surface:   #fffdf7;
-  --ink:       #12161d;
-  --ink-2:     #3c4453;
-  --ink-muted: #8d7a52;
-  --grid:      #ece6d6;
-  --ring:      #ded5bf;
-  --code-bg:   #f6f1e4;
-  --series:    #2a78d6;
-  --track:     #ece6d6;
-  --good:      #0ca30c;
-  --warning:   #fab219;
-  --critical:  #d03b3b;
-}
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) .viz-root {
-    color-scheme: dark;
-    --plane: #0d0d0d; --surface: #1a1a19;
-    --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
-    --grid: #2c2c2a; --ring: #383835; --code-bg: #21201e;
-    --series: #3987e5; --track: #2c2c2a;
-  }
-}
-:root[data-theme="dark"] .viz-root {
   color-scheme: dark;
-  --plane: #0d0d0d; --surface: #1a1a19;
-  --ink: #ffffff; --ink-2: #c3c2b7; --ink-muted: #898781;
-  --grid: #2c2c2a; --ring: #383835; --code-bg: #21201e;
-  --series: #3987e5; --track: #2c2c2a;
+  --plane:     #0d1117;
+  --surface:   #131820;
+  --ink:       #e6edf3;
+  --ink-2:     #b6c2d1;
+  --ink-muted: #8b96a5;
+  --grid:      #1f2630;
+  --ring:      #2f3b4a;
+  --code-bg:   #0b0e13;
+  --series:    #4da3ff;
+  --track:     #1f2630;
+  --good:      #5ec98a;
+  --warning:   #e0c04a;
+  --critical:  #df6a5e;
+}
+:root[data-theme="light"] .viz-root {
+  color-scheme: light;
+  --plane: #ece6d6; --surface: #fffdf7;
+  --ink: #12161d; --ink-2: #3c4453; --ink-muted: #8d7a52;
+  --grid: #ece6d6; --ring: #ded5bf; --code-bg: #f6f1e4;
+  --series: #2a78d6; --track: #ece6d6;
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
 }
 
 * { box-sizing: border-box; }

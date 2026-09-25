@@ -56,7 +56,7 @@ registering anyone. Every feature, with the endpoint and command behind it, is
 
 ## Measured, not assumed
 
-All 97,698 images of FairFace. Full results in **[BENCHMARK.md](BENCHMARK.md)**.
+All 97,698 images of FairFace. Full results in **[BENCHMARK.md](notes/BENCHMARK.md)**.
 
 - **Detection is even** — 99.95%, widest race-group gap 0.08pp.
 - **The quality gate used to be biased, and was fixed.** Absolute brightness and
@@ -102,6 +102,9 @@ tools/        developer scripts, corpus benchmarks, the demo build
 Thirty-one modules used to sit flat in the root. `tests/layout.py` writes the
 grouping down once, and the structural tests read it from there.
 
+`notes/` holds the long-form write-ups — `BENCHMARK.md`, `CODE_AUDIT.md` — and
+`CONTRIBUTING.md` is in `.github/`, which is where GitHub looks for it.
+
 ## Caveats that matter
 
 - **Nothing gates on skin tone**: exposure advice fires on clipped pixels, not
@@ -133,4 +136,4 @@ detector accepts cannot be faked convincingly enough to be evidence.
 
 ## License
 
-[MIT](LICENSE) — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions.
+[MIT](LICENSE) — see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for setup and conventions.

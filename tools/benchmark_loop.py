@@ -115,7 +115,7 @@ SEED_SPACE = 2 ** 32
 # That is generous to the model -- a band is not a point, and a prediction of
 # "25-32" is not really a claim that somebody is 28 -- but it is the only
 # comparison the two taxonomies allow, and it is the one the 12.4-year MAE in
-# BENCHMARK.md was computed with, so the numbers stay comparable.
+# notes/BENCHMARK.md was computed with, so the numbers stay comparable.
 TRUTH_MIDPOINT = {0: 1, 1: 6, 2: 15, 3: 25, 4: 35, 5: 45, 6: 55, 7: 65, 8: 75}
 PREDICTED_MIDPOINT = {"0-2": 1, "4-6": 5, "8-12": 10, "15-20": 17,
                       "25-32": 28, "38-43": 40, "48-53": 50, "60+": 70}

@@ -206,7 +206,7 @@ def describe_age(years, half_width=None):
 
 # ---------------------------------------------------------------------------
 # How evenly this system performs across demographic groups, measured on all
-# 97,698 FairFace images. See BENCHMARK.md.
+# 97,698 FairFace images. See notes/BENCHMARK.md.
 #
 # This is the legitimate use of race labels: auditing whether a system works
 # equally for everyone. It is the opposite of classifying an individual's

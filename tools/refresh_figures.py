@@ -31,7 +31,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGE = os.path.join(ROOT, "docs", "index.html")
 README = os.path.join(ROOT, "README.md")
-CONTRIBUTING = os.path.join(ROOT, "CONTRIBUTING.md")
+CONTRIBUTING = os.path.join(ROOT, ".github/CONTRIBUTING.md")
 
 # How many of the suite's tests skip on this machine, and why they do: the
 # weights are ~134 MB of third-party binaries that a fresh clone does not

@@ -18,7 +18,7 @@ cannot even see them is noise.
 
 Nothing here gates on skin tone. The old quality gate thresholded absolute
 brightness, which encoded skin tone (2.15x disparity across race groups; see
-BENCHMARK.md); saying "your face is too dark" to somebody because of their
+notes/BENCHMARK.md); saying "your face is too dark" to somebody because of their
 complexion is that same defect wearing a friendlier voice. Exposure advice
 here fires only on clipping -- genuinely crushed or blown pixels -- which is
 a property of the photograph.

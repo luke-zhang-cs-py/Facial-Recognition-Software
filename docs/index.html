@@ -383,7 +383,7 @@ footer a { color: inherit; }
  * Measured on 12 September 2026 in the repository: `pytest -q --cov` for the
  * statements and what is uncovered, `wc -l` for length, and `pytest
  * --collect-only -q` for the test counts. The benchmark figures come from
- * BENCHMARK.md, which records a run over the whole of FairFace. Not
+ * notes/BENCHMARK.md, which records a run over the whole of FairFace. Not
  * estimated. tests/test_published_figures.py checks the module and test
  * figures against a fresh measurement; `python tools/refresh_figures.py`
  * rewrites them. */
@@ -468,7 +468,7 @@ var MEASURED_WITH = 'Python 3.14';
 var ROUTE_COUNT = 15;
 var SKIPPED = 3;
 
-/* From BENCHMARK.md — a run over the whole of FairFace. */
+/* From notes/BENCHMARK.md — a run over the whole of FairFace. */
 var BENCH = {
   images: 97698,
   groups: 7,
@@ -837,7 +837,7 @@ el('footNote').textContent =
   BENCH.images.toLocaleString() + ' images in ' + BENCH.minutes + ' minutes ' +
   'at ' + BENCH.rate + ' images a second, followed by ' +
   BENCH.comparisons.toLocaleString() + ' identity comparisons — and are ' +
-  'recorded in BENCHMARK.md with the command to reproduce them. FairFace ' +
+  'recorded in notes/BENCHMARK.md with the command to reproduce them. FairFace ' +
   'was chosen because it is openly licensed, demographically labelled and ' +
   'built for this measurement; scraping faces off the web would have been ' +
   'the wrong way to get a corpus. Everything on this page is read from one ' +

@@ -93,8 +93,8 @@ suggested otherwise would be worse than no page.
 
 ## Conventions
 
-Comments explain *why*. See [CODE_AUDIT.md](CODE_AUDIT.md) for the code smell
-and complexity state, and [BENCHMARK.md](BENCHMARK.md) for the accuracy and
+Comments explain *why*. See [../notes/CODE_AUDIT.md](../notes/CODE_AUDIT.md) for the code smell
+and complexity state, and [../notes/BENCHMARK.md](../notes/BENCHMARK.md) for the accuracy and
 fairness numbers and how they were measured.
 
 Names registered through the UI are user input and reach the page — they go

@@ -19,6 +19,7 @@ protobuf error.
 """
 
 import argparse
+import hashlib
 import os
 import sys
 import urllib.request
@@ -45,8 +46,33 @@ URLS = {
     "minifasnet_v2.onnx": MINIFASNET,
 }
 
+# What each file must hash to. The downloads come from six third-party repos,
+# any of which could change or be replaced; a file that doesn't match is
+# refused rather than loaded. Recorded from the files at these URLs on
+# 2026-09-27 (all but MiniFASNet are byte-identical to the copies this
+# project was developed with). A deliberate model update changes its line here.
+SHA256 = {
+    "face_detection_yunet_2023mar.onnx": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "face_recognition_sface_2021dec.onnx": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+    "ediffiqa_tiny_jun2024.onnx": "9426c899cc0f01665240cb7d9e7f98e18e24e456c178326c771a43da289bfc6a",
+    "age_deploy.prototxt": "f58b73e2e20766f54c583cb1a9404f45dab8901773da6864d94b63212ed37ca0",
+    "gender_deploy.prototxt": "7379953e048e5bffad9dfc6b3a8807f7fc826e2f27432df56d4c2670784b8e78",
+    "age_net.caffemodel": "6dde5d07df5ca1d66ff39e525693f05ccfb9d2c437e188fdd1a10d42e57fabd6",
+    "gender_net.caffemodel": "ac7571b281ae078817764b645a20541bd6aa1babeac20a45e6d8de7d61ba0e50",
+    "lbfmodel.yaml": "70dd8b1657c42d1595d6bd13d97d932877b3bed54a95d3c4733a0f740d1fd66b",
+    "minifasnet_v2.onnx": "b32929adc2d9c34b9486f8c4c7bc97c1b69bc0ea9befefc380e4faae4e463907",
+}
+
 # A Git LFS pointer is a few hundred bytes of text; a real model is not.
 MIN_PLAUSIBLE_BYTES = 2048
+
+
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def download(filename, url, force=False):
@@ -76,8 +102,13 @@ def download(filename, url, force=False):
         print(f"FAILED (got {size} bytes — looks like an LFS pointer, not the model)")
         return False
 
+    got = sha256_of(tmp)
+    if got != SHA256[filename]:
+        os.remove(tmp)
+        print(f"FAILED (checksum {got[:12]}... is not the expected {SHA256[filename][:12]}...; refusing it)")
+        return False
     os.replace(tmp, dest)
-    print(f"ok ({size / 1024:.0f} KB)")
+    print(f"ok ({size / 1024:.0f} KB, checksum verified)")
     return True
 
 

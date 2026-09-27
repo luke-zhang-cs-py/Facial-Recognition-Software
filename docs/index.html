@@ -424,8 +424,8 @@ var OMITTED = [
   { name: 'cli/seed_demo.py',               lines: 288, why: 'enrolls faces from LFW for testing' },
   { name: 'analysis/fairness_benchmark.py', lines: 257, why: 'the stratified FairFace run' },
   { name: 'tools/build_gallery.py',         lines: 216, why: 'builds a 10,590-identity gallery from CASIA-WebFace' },
+  { name: 'cli/fetch_models.py',            lines: 149, why: 'downloads the pretrained weights' },
   { name: 'tools/trials.py',                lines: 148, why: 'the 4,500-trial robustness sweep' },
-  { name: 'cli/fetch_models.py',            lines: 118, why: 'downloads the pretrained weights' },
   { name: 'tools/scale_benchmark.py',       lines: 106, why: 'the gallery-size sweep' },
   { name: 'tools/sample_frames.py',         lines:  88, why: 'fills the sample-frame directory from footage you own' },
   { name: 'cli/face_attendance.py',         lines:  64, why: 'a thin entry point, asserted by test to hold no logic' }
@@ -438,9 +438,9 @@ var TESTS = [
   { file: 'test_camera_capture.py',         n: 28, of: 'the grab loop and its failure branches, against a synthetic camera' },
   { file: 'test_analytics.py',              n: 23, of: 'the sweeps, and refusing to trust a small one' },
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
+  { file: 'test_paths_and_cli.py',          n: 20, of: 'that every module resolves its paths per call' },
   { file: 'test_analysis_helpers.py',       n: 19, of: 'the leave-one-out measurement, and the console report' },
   { file: 'test_attendance_decision.py',    n: 19, of: 'the accept/refuse decision, and writing a gallery sample' },
-  { file: 'test_paths_and_cli.py',          n: 17, of: 'that every module resolves its paths per call' },
   { file: 'test_calibration.py',            n: 16, of: 'the measured false-match curve and the gallery maths' },
   { file: 'test_camera_model_lifecycle.py', n: 16, of: 'training, loading and the enrollment report' },
   { file: 'test_camera_logic.py',           n: 15, of: 'the pose gate and the overlay, as pure functions' },
@@ -456,7 +456,7 @@ var TESTS = [
   { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' }
 ];
 
-var TEST_LINES = 5228;
+var TEST_LINES = 5261;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

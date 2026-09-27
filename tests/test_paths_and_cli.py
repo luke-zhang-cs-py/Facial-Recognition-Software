@@ -1,5 +1,7 @@
 """paths.py exists so the database and the dataset cannot drift apart, and the
 CLI modules had no coverage at all."""
+import hashlib
+import io
 import os
 
 import pytest
@@ -72,6 +74,37 @@ def test_every_weight_file_the_code_loads_can_be_fetched():
            os.path.basename(liveness.model_path())}
     assert own <= loaded, "missing from SPECS, so /api/models never names them"
     assert loaded <= set(fetch_models.URLS), sorted(loaded - set(fetch_models.URLS))
+
+
+def test_every_download_has_a_checksum():
+    from cli import fetch_models
+    assert set(fetch_models.SHA256) == set(fetch_models.URLS)
+    assert all(len(h) == 64 and int(h, 16) >= 0 for h in fetch_models.SHA256.values())
+
+
+class _Reply(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *exc): self.close()
+
+
+def test_a_download_that_does_not_match_its_checksum_is_refused(monkeypatch, tmp_path):
+    """The weights come from third-party repos; a file swapped or corrupted at
+    the source used to be saved and loaded like the real one."""
+    from cli import fetch_models
+    monkeypatch.setattr(fetch_models, "path_for", lambda f: str(tmp_path / f))
+    monkeypatch.setattr(fetch_models.urllib.request, "urlopen", lambda url, timeout: _Reply(b"not the model" * 400))
+    assert fetch_models.download("minifasnet_v2.onnx", "https://example.invalid/x.onnx") is False
+    assert list(tmp_path.iterdir()) == [], "the refused file (and its .part) must not be left behind"
+
+
+def test_a_download_that_matches_its_checksum_is_kept(monkeypatch, tmp_path):
+    from cli import fetch_models
+    body = b"a real model, for the purpose of this test" * 100
+    monkeypatch.setattr(fetch_models, "path_for", lambda f: str(tmp_path / f))
+    monkeypatch.setattr(fetch_models, "SHA256", {"m.onnx": hashlib.sha256(body).hexdigest()})
+    monkeypatch.setattr(fetch_models.urllib.request, "urlopen", lambda url, timeout: _Reply(body))
+    assert fetch_models.download("m.onnx", "https://example.invalid/m.onnx") is True
+    assert (tmp_path / "m.onnx").read_bytes() == body
 
 
 def test_train_model_reports_nothing_to_train(isolated_root, capsys):

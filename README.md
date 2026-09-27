@@ -36,7 +36,7 @@ has had. (Or [`docs/index.html`](docs/index.html) locally.)
 
 ```bash
 pip install -r requirements.txt
-python -m cli.fetch_models         # ~134 MB of pretrained weights, once
+python -m cli.fetch_models         # ~196 MB of pretrained weights, once
 python app.py                      # http://127.0.0.1:5001
 ```
 
@@ -129,7 +129,7 @@ grouping down once, and the structural tests read it from there.
 pytest -q
 ```
 
-382 tests, 81% of 2,315 statements, needing no webcam, no weights and no
+400 tests, 84% of 2,338 statements, needing no webcam, no weights and no
 corpus. Tests that need a real face use a sample frame if one is present and
 **skip** rather than asserting against a synthetic one, because a face a
 detector accepts cannot be faked convincingly enough to be evidence.

@@ -4,7 +4,7 @@
 
 ```bash
 pip install -r requirements.txt
-python -m cli.fetch_models   # ~134 MB of third-party weights
+python -m cli.fetch_models   # ~196 MB of third-party weights
 python app.py            # http://127.0.0.1:5001
 ```
 
@@ -23,7 +23,7 @@ On a headless machine — including CI — use
 | `dataset/` | Captured webcam images of real people |
 | `attendance.db` | Their attendance records |
 | `trainer.yml` | Trained from the above, so it encodes it |
-| `models/` | Third-party weights, ~134 MB, reproducible |
+| `models/` | Third-party weights, ~196 MB, reproducible |
 | `logs/` | Benchmark output, appended forever by design |
 
 The first three are the important ones. **This is a public repository and
@@ -63,7 +63,7 @@ pytest -q -rs
 python -m flake8 . --select=E9,F63,F7,F82
 ```
 
-382 tests locally; 379 pass and 3 skip without the weights.
+400 tests locally; 397 pass and 3 skip without the weights.
 
 `python tools/refresh_figures.py` rewrites that sentence, the figures on
 `docs/index.html` and the one in the README from a real measured run — do

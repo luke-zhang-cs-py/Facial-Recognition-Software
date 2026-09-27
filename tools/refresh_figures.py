@@ -34,7 +34,7 @@ README = os.path.join(ROOT, "README.md")
 CONTRIBUTING = os.path.join(ROOT, ".github/CONTRIBUTING.md")
 
 # How many of the suite's tests skip on this machine, and why they do: the
-# weights are ~134 MB of third-party binaries that a fresh clone does not
+# weights are ~196 MB of third-party binaries that a fresh clone does not
 # have. Recorded from the run rather than typed, because a skip count is the
 # figure most likely to change for a reason nobody notices.
 _OUTCOME = {}

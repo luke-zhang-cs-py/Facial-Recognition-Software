@@ -147,6 +147,12 @@ def to_bgr(img):
         return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), True
     if img.ndim == 3 and img.shape[2] == 1:
         return cv2.cvtColor(img[:, :, 0], cv2.COLOR_GRAY2BGR), True
+    # analytics reads samples with IMREAD_UNCHANGED, so a PNG with an alpha
+    # channel arrives here as four channels. The three-way unpack below raised
+    # on it, and scan() has no per-file guard: one such file dropped into
+    # dataset/ ended the whole analysis with "too many values to unpack".
+    if img.ndim == 3 and img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
     # A colour-format image whose channels are identical is still grey data.
     b, g, r = cv2.split(img)
     is_grey = bool(np.array_equal(b, g) and np.array_equal(g, r))
@@ -215,6 +221,18 @@ def count_people(rows):
     return sum(1 for r in rows if float(r[14]) >= PERSON_SCORE)
 
 
+def has_landmarks(row):
+    """False for a Haar fallback row, whose five points are all zero.
+
+    Those zeros are "not measured", and they used to be read as a
+    measurement: geometry() turned them into yaw 0, roll 0 -- a perfectly
+    frontal face, which registration's front stage accepted as one -- and
+    embed() handed them to SFace's alignCrop, which warped the image onto a
+    single point and embedded the result.
+    """
+    return bool(np.any(np.asarray(row[4:14], dtype=np.float32)))
+
+
 def geometry(row):
     """Box, landmarks and approximate pose from one YuNet row.
 
@@ -222,8 +240,22 @@ def geometry(row):
     scaled by eye separation. That is a rough proxy, not a calibrated pose
     solver -- good enough to tell "looking at the camera" from "looking away",
     which is all the quality check needs.
+
+    A Haar row has a box and nothing else, so everything derived from the
+    landmarks is None rather than a zero that reads as a measurement.
     """
     x, y, w, h = (float(v) for v in row[:4])
+    if not has_landmarks(row):
+        return {
+            "box": [round(x), round(y), round(w), round(h)],
+            "facePx": int(round(max(w, h))),
+            "landmarks": None,
+            "yaw": None,
+            "roll": None,
+            "pitchRatio": None,
+            "eyeDist": None,
+            "score": round(float(row[14]), 3),
+        }
     pts = np.array(row[4:14], dtype=np.float32).reshape(5, 2)
     right_eye, left_eye, nose, mouth_r, mouth_l = pts
 
@@ -343,14 +375,25 @@ def quality_flags(metrics, geom, grayscale_source):
     if geom:
         if geom["facePx"] < MIN_FACE_PX:
             flags.append("face too small")
-        if abs(geom["yaw"]) > MAX_YAW:
+        # None when the detection had no landmarks: pose unknown, not bad.
+        if geom.get("yaw") is not None and abs(geom["yaw"]) > MAX_YAW:
             flags.append("turned away")
-        if abs(geom["roll"]) > MAX_ROLL:
+        if geom.get("roll") is not None and abs(geom["roll"]) > MAX_ROLL:
             flags.append("head tilted")
     return flags
 
 
 # ---------------------------------------------------------------- embedding
+
+def _box_crop(bgr, row):
+    """The row's box clipped to the frame, or the whole image without one."""
+    if row is None:
+        return bgr
+    x, y, w, h = (int(round(float(v))) for v in row[:4])
+    x0, y0 = max(0, x), max(0, y)
+    crop = bgr[y0:y + h, x0:x + w]
+    return crop if crop.size else bgr
+
 
 def embed(bgr, row=None):
     """128-d SFace vector, L2-normalised so cosine similarity is a dot product.
@@ -358,16 +401,17 @@ def embed(bgr, row=None):
     With a YuNet row we use alignCrop, which warps the face to the canonical
     112x112 layout the network expects. Without one (a pre-cropped dataset
     image that would not re-detect) we just resize, which is measurably worse
-    but still usable.
+    but still usable. A Haar row has a box but no landmarks to align by, so
+    its box is cropped and resized the same way.
     """
     net = facemodels.get("sface")
     if net is None:
         return None
     with facemodels.lock_for("sface"):
-        if row is not None:
+        if row is not None and has_landmarks(row):
             aligned = net.alignCrop(bgr, row)
         else:
-            aligned = cv2.resize(bgr, SFACE_INPUT_SIZE)
+            aligned = cv2.resize(_box_crop(bgr, row), SFACE_INPUT_SIZE)
         feat = net.feature(aligned)
     vec = np.ravel(np.asarray(feat, dtype=np.float32))
     norm = float(np.linalg.norm(vec))

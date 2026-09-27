@@ -236,8 +236,7 @@ def enroll_all(picked, names, images, wanted):
         person = (names[label] if names else str(label)).replace("_", " ")
         display = PREFIX + person
         user_id = db.add_user(display)
-        folder = os.path.join(paths.dataset_dir(),
-                              f"{user_id}_{person.replace(' ', '_')}")
+        folder = paths.user_folder(user_id, person)
         os.makedirs(folder, exist_ok=True)
 
         kept = enroll_person(folder, idxs, images,

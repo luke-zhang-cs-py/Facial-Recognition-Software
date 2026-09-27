@@ -205,7 +205,7 @@ def set_verdict(manager, monkeypatch, verdict):
 
 def test_a_genuine_match_is_marked_present(attending, faces, blank_frame,
                                            monkeypatch, isolated_db):
-    set_verdict(attending, monkeypatch, "genuine")
+    set_verdict(attending, monkeypatch, "live")
     faces(FRONTAL)
     attending._handle_attendance(blank_frame)
 
@@ -216,7 +216,7 @@ def test_a_genuine_match_is_marked_present(attending, faces, blank_frame,
 
 def test_the_same_person_is_not_marked_twice(attending, faces, blank_frame,
                                              monkeypatch):
-    set_verdict(attending, monkeypatch, "genuine")
+    set_verdict(attending, monkeypatch, "live")
     faces(FRONTAL)
     attending._handle_attendance(blank_frame)
     before = len(attending.status()["events"])
@@ -247,10 +247,42 @@ def test_an_undecided_verdict_waits(attending, faces, blank_frame, monkeypatch):
     assert attending._marked_session == set()
 
 
+def test_without_the_liveness_model_the_face_says_why_it_waits(
+        attending, faces, blank_frame, monkeypatch):
+    """No net means no score, no score means no verdict, and no verdict
+    means nobody is marked -- correctly, or a photograph would be. What was
+    wrong was the silence: the face sat amber with a name on it forever."""
+    monkeypatch.setattr(camera.faceliveness, "available", lambda: False)
+    monkeypatch.setattr(camera.faceliveness, "score", lambda frame, box: None)
+    labels = []
+    monkeypatch.setattr(attending, "_draw_face",
+                        lambda frame, face, colour, label=None: labels.append(label))
+    faces(FRONTAL)
+    for _ in range(camera.faceliveness.VOTE_WINDOW + 1):
+        attending._handle_attendance(blank_frame)
+
+    assert attending._marked_session == set()
+    assert labels and all(camera.NO_LIVENESS_LABEL in label for label in labels)
+
+
+def test_starting_attendance_without_liveness_says_so(mgr, opens,
+                                                      isolated_root,
+                                                      monkeypatch):
+    monkeypatch.setattr(camera.faceliveness, "available", lambda: False)
+    open(camera.paths.model_path(), "w").close()     # a model exists
+    monkeypatch.setattr(mgr, "_load_recognizer", lambda: None)
+    mgr.start_attendance()
+
+    events = mgr.status()["events"]
+    assert any(e["message"] == camera.NO_LIVENESS_EVENT and e["kind"] == "error"
+               for e in events), events
+    assert "fetch_models" in camera.NO_LIVENESS_EVENT
+
+
 def test_a_poor_match_is_not_marked(attending, faces, blank_frame, monkeypatch):
     """Above the distance threshold is a stranger, whatever the liveness
     verdict says."""
-    set_verdict(attending, monkeypatch, "genuine")
+    set_verdict(attending, monkeypatch, "live")
     attending._recognizer = FakeRecognizer(
         user_id=attending._user_id,
         confidence=camera.CONFIDENCE_THRESHOLD + 10)
@@ -263,7 +295,7 @@ def test_a_poor_match_is_not_marked(attending, faces, blank_frame, monkeypatch):
 def test_a_face_outside_the_frame_is_skipped(attending, faces, monkeypatch):
     """An empty crop cannot be recognised; the handler moves on rather than
     handing OpenCV a zero-size image."""
-    set_verdict(attending, monkeypatch, "genuine")
+    set_verdict(attending, monkeypatch, "live")
     tiny = np.full((40, 40, 3), 90, np.uint8)   # box is at (200, 150)
     faces(FRONTAL)
     attending._handle_attendance(tiny)
@@ -334,6 +366,32 @@ def test_registering_again_clears_the_last_run(mgr, opens, isolated_db,
     assert status["register"]["finished"] is False
     assert status["report"] is None
     assert mgr._reg_poses == []
+
+
+def test_a_name_cannot_walk_out_of_the_dataset(mgr, opens, isolated_db,
+                                              isolated_root):
+    """The name was a path. Registering "x/../../../outside" through the web
+    form wrote that person's face samples beside the project instead of in
+    dataset/, because this copy of the folder rule replaced spaces and
+    nothing else."""
+    user_id = mgr.start_register("x/../../../outside")
+
+    folder = mgr._reg_dir
+    dataset = os.path.realpath(camera.paths.dataset_dir())
+    assert os.path.dirname(os.path.realpath(folder)) == dataset, folder
+    assert os.path.basename(folder).startswith(f"{user_id}_")
+    # The database keeps the name as typed; only the folder is rewritten.
+    assert isolated_db.get_user_name(user_id) == "x/../../../outside"
+
+
+def test_a_name_that_is_not_a_legal_path_still_registers(mgr, opens,
+                                                        isolated_db,
+                                                        isolated_root):
+    """A colon or a question mark is fine in a name and illegal in a Windows
+    folder, and makedirs raised only after the user row existed."""
+    user_id = mgr.start_register('Ada: "the Countess"?')
+    assert os.path.isdir(mgr._reg_dir)
+    assert os.path.basename(mgr._reg_dir) == f"{user_id}_Ada___the_Countess__"
 
 
 def test_attendance_refuses_when_nobody_is_enrolled(mgr, opens, isolated_root):
@@ -445,7 +503,7 @@ def test_already_marked_today_is_said_once(attending, faces, blank_frame,
                                            monkeypatch, isolated_db):
     """A second day's session re-marking somebody the database already has
     is not an error, and not a success either."""
-    set_verdict(attending, monkeypatch, "genuine")
+    set_verdict(attending, monkeypatch, "live")
     monkeypatch.setattr(camera.db, "log_attendance",
                         lambda uid, conf: False)
     faces(FRONTAL)

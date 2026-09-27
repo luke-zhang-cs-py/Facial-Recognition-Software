@@ -2,6 +2,8 @@
 CLI modules had no coverage at all."""
 import os
 
+import pytest
+
 import layout
 
 from core import paths
@@ -41,6 +43,35 @@ def test_models_dir_stays_with_the_code():
 def test_user_folder_is_filesystem_safe():
     f = paths.user_folder(7, "Jane Doe")
     assert "7_Jane_Doe" in f and " " not in os.path.basename(f)
+
+
+@pytest.mark.parametrize("name", ["../../escape", "a/b", "a\\b", "..",
+                                  "C:\\Windows", "x" * 500])
+def test_user_folder_stays_one_level_inside_the_dataset(name):
+    """Every name, however hostile, is one folder directly under dataset/."""
+    f = paths.user_folder(7, name)
+    assert os.path.dirname(f) == paths.dataset_dir()
+    base = os.path.basename(f)
+    assert base.startswith("7_")
+    assert "/" not in base and "\\" not in base and ".." not in base
+    assert len(base) <= len("7_") + paths.FOLDER_NAME_MAX
+
+
+def test_every_weight_file_the_code_loads_can_be_fetched():
+    """cli.fetch_models is the only way a fresh clone gets its weights, and it
+    downloaded seven of the nine files. The two it skipped were the landmark
+    model and the liveness net, loaded by their own modules rather than by
+    facemodels -- and without the liveness net the web attendance loop waits
+    for a verdict that never comes, so nobody is ever marked present."""
+    from cli import fetch_models
+    from core import facemodels
+    from pipeline import landmarks, liveness
+
+    loaded = {f for files, _ in facemodels.SPECS.values() for f in files}
+    own = {os.path.basename(landmarks.model_path()),
+           os.path.basename(liveness.model_path())}
+    assert own <= loaded, "missing from SPECS, so /api/models never names them"
+    assert loaded <= set(fetch_models.URLS), sorted(loaded - set(fetch_models.URLS))
 
 
 def test_train_model_reports_nothing_to_train(isolated_root, capsys):

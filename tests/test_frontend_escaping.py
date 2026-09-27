@@ -46,12 +46,44 @@ def test_the_helper_covers_every_dangerous_character(source, char):
 DATA_FIELDS = re.compile(r"\b\w+\.(name|message|error|file|label|verdict)\b")
 
 
+TEXT_CONTENT = re.compile(r"\.textContent\s*=[^;]*;")
+
+
+def without_text_content(source):
+    """The file with every `x.textContent = ...;` statement blanked out.
+
+    textContent is the one sink that must *not* be escaped, so it is checked
+    separately below rather than being held to the innerHTML rule."""
+    return TEXT_CONTENT.sub(";", source)
+
+
 def test_no_person_supplied_field_reaches_the_dom_unescaped(source):
     """The specific failure: `${u.name}` inside a template literal that is
     assigned to innerHTML."""
-    offenders = [chunk for chunk in interpolations(source)
+    offenders = [chunk for chunk in interpolations(without_text_content(source))
                  if DATA_FIELDS.search(chunk) and "esc(" not in chunk]
     assert not offenders, f"wrap these in esc(): {offenders}"
+
+
+def test_text_content_is_never_escaped(source):
+    """The opposite mistake. textContent is text already, so esc() there puts
+    the entities on screen: the capture report for O'Brien was headed
+    "O&#39;Brien", and "Smith & Jones" came out as "Smith &amp; Jones"."""
+    statements = TEXT_CONTENT.findall(source)
+    assert len(statements) > 20, "the pattern stopped matching the file"
+    offenders = [s for s in statements if "esc(" in s]
+    assert not offenders, f"drop esc() from these: {offenders}"
+
+
+def test_an_ambiguous_identification_is_not_called_below_threshold(source):
+    """recognition.identify refuses a match that clears the threshold when the
+    runner-up is too close behind, and says so in `ambiguous`. The panel read
+    only `match`, so it reported those as "below threshold" and printed a
+    sentence saying the similarity was under a threshold it was over."""
+    start = source.index("function renderIdentify")
+    body = source[start:source.index("\n}\n", start)]
+    assert "d.ambiguous" in body
+    assert "too close to call" in body
 
 
 def test_the_user_list_escapes_its_names(source):
@@ -64,10 +96,15 @@ def test_the_attendance_list_escapes_its_names(source):
     assert "esc(a.name)" in source
 
 
-def test_the_capture_report_escapes_its_names(source):
-    """Both the subject and the nearest other enrolled face."""
-    assert "esc(rep.name)" in source
+def test_the_capture_report_keeps_both_names_text(source):
+    """The nearest other enrolled face goes into innerHTML, so it is escaped.
+    The subject goes into a textContent heading, which is text already --
+    this test used to demand esc() there too, which is what put "&#39;" on
+    screen."""
     assert "esc(rep.nearestOther.name)" in source
+    heading = source[source.index("$('reportSub').textContent"):]
+    heading = heading[:heading.index(";")]
+    assert "rep.name" in heading and "esc(" not in heading
 
 
 def test_the_template_literals_are_still_balanced(source):

@@ -7,9 +7,10 @@ Download the pretrained weights the trait analysis needs into models/.
     python -m cli.fetch_models --force   # re-download even if present
     python -m cli.fetch_models --list    # just show what is and isn't there
 
-Roughly 134 MB total, mostly the two Caffe demographic nets. Nothing here is
-needed for the original LBPH attendance pipeline — skip it and register/
-train/attendance still work, you just lose the analysis tab.
+Roughly 196 MB total, mostly the two Caffe demographic nets and the LBF
+landmark model. The CLI's LBPH pipeline needs none of it. The web app's
+attendance loop does need the liveness net: it will not mark anybody present
+until it can tell a face from a photograph of one.
 
 The OpenCV Zoo files are stored in Git LFS, so they come from the
 media.githubusercontent.com endpoint; the normal raw URL returns a ~130 byte
@@ -27,6 +28,10 @@ from core.facemodels import models_dir, SPECS, have, path_for
 ZOO = "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models"
 LEARNOPENCV = "https://raw.githubusercontent.com/spmallick/learnopencv/master/AgeGender"
 AGEGENDER_WEIGHTS = "https://github.com/eveningglow/age-and-gender-classification/raw/master/model"
+# Same weights as the Silent-Face-Anti-Spoofing release, exported to ONNX.
+# Checked against the copy this project was developed with: identical logits.
+MINIFASNET = "https://github.com/yakhyo/face-anti-spoofing/releases/download/weights/MiniFASNetV2.onnx"
+LBF = "https://raw.githubusercontent.com/kurnianggoro/GSOC2017/master/data/lbfmodel.yaml"
 
 URLS = {
     "face_detection_yunet_2023mar.onnx": f"{ZOO}/face_detection_yunet/face_detection_yunet_2023mar.onnx",
@@ -36,6 +41,8 @@ URLS = {
     "gender_deploy.prototxt": f"{LEARNOPENCV}/gender_deploy.prototxt",
     "age_net.caffemodel": f"{AGEGENDER_WEIGHTS}/age_net.caffemodel",
     "gender_net.caffemodel": f"{AGEGENDER_WEIGHTS}/gender_net.caffemodel",
+    "lbfmodel.yaml": LBF,
+    "minifasnet_v2.onnx": MINIFASNET,
 }
 
 # A Git LFS pointer is a few hundred bytes of text; a real model is not.

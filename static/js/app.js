@@ -26,7 +26,10 @@ let state = { running: false, mode: 'idle' };
  * name is the app's main function.
  *
  * Single quotes are escaped too: unlike the email templates, some attributes
- * here are single-quoted. */
+ * here are single-quoted.
+ *
+ * innerHTML only. textContent is already text, and escaping into it shows the
+ * entities: a report for O'Brien read "O&#39;Brien". */
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
@@ -205,7 +208,7 @@ function renderReport(rep) {
   }
   panel.style.display = 'block';
   $('reportSub').textContent =
-    `${esc(rep.samples)} samples captured for ${esc(rep.name)}. What the system can now`
+    `${rep.samples} samples captured for ${rep.name}. What the system can now`
     + ` measure, and how well it should recognise them.`;
 
   const s = rep.sharpness || {}, q = rep.quality || {}, px = rep.facePx || {};
@@ -389,7 +392,7 @@ function renderTraits(s) {
     $('ltAge').textContent = t.age ? t.age.label : noFace;
   }
   $('ltGender').textContent = t.gender
-    ? `${esc(t.gender.label)}  ${(t.gender.confidence * 100).toFixed(0)}%${t.gender.uncertain ? ' ?' : ''}`
+    ? `${t.gender.label}  ${(t.gender.confidence * 100).toFixed(0)}%${t.gender.uncertain ? ' ?' : ''}`
     : noFace;
 
   const pm = t.parts;
@@ -405,7 +408,7 @@ function renderTraits(s) {
 
   const lv = s.liveness;
   $('ltLive').textContent = (lv && lv.available)
-    ? (lv.score != null ? `${esc(lv.verdict)} ${lv.score.toFixed(2)}` : esc(lv.verdict))
+    ? (lv.score != null ? `${lv.verdict} ${lv.score.toFixed(2)}` : lv.verdict)
     : 'model missing';
 
   $('ltFlags').innerHTML = (t.flags && t.flags.length)
@@ -618,7 +621,7 @@ function renderIdentify(d) {
     <div class="agrid">
       <div class="card">
         <div class="who"><h3>${esc(m ? m.name : 'No confident match')}</h3>
-          <span class="pill ${m ? 'good' : 'warn'}">${m ? 'identified' : 'below threshold'}</span></div>
+          <span class="pill ${m ? 'good' : 'warn'}">${m ? 'identified' : (d.ambiguous ? 'too close to call' : 'below threshold')}</span></div>
         <div class="metrics">
           ${stat('similarity', d.best.similarity.toFixed(3))}
           ${stat('threshold', d.threshold)}
@@ -628,7 +631,15 @@ function renderIdentify(d) {
         <div class="note">${m
           ? `Above the threshold for a gallery of ${d.gallerySize}, which carries a
              ${(100 * d.galleryRisk).toFixed(2)}% chance of a false match.`
-          : `Best similarity ${d.best.similarity.toFixed(3)} is under the
+          : d.ambiguous
+            /* Above the threshold and still refused. Saying "under the
+             * threshold" here was false, and hid the real reason: two enrolled
+             * people scored nearly the same. */
+            ? `Best similarity ${d.best.similarity.toFixed(3)} clears the
+               ${d.threshold} threshold, but ${esc(d.runnerUp.name)} is only
+               ${d.margin.toFixed(3)} behind (${d.minMargin} needed), so this is
+               reported as unknown rather than guessed at.`
+            : `Best similarity ${d.best.similarity.toFixed(3)} is under the
              ${d.threshold} threshold, so this is reported as unknown rather than
              guessed at.`}</div>
       </div>

@@ -636,15 +636,17 @@ def scan(progress=None, use_cache=True):
     db.init_db()
     names = dict(db.get_all_users())
 
-    paths = list(iter_sample_paths())
+    # Not `paths`: that is the imported module, and _stratify below already
+    # explains what shadowing it costs the next person to reach for it.
+    samples = list(iter_sample_paths())
     records, folders = [], {}
-    for i, (user_id, folder, path) in enumerate(paths):
+    for i, (user_id, folder, path) in enumerate(samples):
         folders[user_id] = folder
         rec = analyze_sample(user_id, path, use_cache=use_cache)
         if rec:
             records.append(rec)
         if progress:
-            progress(i + 1, len(paths))
+            progress(i + 1, len(samples))
 
     by_user = defaultdict(list)
     for r in records:

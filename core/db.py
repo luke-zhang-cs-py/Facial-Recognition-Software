@@ -22,10 +22,6 @@ from core import paths
 # which reintroduces exactly the split paths.py was written to prevent: after
 # use(), the dataset is the copy and the database is still the real one.
 
-# Kept as a module attribute because tests and the CLI scripts patch it, but
-# the default now comes from paths so it moves with dataset/ rather than
-# being separately redirectable.
-
 
 def get_connection():
     conn = sqlite3.connect(paths.db_path(), timeout=10.0)

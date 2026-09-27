@@ -43,7 +43,7 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Run tests
-        # Note what this runner does not have. models/ holds ~134 MB of
+        # Note what this runner does not have. models/ holds ~196 MB of
         # third-party weights fetched by cli/fetch_models.py, and dataset/ holds
         # captured images of real people -- both gitignored, the second
         # deliberately so. The handful of tests that need those weights skip

@@ -14,7 +14,6 @@ These tests are the price of having one value in one place: they fail if a
 module goes back to declaring its own.
 """
 import ast
-import io
 import os
 import re
 import sys

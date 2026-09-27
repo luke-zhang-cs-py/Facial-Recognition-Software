@@ -27,6 +27,36 @@ def test_to_bgr_of_none():
     assert traits.to_bgr(None) == (None, False)
 
 
+def test_to_bgr_drops_an_alpha_channel():
+    """A PNG with transparency is four channels, and the three-way unpack
+    raised on it."""
+    from pipeline import traits
+    bgra = np.zeros((10, 10, 4), np.uint8)
+    bgra[..., 2] = 200          # red, so it is not grey data
+    bgr, is_grey = traits.to_bgr(bgra)
+    assert bgr.shape == (10, 10, 3) and not is_grey
+
+
+def test_one_transparent_png_does_not_end_the_whole_scan(isolated_db):
+    """analytics reads samples IMREAD_UNCHANGED, and scan() has no per-file
+    guard, so a single RGBA file in dataset/ took the whole report down."""
+    import os
+
+    import cv2
+    from analysis import analytics
+    from core import paths
+
+    uid = isolated_db.add_user("Ada")
+    folder = paths.user_folder(uid, "Ada")
+    os.makedirs(folder)
+    rng = np.random.default_rng(0)
+    cv2.imwrite(os.path.join(folder, "1.png"),
+                rng.integers(0, 255, (120, 120, 4), dtype=np.uint8))
+
+    report = analytics.scan()
+    assert report["totalSamples"] == 1
+
+
 def test_to_gray_is_idempotent():
     from pipeline import traits
     g = np.full((8, 8), 100, np.uint8)

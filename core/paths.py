@@ -14,6 +14,7 @@ the two stores cannot drift apart.
 """
 
 import os
+import re
 
 # The project root, which is this file's *parent's* parent: paths.py lives in
 # core/, and everything it names -- dataset/, trainer.yml, attendance.db,
@@ -56,5 +57,21 @@ def models_dir():
     return os.path.join(BASE_DIR, "models")
 
 
+# A name is typed into the web form, and it used to become a directory name
+# with only its spaces replaced. "x/../../../elsewhere" therefore wrote face
+# samples outside dataset/, and a name with a colon or a question mark --
+# legal in a name, illegal in a Windows path -- raised after the user row had
+# already been inserted, leaving a person with no folder. Anything that is
+# not a letter, a digit, an underscore or a hyphen becomes an underscore.
+#
+# Only the folder is rewritten; the database keeps the name exactly as typed.
+# Nothing finds a folder by its name part -- training and analysis read the
+# id before the first underscore -- so this changes what is on disk and
+# nothing about who is recognised.
+_UNSAFE_IN_FOLDER = re.compile(r"[^\w-]")
+FOLDER_NAME_MAX = 64
+
+
 def user_folder(user_id, name):
-    return os.path.join(dataset_dir(), f"{user_id}_{name.replace(' ', '_')}")
+    safe = _UNSAFE_IN_FOLDER.sub("_", name)[:FOLDER_NAME_MAX]
+    return os.path.join(dataset_dir(), f"{int(user_id)}_{safe}")

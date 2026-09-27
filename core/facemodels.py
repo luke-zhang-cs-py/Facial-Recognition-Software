@@ -18,8 +18,16 @@ attendance.py` working on a machine that never ran `cli/fetch_models.py`.
     age       Levi & Hassner (2015) 8-bucket age classifier.
     gender    Levi & Hassner (2015) binary classifier. See traits.py for
               why its output is reported the way it is.
+    landmarks OpenCV's 68-point LBF facemark, loaded by landmarks.py.
+    liveness  MiniFASNet V2 anti-spoofing net, loaded by liveness.py.
 
-Weights live in models/ and are git-ignored — they are ~134 MB of
+The last two are loaded by their own modules rather than by `get()` below,
+but they are listed here all the same: this table is what `/api/models`
+reports and what `cli.fetch_models --list` prints, and a model missing from
+it is one nobody is told to download. Liveness was, and without it the web
+attendance loop can never mark anybody present.
+
+Weights live in models/ and are git-ignored — they are ~196 MB of
 third-party binaries, not our source.
 """
 
@@ -30,7 +38,7 @@ import cv2
 
 from core import paths
 
-# name -> (files it needs, human description, size hint)
+# name -> (files it needs, human description)
 SPECS = {
     "yunet": (["face_detection_yunet_2023mar.onnx"],
               "face detection + 5 landmarks"),
@@ -42,6 +50,10 @@ SPECS = {
             "8-bucket age estimate"),
     "gender": (["gender_deploy.prototxt", "gender_net.caffemodel"],
                "binary gender estimate"),
+    "landmarks": (["lbfmodel.yaml"],
+                  "68-point landmarks: eyes open, mouth, occlusion"),
+    "liveness": (["minifasnet_v2.onnx"],
+                 "photo / screen rejection; attendance waits without it"),
 }
 
 # Levi & Hassner trained on BGR with this mean subtracted and no scaling.

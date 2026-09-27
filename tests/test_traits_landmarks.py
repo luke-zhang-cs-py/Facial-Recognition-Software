@@ -35,6 +35,63 @@ def test_detection_and_person_thresholds_are_distinct():
     assert traits.DETECT_SCORE < traits.PERSON_SCORE
 
 
+def haar_row(x=40, y=30, w=120, h=120):
+    """What traits._haar_rows emits: a box, zeros for the landmarks, score 0."""
+    row = np.zeros(15, np.float32)
+    row[:4] = [x, y, w, h]
+    return row
+
+
+def test_a_haar_row_has_no_pose_rather_than_a_frontal_one():
+    """Its landmarks are zeros meaning "not measured". Read as points they
+    gave yaw 0 and roll 0 -- a perfectly frontal face -- so registration's
+    front stage accepted every Haar-only frame as looking at the lens."""
+    from pipeline import camera, traits
+    g = traits.geometry(haar_row())
+    assert g["box"] == [40, 30, 120, 120]
+    assert g["yaw"] is None and g["roll"] is None and g["pitchRatio"] is None
+    assert g["landmarks"] is None
+    assert not camera.pose_matches("front", g["yaw"], g["roll"],
+                                   g["pitchRatio"], None)
+
+
+def test_unknown_pose_is_not_flagged_as_a_bad_one():
+    from pipeline import traits
+    metrics = {"sharpness": 500.0, "qualityScore": 0.9, "shadowClip": 0.0,
+               "highlightClip": 0.0, "dynamicRange": 200.0}
+    geom = {"facePx": 200, "yaw": None, "roll": None}
+    assert traits.quality_flags(metrics, geom, False) == []
+
+
+def test_a_haar_row_is_embedded_from_its_box_not_aligned_to_zeros(monkeypatch):
+    """alignCrop with five zero landmarks warps the image onto one point, and
+    SFace embedded whatever came out. The box is what a Haar row knows."""
+    from pipeline import traits
+
+    class FakeSFace:
+        aligned_with = None
+        fed = None
+
+        def alignCrop(self, image, row):
+            FakeSFace.aligned_with = row
+            return np.zeros((112, 112, 3), np.uint8)
+
+        def feature(self, image):
+            FakeSFace.fed = image
+            return np.ones((1, 128), np.float32)
+
+    monkeypatch.setattr(traits.facemodels, "get",
+                        lambda name: FakeSFace() if name == "sface" else None)
+    frame = np.zeros((240, 240, 3), np.uint8)
+    frame[30:150, 40:160] = 255          # the box is white, the rest black
+
+    vec = traits.embed(frame, haar_row())
+    assert FakeSFace.aligned_with is None, "aligned by landmarks it does not have"
+    assert FakeSFace.fed.shape[:2] == traits.SFACE_INPUT_SIZE
+    assert FakeSFace.fed.min() == 255, "embedded more than the face box"
+    assert np.isclose(np.linalg.norm(vec), 1.0)
+
+
 def test_count_people_ignores_haar_rows():
     from pipeline import traits
     haar = np.zeros(15, np.float32)          # score 0

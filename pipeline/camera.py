@@ -144,6 +144,10 @@ def pose_matches(key, yaw, roll, pitch, baseline_pitch):
 # a readout a human is looking at.
 TRAIT_INTERVAL = 1.0
 
+NO_LIVENESS_LABEL = "no liveness model"
+NO_LIVENESS_EVENT = ("Liveness model missing, so nobody can be marked present. "
+                     "Run: python -m cli.fetch_models")
+
 MODE_IDLE = "idle"
 MODE_REGISTER = "register"
 MODE_ATTENDANCE = "attendance"
@@ -283,7 +287,10 @@ class CameraManager:
 
         self.start()
         user_id = db.add_user(name)
-        user_dir = os.path.join(paths.dataset_dir(), f"{user_id}_{name.replace(' ', '_')}")
+        # paths.user_folder, not the join written out again: that copy only
+        # replaced spaces, so a name was a path and "../" in it was a way out
+        # of dataset/.
+        user_dir = paths.user_folder(user_id, name)
         os.makedirs(user_dir, exist_ok=True)
 
         with self._lock:
@@ -319,6 +326,13 @@ class CameraManager:
             self._live_verdict = "unknown"
             self._mode = MODE_ATTENDANCE
         self._log_event("info", "Attendance mode on")
+        if not faceliveness.available():
+            # Refusing to mark anyone without a liveness verdict is right --
+            # otherwise a photograph gets somebody marked present. Doing it
+            # in silence was not: faces sat amber with a name and a distance
+            # on them, and nothing on the page said attendance could not
+            # happen or what would fix it.
+            self._log_event("error", NO_LIVENESS_EVENT)
 
     def set_idle(self):
         with self._lock:
@@ -782,6 +796,10 @@ class CameraManager:
                         self._marked_session.discard(user_id)
                 elif verdict == "unknown":
                     colour = AMBER      # still gathering frames
+                    if not faceliveness.available():
+                        # Without the net there is never a verdict, so this
+                        # face would wait here forever with nothing saying why.
+                        name = f"{name} - {NO_LIVENESS_LABEL}"
                 else:
                     colour = GREEN
                     with self._lock:

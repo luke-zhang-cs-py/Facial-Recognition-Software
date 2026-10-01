@@ -1,5 +1,7 @@
 """db.py had a connection leak that turned any single error into 'database is
 locked' for the rest of the process. These lock that fix down."""
+import os
+
 import pytest
 
 
@@ -110,3 +112,17 @@ def test_no_module_opens_a_raw_connection():
         if re.search(r"get_connection\s*\(", text):
             offenders.append(name)
     assert not offenders, f"use db.connection() instead: {offenders}"
+
+
+def test_a_new_user_never_gets_an_id_a_dataset_folder_already_claims(isolated_db):
+    """Folders are matched to users by id prefix and outlive their rows; a
+    reused id filed the old folder's face under the new person (two folders
+    shared id 7 in the October 2026 audit)."""
+    root = isolated_db.paths.dataset_dir()
+    os.makedirs(os.path.join(root, "1_Someone_Earlier"))
+    os.makedirs(os.path.join(root, "40_Another"))
+    os.makedirs(os.path.join(root, "notes_not_an_id"))
+    new = isolated_db.add_user("Ada")
+    assert new == 41
+    assert isolated_db.add_user("Ben") == 42
+    assert not any(f.startswith(f"{new}_") for f in os.listdir(root))

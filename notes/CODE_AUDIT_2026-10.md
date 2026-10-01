@@ -63,7 +63,16 @@ On the same held-out LFW photos, SFace named the right person 15/16 times with 0
 ## Data cleanup
 
 - **`--help` user removed.** The user row "--help" (id 9, no attendance rows) and its empty `dataset/9_--help` folder were deleted at the owner's request.
-- **Still open: two folders share id 7.** In the local `dataset/`, the demo folder for id 7 (12 LFW samples) sits beside a 30-sample folder for id 7 left over from an earlier database. Folders are matched to users by their id prefix, so both sets train as user 7 and one person's face is filed under another's name, in both LBPH and the SFace centroid. It is not changed here because it is a real person's face data. The fix is to delete or re-register the stale folder. A guard that refuses two folders with one id is the preventive follow-up.
+- **Still open: two folders share id 7.** In the local `dataset/`, the demo folder for id 7 (12 LFW samples) sits beside a 30-sample folder for id 7 left over from an earlier database. Folders are matched to users by their id prefix, so both sets train as user 7 and one person's face is filed under another's name, in both LBPH and the SFace centroid. The owner chose to keep it. The guard below stops it from happening again.
+- **New ids skip claimed folders.** `db.add_user` never hands out an id that a `dataset/` folder already claims (`paths.folder_ids()`). This checkout has leftover folders up to id 372, so the next user gets id 373.
+
+## More people enrolled from LFW
+
+Running `cli.seed_demo --keep` exposed two problems, both now fixed:
+- **Duplicates.** It picked the most-photographed people first, who are the ones already enrolled, and enrolled them a second time under new ids. `load_lfw(exclude=...)` now skips them.
+- **Its own crop, and a slow re-scan.** It cropped with its own code instead of `pipeline/decision.py`, and it ran a full `analytics.scan(use_cache=False)` over every folder, including ones with no user. It now uses `decision` for the crop and `recognition.refresh_gallery()` for the embeddings.
+
+`python -m cli.seed_demo --people 20 --samples 20 --keep` added 20 people with 20 samples each (ids 373–392). That makes 28 people in the SFace gallery, all of them recognisable. On 60 LFW photos of the new people that enrollment did not use, SFace named 57 correctly, named nobody wrongly, and refused 3.
 
 ## Maintenance classification
 

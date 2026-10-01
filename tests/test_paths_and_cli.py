@@ -175,3 +175,22 @@ def test_register_user_help_prints_usage_and_creates_nobody(isolated_db, capsys)
         register_user.main(argv)
     assert isolated_db.get_all_users() == []
     assert "usage" in capsys.readouterr().out.lower()
+
+
+def test_seed_demo_keep_skips_people_already_enrolled(tmp_path, monkeypatch):
+    """--keep adds people. It picked the most-photographed first -- the ones
+    already enrolled -- and enrolled them again under a second id."""
+    import json
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from cli import seed_demo
+    names = ["George_W_Bush", "Colin_Powell", "Ada_Lovelace"]
+    labels = [0] * 5 + [1] * 4 + [2] * 3
+    table = pa.table({"label": labels, "image": [b""] * len(labels)})
+    meta = {"info": {"features": {"label": {"names": names}}}}
+    table = table.replace_schema_metadata({"huggingface": json.dumps(meta)})
+    path = tmp_path / "lfw.parquet"
+    pq.write_table(table, path)
+    monkeypatch.setattr(seed_demo, "LFW", str(path))
+    _, _, picked = seed_demo.load_lfw(3, 2, None, exclude=["George W Bush"])
+    assert [names[lab] for lab, _ in picked] == ["Colin_Powell", "Ada_Lovelace"]

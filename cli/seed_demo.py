@@ -39,8 +39,7 @@ from core import corpus_paths              # noqa: E402
 import cv2                       # noqa: E402
 from core import db                        # noqa: E402
 from core import paths                     # noqa: E402
-from pipeline import traits                    # noqa: E402
-from core import vision                    # noqa: E402
+from pipeline import decision                  # noqa: E402
 
 PREFIX = "[demo] "
 
@@ -84,7 +83,7 @@ def remove_all():
     return removed
 
 
-def load_lfw(min_images, wanted, requested=None):
+def load_lfw(min_images, wanted, requested=None, exclude=()):
     import pyarrow.parquet as pq
     import json
     from collections import defaultdict
@@ -114,6 +113,13 @@ def load_lfw(min_images, wanted, requested=None):
     # Most-photographed first: more images means a more stable centroid, and
     # these are the identities LFW actually supports testing on.
     ranked = sorted(by_person.items(), key=lambda kv: -len(kv[1]))
+    if exclude and names:
+        # --keep adds to what is enrolled. Without this the most-photographed
+        # people -- the ones already enrolled -- were enrolled a second time,
+        # under a second id, splitting one face across two users.
+        skip = {n.lower() for n in exclude}
+        ranked = [(lab, idx) for lab, idx in ranked
+                  if names[lab].replace("_", " ").lower() not in skip]
     if requested:
         # Explicit names take priority and ignore the min-images floor -- if
         # somebody asked for a specific person, enroll whatever exists for them
@@ -204,17 +210,16 @@ def enroll_person(folder, idxs, images, budget):
         bgr = cv2.cvtColor(
             np.array(Image.open(io.BytesIO(data)).convert("RGB")),
             cv2.COLOR_RGB2BGR)
-        rows = traits.detect(bgr)
-        if not rows:
+        # The same detector, face choice and crop as every other gallery
+        # writer (pipeline/decision.py).
+        box = decision.primary(decision.boxes(bgr))
+        if box is None:
             continue
-        x, y, w, h = traits.geometry(rows[0])["box"]
-        gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-        crop = gray[max(0, y):y + h, max(0, x):x + w]
-        if crop.size == 0:
+        crop = decision.crop(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), box)
+        if crop is None:
             continue
         kept += 1
-        cv2.imwrite(os.path.join(folder, f"{kept}.jpg"),
-                    cv2.resize(crop, vision.LBPH_INPUT_SIZE))
+        cv2.imwrite(os.path.join(folder, f"{kept}.jpg"), crop)
     return kept
 
 
@@ -266,17 +271,23 @@ def main():
     if args.all_with:
         loaded = load_lfw(args.all_with, None, None)
     else:
+        enrolled = ([name[len(PREFIX):] for _, name in demo_users()]
+                    if args.keep else ())
         loaded = load_lfw(args.samples, args.people,
-                          [n for n in args.names.split(",") if n.strip()])
+                          [n for n in args.names.split(",") if n.strip()],
+                          exclude=enrolled)
     if loaded is None:
         return 1
 
     names, images, picked = loaded
     total = enroll_all(picked, names, images, args.samples)
 
-    print(f"\n{total} images written. Analysing so embeddings exist...")
-    from analysis import analytics
-    analytics.scan(progress=None, use_cache=False)
+    print(f"\n{total} images written. Embedding them for SFace...")
+    # Only enrolled people's samples with no embedding yet. A full
+    # analytics.scan(use_cache=False) re-read every folder in dataset/,
+    # including the ones no user owns, on every seed.
+    from pipeline import recognition
+    print(f"  {recognition.refresh_gallery()} samples embedded")
 
     from pipeline import train_model
     train_model.train()

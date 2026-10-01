@@ -72,6 +72,20 @@ _UNSAFE_IN_FOLDER = re.compile(r"[^\w-]")
 FOLDER_NAME_MAX = 64
 
 
+def folder_ids():
+    """Every id a dataset/ folder claims (the number before its first
+    underscore), whether or not a user row still has it."""
+    root = dataset_dir()
+    if not os.path.isdir(root):
+        return set()
+    ids = set()
+    for folder in os.listdir(root):
+        head = folder.split("_", 1)[0]
+        if head.isdigit() and os.path.isdir(os.path.join(root, folder)):
+            ids.add(int(head))
+    return ids
+
+
 def user_folder(user_id, name):
     safe = _UNSAFE_IN_FOLDER.sub("_", name)[:FOLDER_NAME_MAX]
     return os.path.join(dataset_dir(), f"{int(user_id)}_{safe}")

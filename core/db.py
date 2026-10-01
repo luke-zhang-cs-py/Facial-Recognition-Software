@@ -122,9 +122,27 @@ def _create_tables(conn):
 
 
 def add_user(name):
-    """Insert a new user and return their auto-generated id."""
+    """Insert a new user and return their auto-generated id.
+
+    Never an id that a dataset/ folder already claims. Folders are matched to
+    users by their id prefix, and a folder outlives its user row (a reset
+    database, a removed demo entry), so a reused id quietly files the old
+    folder's face under the new person's name -- found in the October 2026
+    audit, where two folders shared id 7 (notes/CODE_AUDIT_2026-10.md).
+    """
+    claimed = paths.folder_ids()
     with connection() as conn:
         cur = conn.cursor()
+        if claimed:
+            # AUTOINCREMENT hands out max(sqlite_sequence, max(id)) + 1, so
+            # raising the sequence past every claimed id is enough.
+            top = max(claimed)
+            cur.execute("SELECT seq FROM sqlite_sequence WHERE name = 'users'")
+            row = cur.fetchone()
+            if row is None:
+                cur.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('users', ?)", (top,))
+            elif row[0] < top:
+                cur.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'users'", (top,))
         cur.execute(
             "INSERT INTO users (name, created_at) VALUES (?, ?)",
             (name, datetime.now().isoformat()),

@@ -5,7 +5,7 @@ Identify a face against everyone enrolled, using SFace embeddings.
 
 Why not LBPH
 ------------
-attendance.py matches with LBPH, which compares texture histograms. Its
+LBPH (the fallback, see below) compares texture histograms. Its
 "confidence" is a distance with no fixed meaning: it does not transfer
 between datasets, cameras, or gallery sizes, which is why picking a threshold
 for it needed a sweep over local data and still did not generalise.
@@ -15,8 +15,12 @@ them means the same thing everywhere, so the thresholds measured over 4.77
 billion impostor pairs in calibration.py apply directly, and the recommended
 value scales with how many people are enrolled.
 
-Both are kept. LBPH still drives the live camera path; this is what the
-image-identification endpoint uses, and it is the better of the two.
+Both are kept. Since the October 2026 audit this decides attendance too,
+in the web camera and the CLI, whenever the SFace weights are present (see
+pipeline/decision.py); LBPH is the fallback without them. On held-out LFW
+photos SFace named 15/16 correctly with no wrong names and no strangers
+accepted, where LBPH at its threshold got 9/16, named 5 people wrongly and
+accepted 12 of 16 strangers.
 
 A person is represented by the mean of their sample embeddings, re-normalised
 -- a centroid is far more stable than any single shot, which is the whole
@@ -96,6 +100,17 @@ def identify(bgr, gal=None, max_risk=0.01):
     if vec is None:
         return {"ok": False, "error": "No face found in that image."}
 
+    result = match_vector(vec, gal, max_risk)
+    result["geometry"] = geom
+    return result
+
+
+def match_vector(vec, gal, max_risk=0.01):
+    """The decision for one embedding against a non-empty gallery.
+
+    Split out of identify() so the live camera and the CLI, which have
+    already detected and embedded the face, make exactly this decision.
+    """
     scored = sorted(
         ({"userId": uid, "name": e["name"], "samples": e["samples"],
           "similarity": round(float(np.dot(vec, e["centroid"])), 4)}
@@ -132,5 +147,31 @@ def identify(bgr, gal=None, max_risk=0.01):
         "thresholdReachable": reachable,
         "gallerySize": len(gal),
         "candidates": scored[:5],
-        "geometry": geom,
     }
+
+
+def refresh_gallery():
+    """Embed every enrolled person's samples that have no embedding yet.
+
+    Registering in the web camera embeds the samples as part of its report;
+    cli.register_user, and every enrollment made before SFace decided
+    attendance, does not. analytics.analyze_sample caches by path and mtime,
+    so a sample already embedded costs a database read. Returns how many
+    samples were newly analysed.
+    """
+    import os
+
+    from analysis import analytics
+
+    # Folders by their id prefix, as train_model reads them -- the gallery
+    # and the LBPH model have to be built from the same samples.
+    enrolled = {user_id for user_id, _ in db.get_all_users()}
+    added = 0
+    for user_id, _, path in analytics.iter_sample_paths():
+        if user_id not in enrolled:
+            continue
+        if db.get_cached_traits(path, os.path.getmtime(path)):
+            continue
+        if analytics.analyze_sample(user_id, path) is not None:
+            added += 1
+    return added

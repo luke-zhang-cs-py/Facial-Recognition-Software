@@ -583,7 +583,8 @@ def _score_fold(model, test_pairs):
 
 
 def lbph_analysis(records, folds=KFOLDS):
-    """K-fold cross-validation of the LBPH recogniser attendance.py uses."""
+    """K-fold cross-validation of the LBPH recogniser, attendance's fallback
+    when the SFace weights are missing."""
     by_user = defaultdict(list)
     for r in records:
         by_user[r["userId"]].append(r["path"])

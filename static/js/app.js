@@ -526,9 +526,9 @@ function renderAnalysis(rep) {
     <div class="agrid">${rep.users.map(userCard).join('')}</div>
     <div class="agrid">
       <div class="card"><div class="who"><h3>LBPH</h3>
-        <span class="pill warn">in use today</span></div>${sweepTable(rep.lbph)}</div>
+        <span class="pill warn">fallback without SFace weights</span></div>${sweepTable(rep.lbph)}</div>
       <div class="card"><div class="who"><h3>SFace embeddings</h3>
-        <span class="pill good">128-d</span></div>${sweepTable(rep.sface)}
+        <span class="pill good">decides attendance</span></div>${sweepTable(rep.sface)}
         ${rep.sface.available ? `<div class="note">Genuine ${rep.sface.genuine.mean}
           vs impostor ${rep.sface.impostor.mean} (margin ${rep.sface.margin}).
           ${rep.sface.weakestPairs.length ? `Most confusable: user

@@ -154,7 +154,7 @@ def print_thresholds(report):
     rule()
 
     lbph = report["lbph"]
-    print_sweep("LBPH — the recogniser attendance.py uses today", lbph)
+    print_sweep("LBPH — attendance's fallback without the SFace weights", lbph)
     if lbph["available"] and lbph["recommendedThreshold"] != lbph["currentThreshold"]:
         print(f"    NOTE: attendance.py has CONFIDENCE_THRESHOLD = "
               f"{lbph['currentThreshold']}; your data supports "

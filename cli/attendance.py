@@ -63,7 +63,15 @@ def identify(recognizer, gray, box):
     return user_id, confidence, decision.name_of(user_id), True
 
 
-def mark_present(user_id, name, confidence, marked_this_session):
+def identify_sface(bgr, row, gallery):
+    """identify(), by SFace: (user_id, similarity, name, accepted)."""
+    user_id, similarity, accepted = decision.identify(bgr, row, gallery)
+    if not accepted:
+        return user_id, similarity, "Unknown", False
+    return user_id, similarity, decision.name_of(user_id), True
+
+
+def mark_present(user_id, name, confidence, marked_this_session, method=decision.LBPH):
     """Log an accepted match once per session, and say what happened.
 
     The session set is why this exists: without it every frame re-queries
@@ -72,10 +80,12 @@ def mark_present(user_id, name, confidence, marked_this_session):
     """
     if user_id in marked_this_session:
         return
-    outcome = decision.record(user_id, confidence)
+    outcome = decision.record(user_id, confidence, method)
     marked_this_session.add(user_id)
     if outcome == decision.LOGGED:
-        print(f"Logged attendance: {name} at confidence {confidence:.1f}")
+        reading = (f"similarity {confidence:.3f}" if method == decision.SFACE
+                   else f"distance {confidence:.1f}")
+        print(f"Logged attendance: {name} at {reading}")
     elif outcome == decision.ALREADY:
         print(f"{name} already marked present today.")
     else:
@@ -117,7 +127,7 @@ def _load_recognizer():
 def _report_today():
     print("\nToday's attendance:")
     for name, timestamp, confidence in db.get_attendance_for_today():
-        print(f"  {name} - {timestamp} (confidence {confidence:.1f})")
+        print(f"  {name} - {timestamp} (score {confidence:.3g})")
 
 
 def run_attendance():
@@ -132,6 +142,14 @@ def run_attendance():
         print("The liveness model is missing, so nobody can be marked present "
               "(a photograph would pass). Run `python -m cli.fetch_models`.")
     vote = liveness.LivenessVote()
+    gallery = decision.sface_gallery()
+    if gallery:
+        print(f"Recognising with SFace: {len(gallery)} people in the gallery.")
+        missing = decision.unenrolled(gallery)
+        if missing:
+            print("No usable embedding, so never recognised: " + ", ".join(missing))
+    else:
+        print(decision.lbph_reason())
 
     cap = _open_camera()
     if cap is None:
@@ -146,7 +164,8 @@ def run_attendance():
             break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = decision.boxes(frame)
+        found = decision.faces(frame)
+        faces = [b for b, _ in found]
         box = decision.primary(faces)
         for other in faces:
             if other != box:
@@ -156,11 +175,17 @@ def run_attendance():
             if liveness.available():
                 vote.push(liveness.score(frame, box))
             verdict = vote.verdict() if liveness.available() else "unknown"
-            user_id, confidence, name, accepted = identify(recognizer, gray, box)
+            if gallery:
+                row = next(r for b, r in found if b == box)
+                user_id, confidence, name, accepted = identify_sface(frame, row, gallery)
+                method, shown = decision.SFACE, "-" if confidence is None else f"{confidence:.2f}"
+            else:
+                user_id, confidence, name, accepted = identify(recognizer, gray, box)
+                method, shown = decision.LBPH, f"{confidence:.0f}"
             if accepted and verdict == "live":
-                mark_present(user_id, name, confidence, marked_this_session)
+                mark_present(user_id, name, confidence, marked_this_session, method)
             label = name if verdict != "spoof" or not accepted else f"{name}? photo"
-            annotate(frame, box, f"{label} ({confidence:.0f})",
+            annotate(frame, box, f"{label} ({shown})",
                      MATCH_COLOUR if accepted and verdict == "live" else UNKNOWN_COLOUR)
 
         cv2.imshow("Attendance - press q to quit", frame)

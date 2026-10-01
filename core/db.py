@@ -79,9 +79,17 @@ def _create_tables(conn):
             user_id INTEGER NOT NULL,
             timestamp TEXT NOT NULL,
             confidence REAL,
+            method TEXT NOT NULL DEFAULT 'lbph',
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     """)
+    # `confidence` is whatever the recogniser that made the mark reports: an
+    # LBPH distance (lower is closer, ~0-100) or an SFace cosine similarity
+    # (higher is closer, 0-1). Rows from before SFace decided attendance have
+    # no `method`; every one of them was LBPH, which is what the default says.
+    columns = [row[1] for row in cur.execute("PRAGMA table_info(attendance)")]
+    if "method" not in columns:
+        cur.execute("ALTER TABLE attendance ADD COLUMN method TEXT NOT NULL DEFAULT 'lbph'")
 
     # Cache of per-image trait analysis (see traits.py). Keyed by file path
     # plus mtime so an edited or replaced sample is re-analysed automatically.
@@ -162,16 +170,20 @@ def already_marked_today(user_id):
         return cur.fetchone() is not None
 
 
-def log_attendance(user_id, confidence):
-    """Insert an attendance record. Returns True if a new row was written."""
+def log_attendance(user_id, confidence, method="lbph"):
+    """Insert an attendance record. Returns True if a new row was written.
+
+    `method` says how to read `confidence`: "sface" (a similarity, higher is
+    closer) or "lbph" (a distance, lower is closer)."""
     if already_marked_today(user_id):
         return False
 
     with connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO attendance (user_id, timestamp, confidence) VALUES (?, ?, ?)",
-            (user_id, datetime.now().isoformat(), confidence),
+            "INSERT INTO attendance (user_id, timestamp, confidence, method) "
+            "VALUES (?, ?, ?, ?)",
+            (user_id, datetime.now().isoformat(), confidence, method),
         )
         conn.commit()
         return True
@@ -190,6 +202,21 @@ def get_all_attendance():
         cur = conn.cursor()
         cur.execute(
             """SELECT u.name, a.timestamp, a.confidence
+               FROM attendance a
+               JOIN users u ON u.id = a.user_id
+               ORDER BY a.timestamp DESC"""
+        )
+        return cur.fetchall()
+
+
+def get_all_attendance_with_method():
+    """Every attendance row, newest first, as (name, timestamp, confidence,
+    method) -- for a reader that prints the number and so has to know which
+    way round it goes."""
+    with connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT u.name, a.timestamp, a.confidence, a.method
                FROM attendance a
                JOIN users u ON u.id = a.user_id
                ORDER BY a.timestamp DESC"""

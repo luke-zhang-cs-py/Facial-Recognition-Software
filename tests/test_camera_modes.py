@@ -505,7 +505,7 @@ def test_already_marked_today_is_said_once(attending, faces, blank_frame,
     is not an error, and not a success either."""
     set_verdict(attending, monkeypatch, "live")
     monkeypatch.setattr(camera.db, "log_attendance",
-                        lambda uid, conf: False)
+                        lambda uid, conf, method="lbph": False)
     faces(FRONTAL)
     attending._handle_attendance(blank_frame)
 

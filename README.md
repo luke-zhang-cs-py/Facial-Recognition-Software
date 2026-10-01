@@ -47,8 +47,10 @@ traits, liveness, quality scoring and SFace identification degrade quietly,
 which looks like the app being broken rather than incomplete.
 `GET /api/models` names the missing ones.
 
-Then register a person, capture ~30 samples, and the LBPH model retrains
-itself; recognised faces get one `attendance` row per person per day. The same
+Then register a person and capture ~30 samples. Attendance is decided by SFace
+embeddings against a calibrated threshold, with LBPH only as the fallback when
+the SFace weights are missing; recognised faces that pass the liveness check
+get one `attendance` row per person per day, recording which recogniser made it. The same
 on the CLI — `cli.register_user`, `cli.attendance`, `cli.view_report` — and
 `cli.seed_demo --people 40` enrolls from LFW to try recognition without
 registering anyone. Every feature, with the endpoint and command behind it, is
@@ -129,7 +131,7 @@ grouping down once, and the structural tests read it from there.
 pytest -q
 ```
 
-421 tests, 86% of 2,409 statements, needing no webcam, no weights and no
+434 tests, 87% of 2,506 statements, needing no webcam, no weights and no
 corpus. Tests that need a real face use a sample frame if one is present and
 **skip** rather than asserting against a synthetic one, because a face a
 detector accepts cannot be faked convincingly enough to be evidence.

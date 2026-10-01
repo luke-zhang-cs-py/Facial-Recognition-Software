@@ -4,7 +4,7 @@ This covers the second pass after `notes/CODE_AUDIT.md`, against the same checkl
 
 Each bug below was first reproduced by a test on the code as it was before this pass. All 12 of those tests failed there. Both regression tests that check the normal path ("the page itself can still post" and "the CLI still marks a live face") passed there and still pass.
 
-Suite: 421 tests (418 pass, 3 skip without the pretrained weights). Statement coverage is 86% of 2,409, up from 84% of 2,338.
+Suite: 434 tests after the SFace follow-up (431 pass, 3 skip without the pretrained weights). Statement coverage is 87% of 2,506, up from 84% of 2,338.
 
 ## The finding behind most of the others
 
@@ -49,10 +49,21 @@ Querying a YuNet-cropped gallery with Haar crops (what the CLI sent) cut correct
 - **Dead code:** removed `FACE_CASCADE_PATH` from both CLI modules, and the `vision` import that `register_user` no longer needs.
 - **Uncommunicative names:** `crop` in `camera.py` had meant three different things across the function. It is now `sample` and `face_img`.
 
-## Not changed, and why
+## Attendance now decided by SFace (follow-up, same day)
 
-- **Attendance still uses LBPH, not SFace.** On the same held-out LFW photos, SFace named the right person 15/16 times with 0 wrong names and 0 strangers accepted. LBPH at threshold 70 got 9/16 right, named the wrong person 5 times, and accepted 12/16 strangers. Switching is the biggest accuracy gain available. But it changes the recognizer behind every attendance row, and it needs the SFace weights and an embedding for every enrolled sample, so it is a design decision rather than a bug fix. Recommended as the next perfective change.
-- `dataset/9_--help` is left on disk. It's personal data, so removing it is the owner's call.
+On the same held-out LFW photos, SFace named the right person 15/16 times with 0 wrong names and 0 strangers accepted. LBPH at threshold 70 got 9/16 right, named the wrong person 5 times, and accepted 12/16 strangers. The owner approved the switch after the first pass.
+
+- **`decision.sface_gallery()`.** The web camera and the CLI decide by SFace whenever the weights are present and someone enrolled has an embedding. Otherwise they fall back to LBPH, and `decision.lbph_reason()` says which of the two conditions caused it.
+- **The decision itself.** It is `recognition.match_vector`, the rule `/api/identify` already used: the calibrated threshold for the gallery size, plus a margin over the runner-up. Liveness, the primary-face rule and one mark a day are unchanged.
+- **The mirrored preview.** The camera embeds the unmirrored frame using `decision.unmirror_row`, which also swaps the eyes and mouth corners, because SFace aligns the face by those points. On a real face, unmirroring matched the straight-on embedding at 0.96 similarity, against 0.94 for embedding the mirrored frame directly.
+- **`recognition.refresh_gallery()`.** It embeds samples that have no embedding yet, such as those from `cli.register_user` and from older enrollments. Results are cached by path and mtime, so a refresh takes about 0.3 s on this checkout. When someone has no usable embedding, attendance names them instead of silently never marking them.
+- **`attendance.method`.** This new column records `sface` or `lbph`, because the two numbers run in opposite directions: SFace gives a similarity, where higher is closer, and LBPH gives a distance, where lower is closer. Existing databases gain the column on `init_db`, and older rows read as `lbph`, which is what they were. `cli.view_report` prints each number with its direction.
+- **Tests.** `tests/test_sface_attendance.py` holds 13 tests. Each was checked against a deliberate break: no eye swap, accepting below the threshold, or embedding the mirrored frame. Each break failed at least one test.
+
+## Data cleanup
+
+- **`--help` user removed.** The user row "--help" (id 9, no attendance rows) and its empty `dataset/9_--help` folder were deleted at the owner's request.
+- **Still open: two folders share id 7.** In the local `dataset/`, the demo folder for id 7 (12 LFW samples) sits beside a 30-sample folder for id 7 left over from an earlier database. Folders are matched to users by their id prefix, so both sets train as user 7 and one person's face is filed under another's name, in both LBPH and the SFace centroid. It is not changed here because it is a real person's face data. The fix is to delete or re-register the stale folder. A guard that refuses two folders with one id is the preventive follow-up.
 
 ## Maintenance classification
 
@@ -60,5 +71,5 @@ Querying a YuNet-cropped gallery with Haar crops (what the CLI sent) cut correct
 |---|---|
 | Corrective | bugs 1–6, 9, 10 |
 | Preventive | bugs 7, 8 (no exploit observed); the single `decision` module, so the paths can't drift again; the tests that hold each path to the same orientation and detector |
-| Perfective | centroid de-duplication; the dead-code and naming cleanup |
+| Perfective | attendance by SFace instead of LBPH; centroid de-duplication; the dead-code and naming cleanup |
 | Adaptive | none |

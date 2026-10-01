@@ -217,6 +217,7 @@ class CameraManager:
         self._marked_session = set()
         self._model_mtime = None
         self._recognizer = None
+        self._gallery = None          # SFace gallery; None means LBPH decides
 
         self._events = deque(maxlen=40)
 
@@ -321,12 +322,23 @@ class CameraManager:
                 )
         self.start()
         self._load_recognizer()
+        gallery = decision.sface_gallery()
         with self._lock:
+            self._gallery = gallery
             self._marked_session.clear()
             self._liveness.reset()
             self._live_verdict = "unknown"
             self._mode = MODE_ATTENDANCE
         self._log_event("info", "Attendance mode on")
+        if gallery:
+            self._log_event("info", f"Recognising with SFace: {len(gallery)} "
+                            f"{'person' if len(gallery) == 1 else 'people'} in the gallery.")
+            missing = decision.unenrolled(gallery)
+            if missing:
+                self._log_event("error", "No usable embedding, so never recognised: "
+                                + ", ".join(missing) + ". Re-register them.")
+        else:
+            self._log_event("info", decision.lbph_reason())
         if not faceliveness.available():
             # Refusing to mark anyone without a liveness verdict is right --
             # otherwise a photograph gets somebody marked present. Doing it
@@ -588,7 +600,7 @@ class CameraManager:
         faces = []
         for row in rows:
             g = facetraits.geometry(row)
-            face = {"box": tuple(g["box"]), "landmarks": g["landmarks"],
+            face = {"box": tuple(g["box"]), "row": row, "landmarks": g["landmarks"],
                     "yaw": g["yaw"], "roll": g["roll"],
                     "pitch": g["pitchRatio"], "score": g["score"],
                     "points68": None}
@@ -747,10 +759,14 @@ class CameraManager:
         gray, faces = self._detect(frame)
         with self._lock:
             recognizer = self._recognizer
-        if recognizer is None:
+            gallery = self._gallery
+        if recognizer is None and not gallery:
             return
         if not faces:
             return
+        # The preview is mirrored; SFace embeds the face as the camera saw it,
+        # and before anything is drawn on the frame.
+        unmirrored = cv2.flip(frame, 1) if gallery else None
 
         # self._liveness / self._live_verdict / self._live_score are one
         # shared instance per camera, not per face -- and status() only ever
@@ -766,7 +782,9 @@ class CameraManager:
         primary_box = decision.primary([f["box"] for f in faces])
         primary = next(f for f in faces if f["box"] == primary_box)
 
-        for face in faces:
+        # The primary face first, so liveness and SFace read it before any
+        # other face's box is drawn onto the frame.
+        for face in sorted(faces, key=lambda f: f is not primary):
             face_img = decision.crop(gray, face["box"], mirrored=True)
             if face_img is None:
                 continue
@@ -785,7 +803,15 @@ class CameraManager:
                 self._live_score = (round(live_score, 3)
                                     if live_score is not None else None)
 
-            user_id, confidence, accepted = decision.match(recognizer, face_img)
+            if gallery:
+                method = decision.SFACE
+                row = decision.unmirror_row(face["row"], frame.shape[1])
+                user_id, confidence, accepted = decision.identify(unmirrored, row, gallery)
+                shown = "" if confidence is None else f"{confidence:.2f}"
+            else:
+                method = decision.LBPH
+                user_id, confidence, accepted = decision.match(recognizer, face_img)
+                shown = f"{confidence:.0f}"
 
             if accepted:
                 name = decision.name_of(user_id)
@@ -811,7 +837,7 @@ class CameraManager:
                         if not already_seen:
                             self._marked_session.add(user_id)
                     if not already_seen:
-                        outcome = decision.record(user_id, confidence)
+                        outcome = decision.record(user_id, confidence, method)
                         if outcome == decision.LOGGED:
                             self._log_event("success", f"Marked {name} present")
                         elif outcome == decision.ALREADY:
@@ -825,7 +851,7 @@ class CameraManager:
                 colour = RED
 
             self._draw_face(frame, face, colour,
-                            label=f"{name} ({confidence:.0f})")
+                            label=f"{name} ({shown})" if shown else name)
 
     # ------------------------------------------------------------- streaming
 

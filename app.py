@@ -99,6 +99,47 @@ def fail(exc, code=400):
     return jsonify({"ok": False, "error": str(exc)}), code
 
 
+# Binding to 127.0.0.1 keeps the network out, but not a web page open in the
+# same browser. Two holes, both closed here (notes/CODE_AUDIT_2026-10.md):
+#
+# * Cross-site POST. get_json(force=True) reads a text/plain body, which a
+#   form or fetch(..., {mode: "no-cors"}) on any site can send without a
+#   preflight -- so any page could start the camera, register a user or
+#   retrain the model.
+# * DNS rebinding. A hostile name that re-resolves to 127.0.0.1 makes this
+#   server same-origin with that site, which can then read /api/report and
+#   /video_feed. The Host header still carries the hostile name.
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _hostname(host):
+    """'127.0.0.1:5001' -> '127.0.0.1', '[::1]:5001' -> '[::1]'."""
+    host = (host or "").strip().lower()
+    if host.startswith("["):
+        return host.split("]", 1)[0] + "]"
+    return host.split(":", 1)[0]
+
+
+def _cross_site():
+    if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+        return True
+    origin = request.headers.get("Origin")
+    if origin is None:
+        return False            # curl, the test client, same-origin GET-style tools
+    from urllib.parse import urlsplit
+    return origin == "null" or _hostname(urlsplit(origin).netloc) not in LOOPBACK_HOSTS
+
+
+@app.before_request
+def same_machine_only():
+    if _hostname(request.host) not in LOOPBACK_HOSTS:
+        return fail("This server only answers to 127.0.0.1 or localhost.", 403)
+    if request.method in STATE_CHANGING and _cross_site():
+        return fail("Cross-site requests are refused.", 403)
+    return None
+
+
 @app.route("/")
 def index():
     return render_template("index.html")

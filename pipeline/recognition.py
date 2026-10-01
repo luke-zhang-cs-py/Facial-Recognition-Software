@@ -40,7 +40,13 @@ from pipeline import traits
 MIN_MARGIN = 0.10
 
 
-def _centroid(vectors):
+def centroid(vectors):
+    """The mean of these embeddings, re-normalised; None for no vectors, or
+    for vectors that average to the origin (no direction to compare against).
+
+    The one copy: enrollment.centroid_of had its own, which returned the
+    zero vector instead (notes/CODE_AUDIT_2026-10.md).
+    """
     if not vectors:
         return None
     mat = np.vstack(vectors)
@@ -56,9 +62,9 @@ def gallery():
         rows = db.get_traits_for_user(user_id)
         vecs = [np.frombuffer(r["embedding"], dtype=np.float32)
                 for r in rows if r["embedding"]]
-        centroid = _centroid(vecs)
-        if centroid is not None:
-            out[user_id] = {"name": name, "centroid": centroid,
+        mean = centroid(vecs)
+        if mean is not None:
+            out[user_id] = {"name": name, "centroid": mean,
                             "samples": len(vecs)}
     return out
 

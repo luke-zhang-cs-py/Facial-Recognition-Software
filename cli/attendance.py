@@ -2,9 +2,11 @@
 cli/attendance.py
 -----------------
 Step 3 of the pipeline — the actual attendance system. Opens the webcam,
-detects faces frame-by-frame, runs each detected face through the trained
-LBPH recognizer, and if it's confident about who it sees, logs a row into
-the SQL `attendance` table (once per person per day).
+detects faces frame-by-frame, runs the largest face through the trained
+LBPH recognizer and the liveness check, and if it is confident about who it
+sees and that they are a person rather than a photograph, logs a row into
+the SQL `attendance` table (once per person per day). The decision is
+pipeline/decision.py, the same one the web camera makes.
 
 Usage:
     python -m cli.attendance
@@ -19,8 +21,8 @@ import cv2
 from core import db
 from core import paths
 from core import vision
-
-FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+from pipeline import decision
+from pipeline import liveness
 
 # LBPH "confidence" is actually a distance: LOWER means more confident.
 # The value lives in vision.py, because analytics.py reports it back to
@@ -52,15 +54,13 @@ def identify(recognizer, gray, box):
     match. Getting that backwards accepts every stranger and rejects
     everyone enrolled, which is why it is written down once, here.
     """
-    x, y, w, h = box
-    face = cv2.resize(gray[y:y + h, x:x + w], vision.LBPH_INPUT_SIZE)
-    user_id, confidence = recognizer.predict(face)
-
-    accepted = confidence < CONFIDENCE_THRESHOLD
+    face = decision.crop(gray, box)
+    if face is None:
+        return None, float("inf"), "Unknown", False
+    user_id, confidence, accepted = decision.match(recognizer, face)
     if not accepted:
         return user_id, confidence, "Unknown", False
-    return (user_id, confidence,
-            db.get_user_name(user_id) or f"Unknown (id {user_id})", True)
+    return user_id, confidence, decision.name_of(user_id), True
 
 
 def mark_present(user_id, name, confidence, marked_this_session):
@@ -72,12 +72,15 @@ def mark_present(user_id, name, confidence, marked_this_session):
     """
     if user_id in marked_this_session:
         return
-    written = db.log_attendance(user_id, confidence)
+    outcome = decision.record(user_id, confidence)
     marked_this_session.add(user_id)
-    if written:
+    if outcome == decision.LOGGED:
         print(f"Logged attendance: {name} at confidence {confidence:.1f}")
-    else:
+    elif outcome == decision.ALREADY:
         print(f"{name} already marked present today.")
+    else:
+        print(f"Recognised label {user_id}, which has no user: its dataset/ "
+              "folder outlived the person. Remove it and retrain.")
 
 
 def annotate(frame, box, label, colour):
@@ -123,7 +126,12 @@ def run_attendance():
         return
 
     db.init_db()
-    face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
+    if not liveness.available():
+        # The web camera refuses everyone without the liveness model rather
+        # than let a held-up photograph through; this path now does the same.
+        print("The liveness model is missing, so nobody can be marked present "
+              "(a photograph would pass). Run `python -m cli.fetch_models`.")
+    vote = liveness.LivenessVote()
 
     cap = _open_camera()
     if cap is None:
@@ -138,19 +146,22 @@ def run_attendance():
             break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(
-            gray, scaleFactor=vision.DETECT_SCALE_FACTOR,
-            minNeighbors=vision.DETECT_MIN_NEIGHBOURS,
-            minSize=vision.MIN_FACE_SIZE,
-        )
-
-        for box in faces:
-            user_id, confidence, name, accepted = identify(
-                recognizer, gray, box)
-            if accepted:
+        faces = decision.boxes(frame)
+        box = decision.primary(faces)
+        for other in faces:
+            if other != box:
+                annotate(frame, other, "Other face", UNKNOWN_COLOUR)
+        if box is not None:
+            # Person, or a picture of one? One vote, for the one face decided on.
+            if liveness.available():
+                vote.push(liveness.score(frame, box))
+            verdict = vote.verdict() if liveness.available() else "unknown"
+            user_id, confidence, name, accepted = identify(recognizer, gray, box)
+            if accepted and verdict == "live":
                 mark_present(user_id, name, confidence, marked_this_session)
-            annotate(frame, box, f"{name} ({confidence:.0f})",
-                     MATCH_COLOUR if accepted else UNKNOWN_COLOUR)
+            label = name if verdict != "spoof" or not accepted else f"{name}? photo"
+            annotate(frame, box, f"{label} ({confidence:.0f})",
+                     MATCH_COLOUR if accepted and verdict == "live" else UNKNOWN_COLOUR)
 
         cv2.imshow("Attendance - press q to quit", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):

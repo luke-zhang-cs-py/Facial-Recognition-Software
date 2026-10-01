@@ -32,6 +32,7 @@ import numpy as np
 from analysis import analytics
 from analysis import calibration
 from core import db
+from pipeline import recognition
 
 # A gallery of one has no impostors to calibrate against, so the threshold
 # recommendation needs at least a notional pair.
@@ -92,12 +93,8 @@ def centroid_of(records):
     A centroid is far more stable than any single shot, which is the whole
     point of capturing thirty of them across different poses.
     """
-    vectors = [r["embedding"] for r in records if r["embedding"] is not None]
-    if not vectors:
-        return None
-    centroid = np.mean(np.vstack(vectors), axis=0)
-    norm = float(np.linalg.norm(centroid)) or 1.0
-    return centroid / norm
+    return recognition.centroid(
+        [r["embedding"] for r in records if r["embedding"] is not None])
 
 
 def nearest_other(user_id, records):

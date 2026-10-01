@@ -202,3 +202,17 @@ def test_the_intended_sample_count_matches_the_capture_plan():
     assert analytics.INTENDED_SAMPLES == sum(p["count"] for p in CAPTURE_PLAN)
     assert analytics.EXPECTED_SAMPLES < analytics.INTENDED_SAMPLES, (
         "the complain-at threshold has to be below the target")
+
+
+def test_best_threshold_never_recommends_accepting_nobody():
+    """The strictest threshold accepts nobody, so it never lets a wrong match
+    through; as the only "clean" setting it was the recommendation, and a
+    threshold at which nobody is ever marked present."""
+    sweep = [
+        {"threshold": 30, "accept": 0.0, "falseMatch": 0.0},
+        {"threshold": 50, "accept": 40.0, "falseMatch": 5.0},
+        {"threshold": 70, "accept": 60.0, "falseMatch": 30.0},
+    ]
+    assert analytics.best_threshold(sweep)["threshold"] == 50
+    sweep[1]["falseMatch"] = 0.0
+    assert analytics.best_threshold(sweep)["threshold"] == 50

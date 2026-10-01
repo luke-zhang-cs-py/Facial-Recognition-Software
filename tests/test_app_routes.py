@@ -101,3 +101,37 @@ def test_attendance_stop_is_always_safe(client):
 
 def test_camera_stop_when_never_started(client):
     assert client.post("/api/camera/stop", json={}).status_code == 200
+
+
+# ------------------------------------------- same machine only (Oct 2026 audit)
+
+def test_a_cross_site_page_cannot_drive_the_camera(client):
+    """get_json(force=True) reads a text/plain body, which any site can POST
+    without a preflight. The server is on 127.0.0.1, but the browser is too."""
+    for headers in ({"Origin": "https://evil.example"},
+                    {"Origin": "null"},
+                    {"Sec-Fetch-Site": "cross-site"}):
+        r = client.post("/api/register", data='{"name": "Mallory"}',
+                        content_type="text/plain", headers=headers)
+        assert r.status_code == 403, headers
+    from core import db
+    assert db.get_all_users() == []
+
+
+def test_the_page_itself_can_still_post(client):
+    r = client.post("/api/traits", json={"enabled": False},
+                    headers={"Origin": "http://127.0.0.1:5001",
+                             "Sec-Fetch-Site": "same-origin"})
+    assert r.status_code == 200
+    r = client.post("/api/traits", json={"enabled": True},
+                    headers={"Origin": "http://localhost:5001"})
+    assert r.status_code == 200
+
+
+def test_a_rebound_hostname_reads_nothing(client):
+    """DNS rebinding: evil.example re-resolves to 127.0.0.1 and is then
+    same-origin with this server. Its name is still in the Host header."""
+    for path in ("/api/report", "/api/status", "/"):
+        assert client.get(path, headers={"Host": "evil.example:5001"}).status_code == 403
+    for host in ("127.0.0.1:5001", "localhost", "[::1]:5001"):
+        assert client.get("/api/report", headers={"Host": host}).status_code == 200

@@ -498,8 +498,13 @@ def best_threshold(sweep):
     Written out twice -- once in sface_analysis and once in lbph_analysis,
     in two different spellings of the same conditional. Same rule, so one
     copy of it.
+
+    "Lets nothing wrong through" has to also let something right through:
+    the strictest threshold accepts nobody, so it is always clean, and when
+    it was the only clean one the report recommended a threshold at which
+    nobody is ever marked present (notes/CODE_AUDIT_2026-10.md).
     """
-    clean = [s for s in sweep if s["falseMatch"] == 0.0]
+    clean = [s for s in sweep if s["falseMatch"] == 0.0 and s["accept"] > 0]
     if clean:
         return max(clean, key=lambda s: s["accept"])
     return max(sweep, key=lambda s: s["accept"] - s["falseMatch"])

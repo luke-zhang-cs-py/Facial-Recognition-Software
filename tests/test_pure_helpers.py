@@ -217,14 +217,14 @@ def test_metrics_flags_closed_eyes():
 
 def test_centroid_of_nothing_is_none():
     from pipeline import recognition
-    assert recognition._centroid([]) is None
+    assert recognition.centroid([]) is None
 
 
 def test_centroid_is_unit_length():
     from pipeline import recognition
     vs = [np.array([1.0, 0, 0, 0], np.float32),
           np.array([0, 1.0, 0, 0], np.float32)]
-    assert np.linalg.norm(recognition._centroid(vs)) == pytest.approx(1.0)
+    assert np.linalg.norm(recognition.centroid(vs)) == pytest.approx(1.0)
 
 
 def test_gallery_skips_users_without_embeddings(isolated_db):

@@ -29,6 +29,7 @@ from datetime import datetime
 import cv2
 
 from core import db
+from pipeline import decision
 from pipeline import enrollment
 from pipeline import landmarks as facelandmarks
 from pipeline import liveness as faceliveness
@@ -471,7 +472,13 @@ class CameraManager:
                 time.sleep(0.1)
                 continue
 
-            frame = cv2.flip(frame, 1)  # mirror, so it reads like a mirror on screen
+            # Mirrored so the preview reads like a mirror. Only the preview:
+            # every face crop taken from this frame is flipped back
+            # (decision.crop(..., mirrored=True)), because the galleries from
+            # cli.register_user and seed_demo store the face as the camera saw
+            # it and LBPH is not mirror-invariant -- a mirrored query took
+            # held-out rank-1 from 9/16 to 4/16 (notes/CODE_AUDIT_2026-10.md).
+            frame = cv2.flip(frame, 1)
 
             # Keep an untouched copy BEFORE any overlay is drawn. The mode
             # handlers paint the landmark mesh straight onto `frame`, and the
@@ -670,7 +677,7 @@ class CameraManager:
 
         x, y, w, h = face["box"]
         x0, y0 = max(0, x), max(0, y)
-        crop = gray[y0:y + h, x0:x + w]
+        sample = decision.crop(gray, face["box"], mirrored=True)
         # Colour, and taken before _draw_face paints over `frame`. The
         # learned quality model wants the image the camera saw, not the one
         # with a wireframe on it -- the same reason the trait read gets its
@@ -682,7 +689,7 @@ class CameraManager:
         # measured the sharpness and the quality score and reported them --
         # after the samples were already on disk. The measuring was the only
         # part missing from the gate, and it was already being done.
-        weak = weak_photograph(bgr_crop, face) if (matched and crop.size) else []
+        weak = weak_photograph(bgr_crop, face) if (matched and sample is not None) else []
         if weak:
             # Said out loud, not silently skipped. A stalled counter with no
             # reason on screen looks like the capture has broken; "too dark"
@@ -697,10 +704,9 @@ class CameraManager:
         if not matched:
             return
 
-        if crop.size == 0:
+        if sample is None:
             return
-        cv2.imwrite(os.path.join(user_dir, f"{count + 1}.jpg"),
-                    cv2.resize(crop, vision.LBPH_INPUT_SIZE))
+        cv2.imwrite(os.path.join(user_dir, f"{count + 1}.jpg"), sample)
 
         with self._lock:
             self._reg_count += 1
@@ -757,13 +763,12 @@ class CameraManager:
         # most likely to be the person actually presenting -- and any other
         # faces are drawn (so they are not silently invisible) but not
         # recognised, scored, or marked present.
-        primary = max(faces, key=lambda f: f["box"][2] * f["box"][3])
+        primary_box = decision.primary([f["box"] for f in faces])
+        primary = next(f for f in faces if f["box"] == primary_box)
 
         for face in faces:
-            x, y, w, h = face["box"]
-            x0, y0 = max(0, x), max(0, y)
-            crop = gray[y0:y + h, x0:x + w]
-            if crop.size == 0:
+            face_img = decision.crop(gray, face["box"], mirrored=True)
+            if face_img is None:
                 continue
 
             if face is not primary:
@@ -780,11 +785,10 @@ class CameraManager:
                 self._live_score = (round(live_score, 3)
                                     if live_score is not None else None)
 
-            face_img = cv2.resize(crop, vision.LBPH_INPUT_SIZE)
-            user_id, confidence = recognizer.predict(face_img)
+            user_id, confidence, accepted = decision.match(recognizer, face_img)
 
-            if confidence < CONFIDENCE_THRESHOLD:
-                name = db.get_user_name(user_id) or f"Unknown (id {user_id})"
+            if accepted:
+                name = decision.name_of(user_id)
 
                 if verdict == "spoof":
                     # Recognised, but the frame looks like a presentation
@@ -807,10 +811,15 @@ class CameraManager:
                         if not already_seen:
                             self._marked_session.add(user_id)
                     if not already_seen:
-                        if db.log_attendance(user_id, confidence):
+                        outcome = decision.record(user_id, confidence)
+                        if outcome == decision.LOGGED:
                             self._log_event("success", f"Marked {name} present")
-                        else:
+                        elif outcome == decision.ALREADY:
                             self._log_event("info", f"{name} was already marked today")
+                        else:
+                            colour = AMBER
+                            self._log_event("error", f"Recognised label {user_id}, which has no user: "
+                                            "its dataset/ folder outlived the person. Retrain after removing it.")
             else:
                 name = "Unknown"
                 colour = RED

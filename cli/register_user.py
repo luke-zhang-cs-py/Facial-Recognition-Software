@@ -1,8 +1,9 @@
 """
 cli/register_user.py
 --------------------
-Step 1 of the pipeline. Opens the webcam, detects your face with a Haar
-cascade, and saves ~30 cropped grayscale face images to disk under
+Step 1 of the pipeline. Opens the webcam, detects your face with the
+project's detector (traits.detect: YuNet, Haar fallback -- the one the web
+camera and seed_demo use), and saves ~30 cropped grayscale face images under
 dataset/<user_id>_<name>/. Also creates the user's row in the SQL
 database so we have an id to associate the images with.
 
@@ -10,6 +11,7 @@ Usage:
     python -m cli.register_user "Jane Doe"
 """
 
+import argparse
 import os
 import sys
 
@@ -17,9 +19,8 @@ import cv2
 
 from core import db
 from core import paths
-from core import vision
+from pipeline import decision
 
-FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 SAMPLES_TO_CAPTURE = 30
 
 # Overlay drawing, same plain pair the CLI attendance view uses. BGR.
@@ -52,8 +53,9 @@ def save_sample(gray, box, user_dir, index):
     side of the comparison attendance.py makes, so if the two disagree about
     the size, recognition quietly gets worse with nothing to point at.
     """
-    x, y, w, h = box
-    face = cv2.resize(gray[y:y + h, x:x + w], vision.LBPH_INPUT_SIZE)
+    face = decision.crop(gray, box)
+    if face is None:
+        return None
     path = os.path.join(user_dir, f"{index}.jpg")
     cv2.imwrite(path, face)
     return path
@@ -97,7 +99,6 @@ def _open_camera():
 def register_user(name):
     user_id, user_dir = create_user(name)
 
-    face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
     cap = _open_camera()
     if cap is None:
         return
@@ -113,18 +114,13 @@ def register_user(name):
             break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(
-            gray, scaleFactor=vision.DETECT_SCALE_FACTOR,
-            minNeighbors=vision.DETECT_MIN_NEIGHBOURS,
-            minSize=vision.MIN_FACE_SIZE,
-        )
-
-        # Only the first face per frame: a second person in shot would
+        # Only the largest face per frame: a second person in shot would
         # otherwise have their samples filed under this user's id.
-        if len(faces):
+        box = decision.primary(decision.boxes(frame))
+
+        if box is not None and save_sample(gray, box, user_dir, count + 1):
             count += 1
-            save_sample(gray, faces[0], user_dir, count)
-            annotate(frame, faces[0], count)
+            annotate(frame, box, count)
 
         cv2.imshow("Register User - press q to quit", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -136,11 +132,24 @@ def register_user(name):
 
 
 def main(argv=None):
-    arguments = sys.argv[1:] if argv is None else list(argv)
-    if len(arguments) != 1:
+    # argparse, so `--help` prints the usage instead of creating a user
+    # called "--help" (notes/CODE_AUDIT_2026-10.md).
+    parser = argparse.ArgumentParser(
+        prog="python -m cli.register_user",
+        description="Register a person from the webcam.")
+    parser.add_argument("name", help='the person\'s full name, e.g. "Jane Doe"')
+    try:
+        args = parser.parse_args(sys.argv[1:] if argv is None else list(argv))
+    except SystemExit as stop:
+        if not stop.code:
+            return 0                     # --help
         print('Usage: python -m cli.register_user "Full Name"')
         return 1
-    register_user(arguments[0])
+    name = args.name.strip()
+    if not name or name.startswith("-"):
+        print('Usage: python -m cli.register_user "Full Name"')
+        return 1
+    register_user(name)
     return 0
 
 

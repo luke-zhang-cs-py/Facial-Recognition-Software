@@ -165,3 +165,13 @@ def test_face_attendance_defines_no_duplicated_logic():
     tree = ast.parse(layout.source_of("cli/face_attendance.py"))
     funcs = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
     assert funcs == {"main"}, f"logic crept back in: {funcs}"
+
+
+def test_register_user_help_prints_usage_and_creates_nobody(isolated_db, capsys):
+    """Any one argument was the name, so `--help` registered a user called
+    "--help" and made dataset/<id>_--help (Oct 2026 audit)."""
+    from cli import register_user
+    for argv in (["--help"], ["-h"], ["--name"], []):
+        register_user.main(argv)
+    assert isolated_db.get_all_users() == []
+    assert "usage" in capsys.readouterr().out.lower()

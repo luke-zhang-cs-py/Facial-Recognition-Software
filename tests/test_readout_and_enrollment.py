@@ -226,13 +226,12 @@ def test_records_without_embeddings_have_no_centroid():
 
 
 def test_a_zero_centroid_does_not_divide_by_zero():
-    """Two opposite embeddings average to the origin. `or 1.0` is what stops
-    that being a divide-by-zero, and a NaN vector downstream."""
+    """Two opposite embeddings average to the origin: no direction to compare
+    against, so no centroid -- rather than a divide-by-zero and a NaN vector
+    downstream, or the zero vector, which is 0.0 similar to everyone."""
     records = [{"embedding": np.array([1.0, 0.0], dtype=np.float32)},
                {"embedding": np.array([-1.0, 0.0], dtype=np.float32)}]
-    centroid = enrollment.centroid_of(records)
-    assert centroid is not None
-    assert np.isfinite(centroid).all(), "the centroid came back as NaN"
+    assert enrollment.centroid_of(records) is None
 
 
 def test_nearest_other_finds_the_most_similar_enrolled_person(isolated_db):

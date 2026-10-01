@@ -59,11 +59,6 @@ def test_age_band_is_honest_about_being_narrow():
         "the +/-2y band is ~10% accurate; if this passes 20% the table is wrong"
 
 
-def test_describe_age_states_the_coverage():
-    text = c.describe_age(30)
-    assert "%" in text and "30" in text
-
-
 def test_sample_accuracy_saturates():
     at_sat = c.accuracy_for_samples(c.SAMPLE_SATURATION)
     assert c.accuracy_for_samples(c.SAMPLE_SATURATION * 2) == pytest.approx(at_sat)

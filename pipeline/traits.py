@@ -120,10 +120,6 @@ PIXEL_SCALE = 1 / 255.0
 BLOB_MEAN = 0.5
 BLOB_STD = 0.5
 
-# Reported but no longer used for gating -- see the note above.
-BRIGHT_RANGE = (75.0, 180.0)
-MIN_CONTRAST = 25.0
-
 GENDER_CAVEAT = (
     "Model guess at apparent presentation from pixels, not a statement about "
     "identity. Levi & Hassner (2015), binary by construction, and materially "

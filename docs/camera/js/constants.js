@@ -15,5 +15,5 @@
  *   fmr        [threshold, false-match rate per impostor pair],
  *              counted over FairFace (97,645 identities, 4.77e9 impostor pairs)
  */
-const GUIDANCE_CONSTANTS = {"MIN_FACE_PX":110,"IDEAL_FACE_PX":160,"MAX_FACE_FRACTION":0.85,"MAX_YAW":22.0,"MAX_ROLL":15.0,"MIN_QUALITY":0.22,"MIN_SHARPNESS":25.0,"MAX_SHADOW_CLIP":0.45,"MAX_HIGHLIGHT_CLIP":0.3,"EYE_MISMATCH_LIMIT":0.28,"READY":"Ready"};
+const GUIDANCE_CONSTANTS = {"MIN_FACE_PX":110,"MAX_FACE_FRACTION":0.85,"MAX_YAW":22.0,"MAX_ROLL":15.0,"MIN_QUALITY":0.22,"MIN_SHARPNESS":25.0,"MAX_SHADOW_CLIP":0.45,"MAX_HIGHLIGHT_CLIP":0.3,"EYE_MISMATCH_LIMIT":0.28,"READY":"Ready"};
 const CALIBRATION_DATA = {"fmr":[[0.3,0.01653983],[0.325,0.00957929],[0.35,0.00546767],[0.375,0.00308784],[0.4,0.00172866],[0.425,0.00096123],[0.45,0.00053202],[0.475,0.00029584],[0.5,0.00016737],[0.525,9.863e-05],[0.55,6.213e-05],[0.575,4.239e-05],[0.6,3.127e-05],[0.625,2.42e-05],[0.65,1.907e-05],[0.675,1.498e-05],[0.7,1.152e-05],[0.725,8.57e-06],[0.75,6.11e-06]],"corpus":"FairFace (97,645 identities, 4.77e9 impostor pairs)","reference":0.363,"disparity":{"threshold":0.5,"worst":["Indian",0.7602],"best":["White",0.5121],"ratio":1.48}};

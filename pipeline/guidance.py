@@ -32,7 +32,6 @@ and only when detection is actually failing or the eyes are not being found.
 
 # Framing
 MIN_FACE_PX = 110          # below this the crop carries too little detail
-IDEAL_FACE_PX = 160
 MAX_FACE_FRACTION = 0.85   # face filling the frame means it is clipped
 
 # Pose. Enrollment wants near-frontal; a little variety is good, a profile

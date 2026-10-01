@@ -160,8 +160,6 @@ GREEN = (138, 201, 94)    # --good    #5ec98a
 RED = (94, 106, 223)      # --bad     #df6a5e
 AMBER = (74, 192, 224)    # --warn    #e0c04a
 BLUE = (255, 163, 77)     # --accent  #4da3ff
-GREY = (165, 150, 139)    # --muted   #8b96a5
-PANEL = (26, 20, 16)      # --bg-ish, for the instruction bar fill
 
 
 class CameraError(Exception):

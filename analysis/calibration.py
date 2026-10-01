@@ -157,7 +157,6 @@ AGE_MIDPOINTS = [1.0, 5.0, 10.0, 17.5, 28.5, 40.5, 50.5, 70.0]
 # "25-32" and "38-43" is a statement about someone around 34, and the argmax
 # reports 28.5.
 AGE_MAE_EXPECTED = 12.4
-AGE_MAE_ARGMAX = 13.4
 
 # How often the true age actually falls within +/- k years of the estimate.
 # This is the number that stops a narrow band from being a lie: a +/-5y range
@@ -194,14 +193,6 @@ def age_band_coverage(half_width):
         return AGE_COVERAGE[lo]
     frac = (half_width - lo) / (hi - lo)
     return AGE_COVERAGE[lo] + frac * (AGE_COVERAGE[hi] - AGE_COVERAGE[lo])
-
-
-def describe_age(years, half_width=None):
-    """Render an age estimate with its real confidence attached."""
-    k = AGE_BAND_YEARS if half_width is None else half_width
-    cov = age_band_coverage(k)
-    lo, hi = max(0, round(years - k)), round(years + k)
-    return f"{round(years)} yrs ({lo}-{hi}, right ~{cov:.0%} of the time)"
 
 
 # ---------------------------------------------------------------------------

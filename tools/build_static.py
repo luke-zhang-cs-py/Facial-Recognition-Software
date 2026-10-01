@@ -277,7 +277,7 @@ def replace_once(text, old, new, what):
 # Read off the modules by name. A name that disappears from guidance.py stops
 # the build here rather than leaving the page comparing against a stale
 # number that nothing in Python reads any more.
-GUIDANCE_NAMES = ("MIN_FACE_PX", "IDEAL_FACE_PX", "MAX_FACE_FRACTION",
+GUIDANCE_NAMES = ("MIN_FACE_PX", "MAX_FACE_FRACTION",
                   "MAX_YAW", "MAX_ROLL", "MIN_QUALITY", "MIN_SHARPNESS",
                   "MAX_SHADOW_CLIP", "MAX_HIGHLIGHT_CLIP",
                   "EYE_MISMATCH_LIMIT", "READY")

@@ -422,7 +422,7 @@ var OMITTED = [
   { name: 'tools/build_static.py',          lines: 1398, why: 'generates the browser demo, and fails if its JS disagrees with the Python' },
   { name: 'tools/benchmark_loop.py',        lines: 600, why: 'the continuous benchmark runner' },
   { name: 'tools/refresh_figures.py',       lines: 348, why: 'measures and rewrites the figures on this page' },
-  { name: 'cli/seed_demo.py',               lines: 299, why: 'enrolls faces from LFW for testing' },
+  { name: 'cli/seed_demo.py',               lines: 305, why: 'enrolls faces from LFW for testing' },
   { name: 'analysis/fairness_benchmark.py', lines: 257, why: 'the stratified FairFace run' },
   { name: 'tools/build_gallery.py',         lines: 216, why: 'builds a 10,590-identity gallery from CASIA-WebFace' },
   { name: 'cli/fetch_models.py',            lines: 149, why: 'downloads the pretrained weights' },
@@ -460,7 +460,7 @@ var TESTS = [
   { file: 'test_enroll_and_log_many.py',    n:  3, of: 'more faces enrolled, recognised and logged once each' }
 ];
 
-var TEST_LINES = 6060;
+var TEST_LINES = 6054;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

@@ -86,7 +86,6 @@ def remove_all():
 def load_lfw(min_images, wanted, requested=None, exclude=()):
     import pyarrow.parquet as pq
     import json
-    from collections import defaultdict
 
     if not os.path.exists(LFW):
         print(f"LFW parquet not found at {LFW}")
@@ -105,6 +104,16 @@ def load_lfw(min_images, wanted, requested=None, exclude=()):
     table = pf.read()
     labels = table.column("label").to_pylist()
     images = table.column("image").to_pylist()
+    return names, images, pick_people(labels, names, min_images, wanted,
+                                      requested, exclude)
+
+
+def pick_people(labels, names, min_images, wanted, requested=None, exclude=()):
+    """[(label, image indexes)] to enroll, from one label per LFW image.
+
+    Plain lists in, so the choice is testable without pyarrow or the corpus.
+    """
+    from collections import defaultdict
 
     by_person = defaultdict(list)
     for i, lab in enumerate(labels):
@@ -133,13 +142,10 @@ def load_lfw(min_images, wanted, requested=None, exclude=()):
                 print(f"  !! not in LFW: {want}")
                 continue
             picked.append((lab, by_person[lab]))
-        return names, images, picked
-    if wanted is None:
-        # everyone deep enough, not just the top N
-        picked = [(lab, idx) for lab, idx in ranked if len(idx) >= min_images]
-        return names, images, picked
-    picked = [(lab, idx) for lab, idx in ranked if len(idx) >= min_images][:wanted]
-    return names, images, picked
+        return picked
+    deep = [(lab, idx) for lab, idx in ranked if len(idx) >= min_images]
+    # wanted None: everyone deep enough, not just the top N
+    return deep if wanted is None else deep[:wanted]
 
 
 def build_parser():

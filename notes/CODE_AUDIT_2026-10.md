@@ -74,6 +74,17 @@ Running `cli.seed_demo --keep` exposed two problems, both now fixed:
 
 `python -m cli.seed_demo --people 20 --samples 20 --keep` added 20 people with 20 samples each (ids 373–392). That makes 28 people in the SFace gallery, all of them recognisable. On 60 LFW photos of the new people that enrollment did not use, SFace named 57 correctly, named nobody wrongly, and refused 3.
 
+Then about 1,000 more scans: `--people 83 --samples 12 --keep` wrote 996 samples. That makes 111 people in the gallery, all of them recognisable, with 1,522 samples on disk for enrolled people. At 111 people the calibrated threshold rises to 0.55 (gallery false-match risk 0.0068):
+
+| at 111 people | result |
+|---|---|
+| held-out photos of enrolled people (past the 20th, so never enrolled) | 158 tested: 141 right, **0 wrong**, 17 refused |
+| strangers (LFW people never enrolled, one photo each) | 300 tested: **1 wrongly accepted** |
+
+The refusals come from the threshold rising with the gallery. A refusal is a retry, and a wrong name is somebody else's attendance record, which is the trade the threshold is set to make.
+
+**CI fix.** The `--keep` test had built a parquet file with `pyarrow`, which the CI runner doesn't install (it's optional and only needed for the corpus). It failed on both 3.10 and 3.12. The choice of people is now `seed_demo.pick_people()`, which takes plain lists, and the test exercises that directly. It was checked with `pyarrow` hidden.
+
 ## Maintenance classification
 
 | Type | Changes |

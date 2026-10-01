@@ -453,10 +453,11 @@ var TESTS = [
   { file: 'test_published_figures.py',      n: 11, of: 'the numbers on this page, against a fresh measurement' },
   { file: 'test_db.py',                     n: 10, of: 'the schema, and that a failed write closes its connection' },
   { file: 'test_recognition_liveness.py',   n: 10, of: 'identification, and refusing a photograph' },
-  { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' }
+  { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' },
+  { file: 'test_enroll_and_log_many.py',    n:  3, of: 'more faces enrolled, recognised and logged once each' }
 ];
 
-var TEST_LINES = 5261;
+var TEST_LINES = 5439;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

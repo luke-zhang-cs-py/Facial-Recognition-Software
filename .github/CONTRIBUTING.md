@@ -63,7 +63,7 @@ pytest -q -rs
 python -m flake8 . --select=E9,F63,F7,F82
 ```
 
-439 tests locally; 436 pass and 3 skip without the weights.
+446 tests locally; 443 pass and 3 skip without the weights.
 
 `python tools/refresh_figures.py` rewrites that sentence, the figures on
 `docs/index.html` and the one in the README from a real measured run — do

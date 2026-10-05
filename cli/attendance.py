@@ -131,18 +131,22 @@ def _report_today():
 
 
 def run_attendance():
-    recognizer = _load_recognizer()
-    if recognizer is None:
+    db.init_db()
+    # SFace first: when it decides, trainer.yml is never read, so a missing
+    # one is no reason to refuse. Asking for it first turned away everybody
+    # who had registered but not yet run train_model, though SFace could
+    # already recognise them.
+    gallery = decision.sface_gallery()
+    recognizer = None if gallery else _load_recognizer()
+    if not gallery and recognizer is None:
         return
 
-    db.init_db()
     if not liveness.available():
         # The web camera refuses everyone without the liveness model rather
         # than let a held-up photograph through; this path now does the same.
         print("The liveness model is missing, so nobody can be marked present "
               "(a photograph would pass). Run `python -m cli.fetch_models`.")
     vote = liveness.LivenessVote()
-    gallery = decision.sface_gallery()
     if gallery:
         print(f"Recognising with SFace: {len(gallery)} people in the gallery.")
         missing = decision.unenrolled(gallery)
@@ -167,14 +171,14 @@ def run_attendance():
         found = decision.faces(frame)
         faces = [b for b, _ in found]
         box = decision.primary(faces)
-        for other in faces:
-            if other != box:
-                annotate(frame, other, "Other face", UNKNOWN_COLOUR)
-        if box is not None:
-            # Person, or a picture of one? One vote, for the one face decided on.
-            if liveness.available():
-                vote.push(liveness.score(frame, box))
-            verdict = vote.verdict() if liveness.available() else "unknown"
+        if box is None:
+            vote.reset()        # nobody here: the last person's frames are void
+        else:
+            # Person, or a picture of one? One vote, for the one face decided
+            # on, scored and embedded before anything is drawn on the frame:
+            # the liveness crop takes in 2.7x the face, so it reaches the boxes
+            # and labels of anybody standing beside them.
+            live_score = liveness.score(frame, box) if liveness.available() else None
             if gallery:
                 row = next(r for b, r in found if b == box)
                 user_id, confidence, name, accepted = identify_sface(frame, row, gallery)
@@ -182,11 +186,17 @@ def run_attendance():
             else:
                 user_id, confidence, name, accepted = identify(recognizer, gray, box)
                 method, shown = decision.LBPH, f"{confidence:.0f}"
+            vote.follow(user_id if accepted else None)
+            vote.push(live_score)
+            verdict = vote.verdict() if liveness.available() else "unknown"
             if accepted and verdict == "live":
                 mark_present(user_id, name, confidence, marked_this_session, method)
             label = name if verdict != "spoof" or not accepted else f"{name}? photo"
             annotate(frame, box, f"{label} ({shown})",
                      MATCH_COLOUR if accepted and verdict == "live" else UNKNOWN_COLOUR)
+        for other in faces:
+            if other != box:
+                annotate(frame, other, "Other face", UNKNOWN_COLOUR)
 
         cv2.imshow("Attendance - press q to quit", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):

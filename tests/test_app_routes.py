@@ -71,6 +71,17 @@ def test_register_rejects_a_blank_name(client):
     assert r.status_code == 400 and r.get_json()["ok"] is False
 
 
+def test_a_body_that_is_not_a_json_object_is_a_400_not_a_500(client):
+    """`get_json(...) or {}` let a list, a string or a number through to
+    `.get()`, which raised (notes/CODE_AUDIT.md, 2026-10-05)."""
+    for body in ([1], "Ada", 7):
+        r = client.post("/api/register", json=body)
+        assert r.status_code == 400 and r.get_json()["ok"] is False
+    r = client.post("/api/register", json={"name": 42})
+    assert r.status_code == 400 and "text" in r.get_json()["error"]
+    assert client.post("/api/traits", json=["x"]).status_code == 200
+
+
 def test_train_with_no_samples_fails_cleanly(client):
     r = client.post("/api/train", json={})
     assert r.status_code == 400

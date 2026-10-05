@@ -39,7 +39,6 @@ from core import paths
 from pipeline import readout
 from core import vision
 
-BASE_DIR = paths.BASE_DIR
 FACE_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
 # The same tuning knob as the CLI version -- and now literally the same one.
@@ -761,6 +760,11 @@ class CameraManager:
         if recognizer is None and not gallery:
             return
         if not faces:
+            # Nobody in front of the camera: the frames gathered so far were
+            # about whoever just left, and must not vouch for who comes next.
+            self._liveness.reset()
+            with self._lock:
+                self._live_verdict, self._live_score = "unknown", None
             return
         # The preview is mirrored; SFace embeds the face as the camera saw it,
         # and before anything is drawn on the frame.
@@ -791,15 +795,9 @@ class CameraManager:
                 self._draw_face(frame, face, AMBER, label="Other face")
                 continue
 
-            # Person, or a picture of one? Scored before recognition, because
-            # how confidently we recognise a photograph does not matter.
+            # Person, or a picture of one? Scored on the clean frame, before
+            # anything is drawn on it.
             live_score = faceliveness.score(frame, face["box"])
-            self._liveness.push(live_score)
-            verdict = self._liveness.verdict()
-            with self._lock:
-                self._live_verdict = verdict
-                self._live_score = (round(live_score, 3)
-                                    if live_score is not None else None)
 
             if gallery:
                 method = decision.SFACE
@@ -810,6 +808,16 @@ class CameraManager:
                 method = decision.LBPH
                 user_id, confidence, accepted = decision.match(recognizer, face_img)
                 shown = f"{confidence:.0f}"
+
+            # The vote is about this person: a new one starts it over, so the
+            # last person's live frames cannot pass a photograph of the next.
+            self._liveness.follow(user_id if accepted else None)
+            self._liveness.push(live_score)
+            verdict = self._liveness.verdict()
+            with self._lock:
+                self._live_verdict = verdict
+                self._live_score = (round(live_score, 3)
+                                    if live_score is not None else None)
 
             if accepted:
                 name = decision.name_of(user_id)

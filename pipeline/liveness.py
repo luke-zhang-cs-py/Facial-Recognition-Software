@@ -123,6 +123,21 @@ class LivenessVote:
         self.window = window
         self.required = required
         self._recent = []
+        self._who = None
+
+    def follow(self, who):
+        """Start the vote over when it is about somebody else.
+
+        The vote is evidence about one face. Carried over, a live person's
+        frames vouched for whoever was recognised next: with 6 live frames
+        in the window, one frame of a photograph held up after them read
+        "live" and was marked present. `who` is the person this frame was
+        recognised as, or None when nobody was (which keeps the vote, so a
+        frame of poor recognition does not throw away the evidence).
+        """
+        if who is not None and who != self._who:
+            self.reset()
+            self._who = who
 
     def push(self, live_score):
         if live_score is None:
@@ -132,7 +147,10 @@ class LivenessVote:
             self._recent.pop(0)
 
     def reset(self):
+        """Forget every frame: nobody is in front of the camera any more, or
+        the vote is now about someone else."""
         self._recent = []
+        self._who = None
 
     @property
     def samples(self):

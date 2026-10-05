@@ -83,7 +83,7 @@ def test_the_check_catches_the_mistake_it_is_for(tmp_path, monkeypatch):
 
 
 # Run #1 (2026-09-09) failed partly on a path from the machine the code was
-# written on: 'c:\Users\justl\Facial-Recognition-Software' does not exist
+# written on: 'c:\Users\<name>\Facial-Recognition-Software' does not exist
 # on the runner, or on anybody else's computer.
 SEP = r"[\\/]"                   # a backslash or a forward slash
 MACHINE_PATH = re.compile(r"(?i)\b[a-z]:" + SEP + "+users" + SEP + r"|(?<![\w.])/(?:users|home)/[a-z]")
@@ -111,7 +111,7 @@ def test_no_tracked_file_holds_a_path_from_one_machine():
 
 
 def test_the_machine_path_pattern_catches_what_broke_run_1():
-    for bad in (r"ROOT = 'c:\Users\justl\Facial-Recognition-Software'",
+    for bad in (r"ROOT = 'c:\Users\dev\Facial-Recognition-Software'",
                 "BASE = 'C:/Users/someone/x'", "p = '/home/runner/work'", "'/Users/me/src'"):
         assert MACHINE_PATH.search(bad), bad
     for fine in ("os.path.join(paths.dataset_dir(), 'users')", "url = 'https://x.org/home/a'",

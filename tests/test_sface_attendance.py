@@ -230,3 +230,30 @@ def test_the_report_says_which_way_each_number_runs(isolated_db, capsys):
     view_report.main()
     out = capsys.readouterr().out
     assert "similarity=0.712 (SFace)" in out and "distance=41.5 (LBPH)" in out
+
+
+def test_the_cli_runs_by_sface_without_a_trained_lbph_model(people, monkeypatch, capsys):
+    """SFace never reads trainer.yml, but the CLI asked for it first and
+    turned away everybody who had registered without running train_model
+    (notes/CODE_AUDIT.md, 2026-10-05). The web camera never had this."""
+    _, _, gallery = people
+    for name, fn in (("imshow", lambda *a: None), ("waitKey", lambda *a: -1),
+                     ("destroyAllWindows", lambda: None)):
+        monkeypatch.setattr(cv2, name, fn)
+    monkeypatch.setattr(attendance, "_load_recognizer", lambda: None)   # no trainer.yml
+    monkeypatch.setattr(decision, "sface_gallery", lambda: gallery)
+    monkeypatch.setattr(traits, "detect", lambda bgr: [ROW.copy()])
+    monkeypatch.setattr(traits, "embed", lambda bgr, row=None: ADA)
+    monkeypatch.setattr(liveness, "available", lambda: True)
+    monkeypatch.setattr(liveness, "score", lambda bgr, box: 0.9)
+    frames = [frame() for _ in range(liveness.VOTE_WINDOW)]
+
+    class Cap:
+        def read(self):
+            return (True, frames.pop()) if frames else (False, None)
+
+        def release(self):
+            pass
+    monkeypatch.setattr(attendance, "_open_camera", Cap)
+    attendance.run_attendance()
+    assert rows_logged() == [("Ada", pytest.approx(1.0), "sface")]

@@ -5,6 +5,32 @@ dataset/
 attendance.db
 trainer.yml
 
+# SQLite writes its journal beside the database while a transaction is open
+# (attendance.db-journal, or -wal / -shm in WAL mode). Those hold the same
+# names and attendance rows, and `attendance.db` above does not match them.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Face images and embeddings anywhere outside docs/. Every capture path
+# writes into dataset/, but a sample saved by hand, a frame dumped while
+# debugging or a gallery .npz copied into the checkout is a picture of a
+# real person one `git add .` away from a public repo. docs/ holds the
+# published demo assets, which are re-included explicitly.
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.pgm
+*.webp
+*.npz
+*.npy
+*.parquet
+!docs/**
+
 # Pretrained third-party weights (~134 MB), fetched by cli/fetch_models.py.
 # Not our source, too big for git, and reproducible on any machine.
 models/

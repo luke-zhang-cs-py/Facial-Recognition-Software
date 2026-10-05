@@ -1,5 +1,92 @@
 # Code audit
 
+## 2026-10-05: third pass
+
+The third pass over the checklist, after the first audit below and
+`notes/CODE_AUDIT_2026-10.md`. Suite: **436 pass, 3 skip before; 443 pass,
+3 skip after** (7 new tests, each failing on the code as it was).
+
+```bash
+python -m coverage run --branch -m pytest
+python -m coverage report -m
+python tools/refresh_figures.py      # keeps docs/index.html, README, CONTRIBUTING true
+```
+
+### Bugs fixed
+
+| # | Class | Where | What happened | Fix | Test |
+|---|---|---|---|---|---|
+| 1 | security (presentation attack) | `liveness.LivenessVote`, `camera.py`, `cli/attendance.py` | The liveness vote (4 of the last 7 frames must pass) was never reset between people, or when the frame emptied. Once a live person had filled the window, a photograph of somebody else held up next read "live" on its first frame and was marked present. | `LivenessVote.follow(user_id)` starts the vote over when a different person is recognised. A frame with no face resets it. A frame recognising nobody keeps it, so a frame of poor recognition does not throw the evidence away. | `test_the_vote_starts_over_for_a_new_person`, `test_the_cli_does_not_pass_a_photograph_on_the_last_persons_frames`, `test_the_camera_does_not_pass_a_photograph_on_the_last_persons_frames`, `test_the_camera_forgets_the_vote_when_nobody_is_in_front_of_it` |
+| 2 | functional / integration | `cli/attendance.py` | The CLI drew the other faces' boxes and labels onto the frame first, then scored liveness and embedded the presenting face. The liveness crop is 2.7x the face, so it took in a neighbour's overlay. The web camera already decided first and drew afterwards. | Decide on the primary face first, then draw the others. | `test_the_cli_scores_and_embeds_the_face_before_drawing_anyone_else` |
+| 3 | workflow | `cli/attendance.py` | The CLI loaded `trainer.yml` before anything else and quit without it, even when SFace (which never reads it) would decide. Anyone who had registered but not run `train_model` was turned away. | Ask for the SFace gallery first. The LBPH model is required only when there is no gallery. | `test_the_cli_runs_by_sface_without_a_trained_lbph_model` |
+| 4 | runtime | `app.py` | `get_json(...) or {}` let a valid JSON body that is not an object (a list, a string, a number) through to `.get()`. `/api/register`, `/api/traits` and `/api/analysis/start` raised, which is a 500. `{"name": 42}` raised on `.strip()`. | `json_body()` returns the object, or `{}` for anything else. A name that is not text is a 400. | `test_a_body_that_is_not_a_json_object_is_a_400_not_a_500` |
+
+### Security
+
+- **.gitignore.** It covered `dataset/`, `attendance.db`, `trainer.yml` and `models/`, but not SQLite's side files (`attendance.db-journal`, `-wal`, `-shm`). Those hold the same names and attendance rows. It also did not cover face images or embeddings saved anywhere outside `dataset/`. It now ignores `*.db`, the journal files, `*.sqlite*`, and images, `.npz`/`.npy` and `.parquet` files everywhere except `docs/`. Nothing tracked is newly ignored (`git ls-files -ci --exclude-standard` is empty). No face image, database or model file is tracked, and none appears in history.
+- **Local path.** `tests/test_ci_portability.py` gave its example of a machine path with the author's own Windows user name. It now uses a placeholder. The test checks the pattern, not the name.
+- **Presentation attack.** See bug 1.
+- No secrets in tracked files. The cross-site and DNS-rebinding guards from the last pass are intact.
+
+### Checklist
+
+- **Dispensables.** Fixed: `BASE_DIR` in `app.py` and `camera.py` was never read (dead code). The comment above it in `app.py` said paths resolve "against this file's folder", but `core/paths.py` resolves against the project root. Left: the `# noqa: E402` markers in `app.py` no longer suppress anything. They are harmless, and removing them would only reformat the file.
+- **Bloaters.** Left: `camera.py` (878 lines, one `CameraManager`) and `analytics.py` (687). Both are large, but they are cohesive and covered (98% and 72% of statements), and splitting them is a refactor the tests do not ask for. `_handle_attendance` stays long because of its comments, not its branches.
+- **Abusers.** Nothing to fix. The modes are string constants, and the decision outcomes (`LOGGED`/`ALREADY`/`NO_USER`) are named.
+- **Couplers.** The camera and the CLI still each run their own copy of the per-frame "score, identify, vote, mark" sequence around `pipeline/decision.py`. Bugs 1 and 2 had to be fixed in both places (shotgun surgery). Moving the loop body into `decision.py` would end that. It is left for later because the two front ends draw and report differently.
+- **Global data / magic numbers / names.** Nothing new. The thresholds and window sizes are named constants with their reasons.
+- **Out of bounds.** Checked the crop clipping, the empty-face paths, `primary([])` and the dates (`DATE(timestamp)` against `date.today()`, both local time). No new issue.
+- **Left, noted.** `train_model.load_training_data` parses a folder id with `int()`, which accepts `" 5"` and `"-1"`, while `paths.folder_ids` uses `isdigit()`. No code path writes such a folder. `db.log_attendance` checks and then inserts on two connections, so two processes marking the same person at the same instant could write two rows. That is harmless for a report, but a `UNIQUE(user_id, day)` constraint would close it.
+
+### Coverage (after; `coverage run --branch`)
+
+Total: lines **87%** (2,195 of 2,529), branches **77%** (634 of 820), combined 84%. Baseline: 84% combined.
+
+| File | Lines | Branches |
+|---|---|---|
+| `analysis/analytics.py` | 76% | 63% |
+| `analysis/calibration.py` | 83% | 77% |
+| `app.py` | 76% | 75% |
+| `cli/analyze_faces.py` | 47% | 38% |
+| `cli/attendance.py` | 87% | 79% |
+| `cli/register_user.py` | 80% | 55% |
+| `cli/view_report.py` | 100% | 100% |
+| `core/corpus_paths.py` | 75% | 100% |
+| `core/db.py` | 99% | 93% |
+| `core/facemodels.py` | 94% | 81% |
+| `core/paths.py` | 100% | 100% |
+| `core/vision.py` | 100% | 100% |
+| `pipeline/camera.py` | 99% | 97% |
+| `pipeline/decision.py` | 100% | 94% |
+| `pipeline/enrollment.py` | 79% | 71% |
+| `pipeline/guidance.py` | 95% | 88% |
+| `pipeline/landmarks.py` | 86% | 62% |
+| `pipeline/liveness.py` | 66% | 50% |
+| `pipeline/readout.py` | 87% | 79% |
+| `pipeline/recognition.py` | 94% | 88% |
+| `pipeline/sampleframes.py` | 100% | 97% |
+| `pipeline/train_model.py` | 95% | 83% |
+| `pipeline/traits.py` | 90% | 75% |
+
+The `liveness.py` misses are `score()` running the real network, which needs the weights (CI skips them). The voting logic is fully covered. The browser pages (`docs/`, `static/js`) are checked for escaping and shared constants by `test_frontend_escaping.py` and `test_shared_constants.py`. They are not driven in a browser.
+
+### Maintenance types
+
+- **Corrective:** bugs 1 to 4.
+- **Adaptive:** nothing needed. The requirements and the SHA-pinned model downloads are unchanged.
+- **Perfective:** the CLI now works straight after `register_user` when SFace is available, as the web camera does.
+- **Preventive:** the wider `.gitignore`, and seven regression tests.
+
+### Left for later
+
+- One per-frame decision function shared by the camera and the CLI (see Couplers).
+- A `UNIQUE` constraint on one mark per person per day.
+- Liveness has still not been validated against real printed or replayed attacks (see `pipeline/liveness.py`).
+
+---
+
+## First audit
+
 Static analysis (flake8, radon), a 162-test suite, and a coverage report.
 
 ```bash

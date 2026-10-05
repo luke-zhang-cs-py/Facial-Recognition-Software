@@ -295,3 +295,105 @@ def test_the_camera_does_not_fail_on_a_label_with_no_user(mgr, isolated_db,
         pytest.fail(f"the camera raised on an orphan label: {exc}")
     assert isolated_db.get_attendance_for_today() == []
     assert any("9999" in e["message"] for e in mgr.status()["events"])
+
+
+# ------------------------------------- the liveness vote is about one person
+# (notes/CODE_AUDIT.md, 2026-10-05). The vote is a rolling window of the
+# last 7 frames, 4 of which must pass. It was never reset between people, so
+# once a live person had filled it, a photograph of somebody else held up
+# next read "live" on its first frame and was marked present.
+
+class Sequence(Recorder):
+    """An LBPH stand-in that recognises a different person as frames go by."""
+
+    def __init__(self, user_ids, distance=10.0):
+        super().__init__(user_ids[0], distance)
+        self.user_ids = list(user_ids)
+
+    def predict(self, face):
+        self.seen.append(face.copy())
+        return self.user_ids[min(len(self.seen), len(self.user_ids)) - 1], self.distance
+
+
+def test_the_vote_starts_over_for_a_new_person():
+    vote = liveness.LivenessVote()
+    vote.follow(1)
+    for _ in range(liveness.VOTE_WINDOW):
+        vote.push(0.9)
+    assert vote.verdict() == "live"
+    vote.follow(None)               # a frame recognising nobody keeps the vote
+    assert vote.verdict() == "live"
+    vote.follow(2)
+    vote.push(0.01)
+    assert vote.verdict() == "unknown", "the last person's frames vouched for this one"
+
+
+def test_the_cli_does_not_pass_a_photograph_on_the_last_persons_frames(
+        isolated_db, monkeypatch):
+    from cli import attendance
+    _no_window(monkeypatch)
+    ada, ben = isolated_db.add_user("Ada"), isolated_db.add_user("Ben")
+    live = liveness.VOTE_WINDOW
+    recognizer = Sequence([ada] * live + [ben] * 2)
+    monkeypatch.setattr(attendance, "_load_recognizer", lambda: recognizer)
+    monkeypatch.setattr(attendance.decision, "sface_gallery", lambda: None)
+    _faces_in_front(monkeypatch, BOX)
+    monkeypatch.setattr(liveness, "available", lambda: True)
+    scores = [0.9] * live + [0.01] * 2          # Ada in person, then Ben's photo
+    monkeypatch.setattr(liveness, "score", lambda bgr, box: scores.pop(0))
+    monkeypatch.setattr(attendance, "_open_camera",
+                        lambda: FakeCapture([raw_frame() for _ in range(live + 2)]))
+    attendance.run_attendance()
+    assert [name for name, _, _ in isolated_db.get_attendance_for_today()] == ["Ada"]
+
+
+def test_the_camera_does_not_pass_a_photograph_on_the_last_persons_frames(
+        mgr, isolated_db, monkeypatch):
+    ada, ben = isolated_db.add_user("Ada"), isolated_db.add_user("Ben")
+    live = liveness.VOTE_WINDOW
+    mgr._mode = camera.MODE_ATTENDANCE
+    mgr._recognizer = Sequence([ada] * live + [ben] * 2)
+    monkeypatch.setattr(camera.facetraits, "detect", lambda f: [yunet_row(*BOX)])
+    scores = [0.9] * live + [0.01] * 2
+    monkeypatch.setattr(camera.faceliveness, "score", lambda f, b: scores.pop(0))
+    for _ in range(live + 2):
+        mgr._handle_attendance(raw_frame())
+    assert [name for name, _, _ in isolated_db.get_attendance_for_today()] == ["Ada"]
+
+
+def test_the_camera_forgets_the_vote_when_nobody_is_in_front_of_it(
+        mgr, isolated_db, monkeypatch):
+    mgr._mode = camera.MODE_ATTENDANCE
+    mgr._recognizer = Recorder(isolated_db.add_user("Ada"))
+    rows = [[yunet_row(*BOX)]] * liveness.VOTE_WINDOW + [[]]
+    monkeypatch.setattr(camera.facetraits, "detect", lambda f: rows.pop(0))
+    monkeypatch.setattr(camera.faceliveness, "score", lambda f, b: 0.9)
+    for _ in range(liveness.VOTE_WINDOW):
+        mgr._handle_attendance(raw_frame())
+    assert mgr.status()["liveness"]["verdict"] == "live"
+    mgr._handle_attendance(raw_frame())         # they walked away
+    status = mgr.status()["liveness"]
+    assert status["verdict"] == "unknown" and status["samples"] == 0
+
+
+def test_the_cli_scores_and_embeds_the_face_before_drawing_anyone_else(
+        isolated_db, monkeypatch):
+    """The liveness crop is 2.7x the face, so it reaches a neighbour's box.
+    The CLI drew the other faces' boxes and labels first, and scored the
+    presenting face with those overlays in its crop; the camera already
+    decided the primary face before drawing anybody else."""
+    from cli import attendance
+    _no_window(monkeypatch)
+    recognizer = Recorder(isolated_db.add_user("Ada"))
+    monkeypatch.setattr(attendance, "_load_recognizer", lambda: recognizer)
+    monkeypatch.setattr(attendance.decision, "sface_gallery", lambda: None)
+    _faces_in_front(monkeypatch, (20, 20, 90, 90), BOX)
+    monkeypatch.setattr(liveness, "available", lambda: True)
+    scored = []
+    monkeypatch.setattr(liveness, "score",
+                        lambda bgr, box: scored.append(bgr.copy()) or 0.9)
+    monkeypatch.setattr(attendance, "_open_camera", lambda: FakeCapture([raw_frame()]))
+    attendance.run_attendance()
+    assert len(scored) == 1
+    assert np.array_equal(scored[0], raw_frame()), (
+        "the presenting face was scored on a frame with other faces drawn on it")

@@ -37,7 +37,7 @@ import threading
 
 from flask import Flask, jsonify, render_template, request, Response
 
-# Every path resolves through paths.py, against this file's folder, so this
+# Every path resolves through core/paths.py, against the project root, so this
 # works from any directory without moving the process.
 #
 # There used to be an os.chdir(BASE_DIR) here, with a comment explaining that
@@ -45,9 +45,8 @@ from flask import Flask, jsonify, render_template, request, Response
 # That stopped being true when paths.py was introduced, and the workaround
 # outlived the problem -- changing the process's working directory as a side
 # effect of an import moves the ground under everything else in it.
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-from core import db                                  # noqa: E402
+from core import db                                 # noqa: E402
 from core import paths                               # noqa: E402
 from pipeline import train_model                         # noqa: E402
 from analysis import analytics                           # noqa: E402
@@ -97,6 +96,17 @@ def _analysis_worker(use_cache):
 
 def fail(exc, code=400):
     return jsonify({"ok": False, "error": str(exc)}), code
+
+
+def json_body():
+    """The request's JSON object, or {} for anything else.
+
+    `get_json(...) or {}` let a valid JSON body that is not an object -- a
+    list, a string, a number -- through to `.get()`, which raised and
+    answered 500 instead of 400.
+    """
+    body = request.get_json(force=True, silent=True)
+    return body if isinstance(body, dict) else {}
 
 
 # Binding to 127.0.0.1 keeps the network out, but not a web page open in the
@@ -214,9 +224,11 @@ def api_camera_stop():
 
 @app.route("/api/register", methods=["POST"])
 def api_register():
-    body = request.get_json(force=True, silent=True) or {}
+    name = json_body().get("name", "")
+    if not isinstance(name, str):
+        return fail("The name has to be text.")
     try:
-        user_id = camera.start_register(body.get("name", ""))
+        user_id = camera.start_register(name)
     except CameraError as exc:
         return fail(exc)
     return jsonify({"ok": True, "userId": user_id})
@@ -254,7 +266,7 @@ def api_attendance_stop():
 
 @app.route("/api/traits", methods=["POST"])
 def api_traits_toggle():
-    body = request.get_json(force=True, silent=True) or {}
+    body = json_body()
     camera.set_traits_enabled(body.get("enabled", True))
     return jsonify({"ok": True})
 
@@ -269,7 +281,7 @@ def api_models():
 
 @app.route("/api/analysis/start", methods=["POST"])
 def api_analysis_start():
-    body = request.get_json(force=True, silent=True) or {}
+    body = json_body()
     with _analysis_lock:
         if _analysis["running"]:
             return fail("An analysis is already running.", 409)

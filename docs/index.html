@@ -389,19 +389,19 @@ footer a { color: inherit; }
  * rewrites them. */
 
 var MODULES = [
-  { name: 'pipeline/camera.py',       lines: 870, stmts: 472, missed:  7, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
+  { name: 'pipeline/camera.py',       lines: 878, stmts: 475, missed:  6, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
   { name: 'analysis/analytics.py',    lines: 687, stmts: 262, missed: 63, does: 'dataset-wide enrollment quality and threshold sweeps' },
   { name: 'pipeline/traits.py',       lines: 566, stmts: 215, missed: 22, does: 'per-face quality, pose, embedding and demographics' },
   { name: 'pipeline/landmarks.py',    lines: 403, stmts: 185, missed: 26, does: 'the face mesh, and the overlay drawn on the frame' },
-  { name: 'app.py',                   lines: 354, stmts: 163, missed: 41, does: 'the Flask UI; fifteen endpoints, loopback only' },
+  { name: 'app.py',                   lines: 366, stmts: 167, missed: 41, does: 'the Flask UI; fifteen endpoints, loopback only' },
   { name: 'cli/analyze_faces.py',     lines: 238, stmts: 134, missed: 71, does: 'the console version of the analysis panel' },
   { name: 'pipeline/sampleframes.py', lines: 271, stmts: 134, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
   { name: 'core/db.py',               lines: 336, stmts: 117, missed:  1, does: 'the schema and every query; one context manager for all access' },
-  { name: 'cli/attendance.py',        lines: 201, stmts: 111, missed: 14, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
+  { name: 'cli/attendance.py',        lines: 211, stmts: 113, missed: 15, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
   { name: 'pipeline/guidance.py',     lines: 290, stmts: 103, missed:  5, does: 'turns a live trait read into one instruction to act on' },
   { name: 'cli/register_user.py',     lines: 157, stmts:  82, missed: 17, does: 'the CLI capture loop; writing a gallery sample is now its own function' },
   { name: 'analysis/calibration.py',  lines: 291, stmts:  75, missed: 13, does: 'the measured false-match curve and the gallery-size maths' },
-  { name: 'pipeline/liveness.py',     lines: 150, stmts:  67, missed: 25, does: 'is this a person or a photograph of one' },
+  { name: 'pipeline/liveness.py',     lines: 168, stmts:  73, missed: 25, does: 'is this a person or a photograph of one' },
   { name: 'pipeline/recognition.py',  lines: 177, stmts:  65, missed:  4, does: 'identification by SFace embedding, against the gallery threshold; decides attendance' },
   { name: 'pipeline/decision.py',     lines: 159, stmts:  63, missed:  0, does: 'the attendance decision, once: SFace first, LBPH fallback, for the camera and the CLI' },
   { name: 'pipeline/enrollment.py',   lines: 174, stmts:  58, missed: 12, does: 'the post-capture report: pose coverage, and who this face sits closest to' },
@@ -442,26 +442,26 @@ var TESTS = [
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
   { file: 'test_analysis_helpers.py',       n: 19, of: 'the leave-one-out measurement, and the console report' },
   { file: 'test_attendance_decision.py',    n: 19, of: 'the accept/refuse decision, and writing a gallery sample' },
-  { file: 'test_app_routes.py',             n: 16, of: 'the HTTP surface' },
+  { file: 'test_app_routes.py',             n: 17, of: 'the HTTP surface' },
   { file: 'test_camera_model_lifecycle.py', n: 16, of: 'training, loading and the enrollment report' },
   { file: 'test_calibration.py',            n: 15, of: 'the measured false-match curve and the gallery maths' },
   { file: 'test_camera_logic.py',           n: 15, of: 'the pose gate and the overlay, as pure functions' },
   { file: 'test_frontend_escaping.py',      n: 15, of: 'that a registered name cannot become script' },
   { file: 'test_nonfinite.py',              n: 15, of: 'that no endpoint can emit NaN into JSON' },
-  { file: 'test_sface_attendance.py',       n: 13, of: 'attendance decided by SFace, LBPH only as the fallback' },
+  { file: 'test_recognition_paths.py',      n: 15, of: 'that every path into and out of LBPH agrees: orientation, detector, liveness' },
+  { file: 'test_sface_attendance.py',       n: 14, of: 'attendance decided by SFace, LBPH only as the fallback' },
   { file: 'test_shared_constants.py',       n: 13, of: 'that one number lives in one place' },
   { file: 'test_traits_landmarks.py',       n: 13, of: 'the trait read and the mesh' },
   { file: 'test_guidance.py',               n: 12, of: 'which instruction wins, and what is never said' },
   { file: 'test_db.py',                     n: 11, of: 'the schema, and that a failed write closes its connection' },
   { file: 'test_published_figures.py',      n: 11, of: 'the numbers on this page, against a fresh measurement' },
   { file: 'test_recognition_liveness.py',   n: 10, of: 'identification, and refusing a photograph' },
-  { file: 'test_recognition_paths.py',      n: 10, of: 'that every path into and out of LBPH agrees: orientation, detector, liveness' },
   { file: 'test_path_discipline.py',        n:  6, of: 'structurally: no module may read a path at import' },
   { file: 'test_ci_portability.py',         n:  4, of: 'that the code runs on a machine that is not this one: no optional package, no local path' },
   { file: 'test_enroll_and_log_many.py',    n:  3, of: 'more faces enrolled, recognised and logged once each' }
 ];
 
-var TEST_LINES = 6168;
+var TEST_LINES = 6308;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

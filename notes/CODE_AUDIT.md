@@ -151,10 +151,11 @@ one of those tests passes on the real code.
 | `pipeline/liveness.py` | 12 | 5 | 7 | 0 |
 | **Total** | **124** | **74** | **50** | **0** |
 
-Projected: 688 of 738 killed (93.2%). With the 50 equivalents taken out of the
-denominator, 688 of 688 (100%). **The after score will come from the next CI
-run of the mutation workflow.** This table is a projection from the hand runs,
-not a mutmut result.
+**After (measured):** the mutation workflow's second run, on commit `117cfe2`
+(Actions run 38093559065), killed **688 of 738 (93.2%)**, exactly as the hand runs
+projected. The 50 survivors are the 50 equivalents listed below and no others
+(calibration 10, db 30, decision 3, liveness 7), so with them taken out of the
+denominator the score is 688 of 688 (100%). No timeouts, no suspicious results.
 
 What the kills pin down:
 
@@ -236,7 +237,6 @@ No bugs. The one branch this section's coverage notes listed as uncovered in
 
 ### Left for later
 
-- **Re-run the mutation workflow** to measure the after score. The projection is 688/738 (93.2%), and every survivor left should be one of the 50 equivalents listed under Mutation score.
 - **Measure liveness against real attacks** per the protocol in `notes/BENCHMARK.md` (APCER/BPCER, ISO/IEC 30107-3). Not yet measured.
 - **pyarrow in CI.** A job with pyarrow installed would cover the parquet paths offline (the gap above). It is optional on purpose, so this would be a second job, not a requirement.
 - **`refresh_figures.py` measures whatever machine runs it.** Here that means the weights, `dataset/` and pyarrow, so README and the page say 99% of statements where the push job measures 97.2%. It also publishes lines only, not branches. It should either measure in a clean copy, as this pass did by hand, or label which figure it is.

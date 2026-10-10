@@ -398,7 +398,7 @@ var MODULES = [
   { name: 'analysis/fairness_benchmark.py', lines: 286, stmts: 162, missed:  1, does: 'the stratified FairFace run; its statistics and main() are tested on a tiny labelled corpus' },
   { name: 'cli/analyze_faces.py',           lines: 238, stmts: 134, missed:  0, does: 'the console version of the analysis panel' },
   { name: 'pipeline/sampleframes.py',       lines: 271, stmts: 134, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
-  { name: 'core/db.py',                     lines: 373, stmts: 118, missed:  1, does: 'the schema and every query; one context manager for all access' },
+  { name: 'core/db.py',                     lines: 373, stmts: 118, missed:  0, does: 'the schema and every query; one context manager for all access' },
   { name: 'cli/attendance.py',              lines: 214, stmts: 112, missed: 14, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
   { name: 'pipeline/guidance.py',           lines: 290, stmts: 103, missed:  0, does: 'turns a live trait read into one instruction to act on' },
   { name: 'pipeline/decision.py',           lines: 236, stmts:  97, missed:  0, does: 'the attendance decision, once: SFace first, LBPH fallback, for the camera and the CLI' },
@@ -444,6 +444,7 @@ var TESTS = [
   { file: 'test_cov_cli_small.py',          n: 31, of: 'the small entry points, with every download mocked and the network refused' },
   { file: 'test_pure_helpers.py',           n: 31, of: 'the functions with no camera, no model and no database' },
   { file: 'test_cov_analytics.py',          n: 29, of: 'the pure parts of analytics.py, and the sample cache and dataset walk around them' },
+  { file: 'test_mutation_kills.py',         n: 29, of: 'the rules the first mutation run showed no test was checking: boundaries, interpolation, an untested branch, dropped arguments' },
   { file: 'test_camera_capture.py',         n: 28, of: 'the grab loop and its failure branches, against a synthetic camera' },
   { file: 'test_cov_traits.py',             n: 26, of: 'what traits.py does with a detection, every network mocked' },
   { file: 'test_analytics.py',              n: 24, of: 'the sweeps, and refusing to trust a small one' },
@@ -480,7 +481,7 @@ var TESTS = [
   { file: 'test_cov_analytics_golden.py',   n:  2, of: 'that splitting summarize_user and lbph_analysis changed nothing, against output captured before the split' }
 ];
 
-var TEST_LINES = 10858;
+var TEST_LINES = 11237;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

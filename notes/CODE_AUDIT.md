@@ -131,9 +131,101 @@ themselves.
 
 ### Mutation score
 
-Pending: run the mutmut workflow (`.github/workflows/mutation.yml`, on demand)
-over `pipeline/decision.py`, `pipeline/liveness.py`, `core/db.py` and
-`analysis/calibration.py`. The workflow writes the score into the job summary.
+**Before: 614 of 738 mutants killed (83.2%).** That is the first run of the
+mutmut workflow (`.github/workflows/mutation.yml`, mutmut 3.8.0, no weights,
+`HYPOTHESIS_PROFILE=mutmut`) over `pipeline/decision.py`,
+`pipeline/liveness.py`, `core/db.py` and `analysis/calibration.py`. 124
+survived: decision 45, db 42, calibration 25, liveness 12.
+
+mutmut does not run on native Windows, so each survivor was applied by hand
+to a clean copy of the tree, under CI's conditions (no `models/`, no
+`dataset/`, no corpora). Each one was confirmed to pass the full suite, then
+run against the new tests in `tests/test_mutation_kills.py` (29 tests). Every
+one of those tests passes on the real code.
+
+| Module | Survived | Killed by new tests | Equivalent | Bugs |
+|---|---|---|---|---|
+| `pipeline/decision.py` | 45 | 42 | 3 | 0 |
+| `core/db.py` | 42 | 12 | 30 | 0 |
+| `analysis/calibration.py` | 25 | 15 | 10 | 0 |
+| `pipeline/liveness.py` | 12 | 5 | 7 | 0 |
+| **Total** | **124** | **74** | **50** | **0** |
+
+Projected: 688 of 738 killed (93.2%). With the 50 equivalents taken out of the
+denominator, 688 of 688 (100%). **The after score will come from the next CI
+run of the mutation workflow.** This table is a projection from the hand runs,
+not a mutmut result.
+
+What the kills pin down:
+
+- **decision (42).** `primary()` picks by area. The old test boxes had sort
+  order and area agree, and none was tall but small. `crop()`: a box above
+  the frame keeps row 0. A portrait frame clips by its height. A box with no
+  pixels on either axis gives None (`and` for `or`, or `<` for `<=`, sent an
+  empty slice to `cv2.resize`). `faces()`/`boxes()` detect on the frame they
+  are given. `sface_gallery()` refreshes by default and returns None without
+  the weights. The two `lbph_reason()` messages: their content and a runnable
+  `python -m` command (9 string mutants). `unmirror_row()`: an exact
+  expected row with every value distinct, a float32 result, and the input
+  left untouched (11). The old test face was symmetric, so a dropped eye or
+  mouth y, or a box mirrored by its height, could not show. `decide()`: the
+  full NO_FACE and UNREADABLE decisions (`accepted is False`, verdict
+  `"unknown"`); liveness scored on the face box, and the score reported; the
+  unmirrored frame passed to SFace as is; and an unrecognised frame whose
+  nearest label is someone else keeps the vote (12).
+- **db (12).** The connection's busy timeout is 10 s (`PRAGMA busy_timeout`),
+  not sqlite3's 5 s (2). `log_attendance` with no method records `lbph` (2).
+  `add_user`'s UPDATE branch: users exist, and a folder claims an id above
+  the sequence. No test reached it, so a broken UPDATE, an UPDATE that
+  matched no row (`'USERS'`), and an INSERT of a second sequence row all
+  passed. The last two hand out id 2, which the folder `2_*` claims: the
+  defect `add_user` exists to prevent. The code itself is right; the branch
+  was untested (8).
+- **calibration (15).** `fmr_at` between measured thresholds. Every earlier
+  test read it at a measured point or past an end, so `*` for `/`, `x1 + x0`,
+  and either end clamp moved one entry inward all passed (5). `gallery_risk`
+  at N = 2 and its exponent (4). `describe()` passes `max_risk` on (1).
+  `age_band_coverage` and `accuracy_for_samples` next to both ends of their
+  tables (5). Two of those use a test table still rising at the top, because
+  the measured one is flat from 16 samples, so reading the top from the
+  second-last entry gives the same number on it.
+
+Equivalent mutants (50), which no test can kill:
+
+- **SQL keyword or identifier case (28, db).** SQLite keywords, table and
+  column names and pragma names are case-insensitive. The string literals in
+  these statements (`'users'`, `'index'`, `'lbph'`) are unchanged. They are
+  `get_connection` 9, 10; `_create_tables` 8, 9, 15; `_one_mark_per_day` 6,
+  12, 13; `add_user` 7, 16, 25, 32, 33; `get_all_users` 4, 5;
+  `get_user_name` 7, 8; `user_exists` 7, 8; `log_attendance` 9, 10, 12;
+  `delete_user` 7, 8, 14, 15, 21, 22.
+- **`_one_mark_per_day` 7** (`type = 'INDEX'`). The "index already exists"
+  shortcut never fires, so every startup re-runs the de-duplicating DELETE
+  and `CREATE UNIQUE INDEX IF NOT EXISTS`. With the index in place the
+  DELETE matches nothing, so only startup time differs.
+- **`add_user` 19** (`<=` for `<`). When the sequence already equals the top
+  claimed id, it is set to the same value.
+- **`fmr_at` 3, 6; `age_band_coverage` 4, 7; `accuracy_for_samples` 4, 7.**
+  `<` for `<=` at the table's first or last key. The value at that exact key
+  then comes from the interpolation (frac 1.0, or `lo == hi`), which returns
+  the same table entry.
+- **`age_band_coverage` 14, 17; `accuracy_for_samples` 14, 17.** `<` for `<=`
+  when choosing `lo` or `hi`. At a measured key the interpolation then adds
+  `0 * (...)` or `1.0 * (b - a)` to a neighbour. That was checked to give
+  every table entry back exactly.
+- **`crop` 37, `decide` 51** (`cv2.flip(..., 2)` for `1`). OpenCV treats any
+  positive flip code as a horizontal flip.
+- **`unmirror_row` 7.** It drops `copy=True`, which is `np.array`'s default.
+- **liveness `score` 57, 59, 60, 64, 65.** `None` or an omitted value for
+  `blobFromImage`'s scale, mean and `swapRB`. OpenCV 4.x fills in 1.0, a
+  zero mean and `swapRB=False`, the values passed explicitly. Checked on
+  4.14: the blobs are identical.
+- **`LivenessVote.__init__` 4, `reset` 2** (`_who = ""` for `None`).
+  `follow()` compares `_who` only with a user id that is not None, and no id
+  is ever `""`. Nothing else reads `_who`.
+
+No bugs. The one branch this section's coverage notes listed as uncovered in
+`db.add_user`, the id reservation's UPDATE, now runs and is checked.
 
 ### Maintenance types
 
@@ -144,14 +236,14 @@ over `pipeline/decision.py`, `pipeline/liveness.py`, `core/db.py` and
 
 ### Left for later
 
-- **Kill the mutation survivors** once the workflow has run.
+- **Re-run the mutation workflow** to measure the after score. The projection is 688/738 (93.2%), and every survivor left should be one of the 50 equivalents listed under Mutation score.
 - **Measure liveness against real attacks** per the protocol in `notes/BENCHMARK.md` (APCER/BPCER, ISO/IEC 30107-3). Not yet measured.
 - **pyarrow in CI.** A job with pyarrow installed would cover the parquet paths offline (the gap above). It is optional on purpose, so this would be a second job, not a requirement.
 - **`refresh_figures.py` measures whatever machine runs it.** Here that means the weights, `dataset/` and pyarrow, so README and the page say 99% of statements where the push job measures 97.2%. It also publishes lines only, not branches. It should either measure in a clean copy, as this pass did by hand, or label which figure it is.
 - **`json_safe` and `np.longdouble`.** On Linux, `longdouble.item()` returns a `longdouble`, which would recurse without end. Not verifiable here, where `longdouble` is a `double`. Nothing produces one today.
 - **Actions pinned by tag, not commit SHA.** Tags can move. Pinning SHAs (with a bot to bump them) is the stricter choice.
 - **Python 3.10.** The offline figure was measured on 3.14 only. CI's 3.10 run may differ by a fraction, and `fail_under` leaves 0.5pp of room.
-- Still uncovered offline: the CLI's camera-opening and model-loading branches and a few loop exits (`cli/attendance.py`), five lines of `camera.py`, `train_model.py`'s unreadable-image and non-folder skips, and one branch of `db.add_user`'s id reservation.
+- Still uncovered offline: the CLI's camera-opening and model-loading branches and a few loop exits (`cli/attendance.py`), five lines of `camera.py`, `train_model.py`'s unreadable-image and non-folder skips. (The branch of `db.add_user`'s id reservation that was listed here is covered now. See Mutation score.)
 
 ---
 

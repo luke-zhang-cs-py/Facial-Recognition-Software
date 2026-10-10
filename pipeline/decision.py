@@ -10,12 +10,15 @@ cascade, and crashed on a label with no user row. These functions are the
 one version both now call (notes/CODE_AUDIT_2026-10.md).
 """
 
+from collections import namedtuple
+
 import cv2
 import numpy as np
 
 from core import db
 from core import facemodels
 from core import vision
+from pipeline import liveness
 from pipeline import recognition
 from pipeline import traits
 
@@ -157,3 +160,77 @@ def record(user_id, confidence, method=LBPH):
     if not db.user_exists(user_id):
         return NO_USER
     return LOGGED if db.log_attendance(user_id, confidence, method) else ALREADY
+
+
+# What decide() concluded, beyond record()'s three: nobody in the frame, a box
+# with no pixels in it, a face nobody enrolled matches, a recognised face the
+# liveness vote has not passed (a photograph, or still gathering frames), and
+# a person already marked earlier in this session.
+NO_FACE, UNREADABLE, UNRECOGNISED, NOT_LIVE, SEEN = (
+    "no-face", "unreadable", "unrecognised", "not-live", "seen")
+
+Decision = namedtuple(
+    "Decision", "outcome user_id confidence accepted method live_score verdict")
+
+
+def decide(frame, box, row, vote, *, gallery=None, recognizer=None, gray=None,
+           mirrored=False, first_mark=None):
+    """One frame's attendance decision: score, identify, vote, mark.
+
+    The web camera and the CLI each ran their own copy of this sequence, and
+    the third audit's two liveness fixes (the vote starting over for a new
+    person and when the frame empties; scoring before anything is drawn) had
+    to be made in both (notes/CODE_AUDIT.md). Each front end now calls this
+    and only draws and reports the result its own way.
+
+    `box`/`row`: the primary face (see primary()), or None when the frame has
+    nobody in it -- which voids the vote, so the last person's live frames
+    cannot vouch for whoever comes next. `vote`: the front end's
+    liveness.LivenessVote. SFace decides when `gallery` is given, else LBPH
+    by `recognizer`. Call it before drawing anything on `frame`: the
+    liveness crop is 2.7x the face and would take in a neighbour's overlay.
+    `mirrored`: the frame is a mirrored preview, so the face is flipped back
+    before it is matched. `first_mark(user_id)` returns False when this
+    session has already marked the person, which skips the database.
+
+    Returns a Decision; `outcome` is LOGGED, ALREADY or NO_USER when a mark
+    was attempted, else one of the constants above.
+    """
+    if box is None:
+        vote.reset()
+        return Decision(NO_FACE, None, None, False, None, None, "unknown")
+    if gray is None:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    face = crop(gray, box, mirrored=mirrored)
+    if face is None:
+        # No pixels is no evidence either way: the vote is left as it was.
+        return Decision(UNREADABLE, None, None, False, None, None, None)
+
+    # liveness.score is None without the model, so the vote never passes.
+    live_score = liveness.score(frame, box)
+    if gallery:
+        method = SFACE
+        if mirrored:
+            bgr, row = cv2.flip(frame, 1), unmirror_row(row, frame.shape[1])
+        else:
+            bgr = frame
+        user_id, confidence, accepted = identify(bgr, row, gallery)
+    else:
+        method = LBPH
+        user_id, confidence, accepted = match(recognizer, face)
+
+    # The vote is about this person: a new one starts it over.
+    vote.follow(user_id if accepted else None)
+    vote.push(live_score)
+    verdict = vote.verdict()
+
+    def result(outcome):
+        return Decision(outcome, user_id, confidence, accepted, method, live_score, verdict)
+
+    if not accepted:
+        return result(UNRECOGNISED)
+    if verdict != "live":
+        return result(NOT_LIVE)
+    if first_mark is not None and not first_mark(user_id):
+        return result(SEEN)
+    return result(record(user_id, confidence, method))

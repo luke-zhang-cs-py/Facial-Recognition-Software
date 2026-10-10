@@ -63,25 +63,23 @@ def identify(recognizer, gray, box):
     return user_id, confidence, decision.name_of(user_id), True
 
 
-def identify_sface(bgr, row, gallery):
-    """identify(), by SFace: (user_id, similarity, name, accepted)."""
-    user_id, similarity, accepted = decision.identify(bgr, row, gallery)
-    if not accepted:
-        return user_id, similarity, "Unknown", False
-    return user_id, similarity, decision.name_of(user_id), True
-
-
 def mark_present(user_id, name, confidence, marked_this_session, method=decision.LBPH):
     """Log an accepted match once per session, and say what happened.
 
     The session set is why this exists: without it every frame re-queries
     the database for somebody standing in front of the camera, and the
-    console fills with one line per frame.
+    console fills with one line per frame. The capture loop gets the same
+    once-per-session rule from decision.decide(first_mark=...).
     """
     if user_id in marked_this_session:
         return
     outcome = decision.record(user_id, confidence, method)
     marked_this_session.add(user_id)
+    report(outcome, user_id, name, confidence, method)
+
+
+def report(outcome, user_id, name, confidence, method=decision.LBPH):
+    """Say what record() did, in the console."""
     if outcome == decision.LOGGED:
         reading = (f"similarity {confidence:.3f}" if method == decision.SFACE
                    else f"distance {confidence:.1f}")
@@ -162,35 +160,40 @@ def run_attendance():
     print("Attendance system running. Press 'q' to quit.")
     marked_this_session = set()  # avoid spamming console/DB checks every frame
 
+    def claim(user_id):
+        """True the first time this session marks `user_id`."""
+        if user_id in marked_this_session:
+            return False
+        marked_this_session.add(user_id)
+        return True
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         found = decision.faces(frame)
         faces = [b for b, _ in found]
         box = decision.primary(faces)
-        if box is None:
-            vote.reset()        # nobody here: the last person's frames are void
-        else:
-            # Person, or a picture of one? One vote, for the one face decided
-            # on, scored and embedded before anything is drawn on the frame:
-            # the liveness crop takes in 2.7x the face, so it reaches the boxes
-            # and labels of anybody standing beside them.
-            live_score = liveness.score(frame, box) if liveness.available() else None
-            if gallery:
-                row = next(r for b, r in found if b == box)
-                user_id, confidence, name, accepted = identify_sface(frame, row, gallery)
-                method, shown = decision.SFACE, "-" if confidence is None else f"{confidence:.2f}"
+        row = next((r for b, r in found if b == box), None)
+        # Person, or a picture of one, and who? One vote, for the one face
+        # decided on, scored and embedded before anything is drawn on the
+        # frame: the liveness crop takes in 2.7x the face, so it reaches the
+        # boxes and labels of anybody standing beside them. No face voids the
+        # vote: the last person's frames must not vouch for the next.
+        got = decision.decide(frame, box, row, vote, gallery=gallery,
+                              recognizer=recognizer, first_mark=claim)
+        if box is not None:
+            accepted, verdict = got.accepted, got.verdict
+            name = decision.name_of(got.user_id) if accepted else "Unknown"
+            if got.confidence is None:
+                shown = "-"
+            elif got.method == decision.SFACE:
+                shown = f"{got.confidence:.2f}"
             else:
-                user_id, confidence, name, accepted = identify(recognizer, gray, box)
-                method, shown = decision.LBPH, f"{confidence:.0f}"
-            vote.follow(user_id if accepted else None)
-            vote.push(live_score)
-            verdict = vote.verdict() if liveness.available() else "unknown"
-            if accepted and verdict == "live":
-                mark_present(user_id, name, confidence, marked_this_session, method)
+                shown = f"{got.confidence:.0f}"
+            if got.outcome in (decision.LOGGED, decision.ALREADY, decision.NO_USER):
+                report(got.outcome, got.user_id, name, got.confidence, got.method)
             label = name if verdict != "spoof" or not accepted else f"{name}? photo"
             annotate(frame, box, f"{label} ({shown})",
                      MATCH_COLOUR if accepted and verdict == "live" else UNKNOWN_COLOUR)

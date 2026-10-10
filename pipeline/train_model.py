@@ -29,10 +29,11 @@ def load_training_data():
         if not os.path.isdir(folder_path):
             continue
 
-        # folder_name looks like "3_Jane_Doe" -> label/user_id is 3
-        try:
-            user_id = int(folder_name.split("_")[0])
-        except ValueError:
+        # folder_name looks like "3_Jane_Doe" -> label/user_id is 3. The same
+        # rule paths.folder_ids uses, so training and id allocation agree on
+        # which folders hold a person (int() alone took " 5" and "-1").
+        user_id = paths.folder_id(folder_name)
+        if user_id is None:
             print(f"Skipping folder with unexpected name: {folder_name}")
             continue
 

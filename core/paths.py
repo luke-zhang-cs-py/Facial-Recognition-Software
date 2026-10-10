@@ -72,17 +72,36 @@ _UNSAFE_IN_FOLDER = re.compile(r"[^\w-]")
 FOLDER_NAME_MAX = 64
 
 
+# A folder's id is the part before its first underscore, and it is an id only
+# when that part is ASCII digits and nothing else. train_model parsed it with
+# int(), which also takes " 5", "+5" and "-1"; folder_ids used str.isdigit(),
+# which refuses those but takes digits like "²" that int() then rejects. Both
+# now ask folder_id().
+#
+# Leading zeros are allowed: "05_Ada" is id 5. user_folder() never writes one,
+# but both readers have always read it as 5, and refusing it now would drop a
+# hand-made folder from training without a word. A "05_" and a "5_" folder
+# are therefore the same id -- the same as any two folders sharing an id.
+_FOLDER_ID = re.compile(r"[0-9]+")
+
+
+def folder_id(folder):
+    """The user id a dataset/ folder name claims, or None if it claims none."""
+    head = folder.split("_", 1)[0]
+    return int(head) if _FOLDER_ID.fullmatch(head) else None
+
+
 def folder_ids():
-    """Every id a dataset/ folder claims (the number before its first
-    underscore), whether or not a user row still has it."""
+    """Every id a dataset/ folder claims (see folder_id), whether or not a
+    user row still has it."""
     root = dataset_dir()
     if not os.path.isdir(root):
         return set()
     ids = set()
     for folder in os.listdir(root):
-        head = folder.split("_", 1)[0]
-        if head.isdigit() and os.path.isdir(os.path.join(root, folder)):
-            ids.add(int(head))
+        user_id = folder_id(folder)
+        if user_id is not None and os.path.isdir(os.path.join(root, folder)):
+            ids.add(user_id)
     return ids
 
 

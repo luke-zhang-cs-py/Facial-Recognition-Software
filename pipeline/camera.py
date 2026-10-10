@@ -752,6 +752,14 @@ class CameraManager:
                                 f"Pose done — next: "
                                 f"{CAPTURE_PLAN[stage_idx + 1]['label'].lower()}")
 
+    def _first_mark(self, user_id):
+        """True the first time this session marks `user_id`, and claims it."""
+        with self._lock:
+            if user_id in self._marked_session:
+                return False
+            self._marked_session.add(user_id)
+            return True
+
     def _handle_attendance(self, frame):
         gray, faces = self._detect(frame)
         with self._lock:
@@ -760,15 +768,12 @@ class CameraManager:
         if recognizer is None and not gallery:
             return
         if not faces:
-            # Nobody in front of the camera: the frames gathered so far were
-            # about whoever just left, and must not vouch for who comes next.
-            self._liveness.reset()
+            # Nobody in front of the camera: decide() voids the vote, since the
+            # frames gathered so far were about whoever just left.
+            decision.decide(frame, None, None, self._liveness)
             with self._lock:
                 self._live_verdict, self._live_score = "unknown", None
             return
-        # The preview is mirrored; SFace embeds the face as the camera saw it,
-        # and before anything is drawn on the frame.
-        unmirrored = cv2.flip(frame, 1) if gallery else None
 
         # self._liveness / self._live_verdict / self._live_score are one
         # shared instance per camera, not per face -- and status() only ever
@@ -785,79 +790,61 @@ class CameraManager:
         primary = next(f for f in faces if f["box"] == primary_box)
 
         # The primary face first, so liveness and SFace read it before any
-        # other face's box is drawn onto the frame.
-        for face in sorted(faces, key=lambda f: f is not primary):
-            face_img = decision.crop(gray, face["box"], mirrored=True)
-            if face_img is None:
+        # other face's box is drawn onto the frame. The preview is mirrored;
+        # decide() matches the face as the camera saw it.
+        got = decision.decide(frame, primary["box"], primary["row"], self._liveness,
+                              gallery=gallery, recognizer=recognizer, gray=gray,
+                              mirrored=True, first_mark=self._first_mark)
+        if got.outcome != decision.UNREADABLE:
+            self._draw_decision(frame, primary, got)
+
+        for face in faces:
+            if face is primary or decision.crop(gray, face["box"], mirrored=True) is None:
                 continue
+            self._draw_face(frame, face, AMBER, label="Other face")
 
-            if face is not primary:
-                self._draw_face(frame, face, AMBER, label="Other face")
-                continue
+    def _draw_decision(self, frame, face, got):
+        """Show and report what decide() concluded about the presenting face."""
+        with self._lock:
+            self._live_verdict = got.verdict
+            self._live_score = (round(got.live_score, 3)
+                                if got.live_score is not None else None)
+        if got.method == decision.SFACE:
+            shown = "" if got.confidence is None else f"{got.confidence:.2f}"
+        else:
+            shown = f"{got.confidence:.0f}"
 
-            # Person, or a picture of one? Scored on the clean frame, before
-            # anything is drawn on it.
-            live_score = faceliveness.score(frame, face["box"])
-
-            if gallery:
-                method = decision.SFACE
-                row = decision.unmirror_row(face["row"], frame.shape[1])
-                user_id, confidence, accepted = decision.identify(unmirrored, row, gallery)
-                shown = "" if confidence is None else f"{confidence:.2f}"
-            else:
-                method = decision.LBPH
-                user_id, confidence, accepted = decision.match(recognizer, face_img)
-                shown = f"{confidence:.0f}"
-
-            # The vote is about this person: a new one starts it over, so the
-            # last person's live frames cannot pass a photograph of the next.
-            self._liveness.follow(user_id if accepted else None)
-            self._liveness.push(live_score)
-            verdict = self._liveness.verdict()
-            with self._lock:
-                self._live_verdict = verdict
-                self._live_score = (round(live_score, 3)
-                                    if live_score is not None else None)
-
-            if accepted:
-                name = decision.name_of(user_id)
-
-                if verdict == "spoof":
-                    # Recognised, but the frame looks like a presentation
-                    # attack. Name the person anyway -- somebody genuine in
-                    # bad light needs to know why they are being refused.
-                    colour = RED
-                    name = f"{name}? photo"
-                    with self._lock:
-                        self._marked_session.discard(user_id)
-                elif verdict == "unknown":
-                    colour = AMBER      # still gathering frames
-                    if not faceliveness.available():
-                        # Without the net there is never a verdict, so this
-                        # face would wait here forever with nothing saying why.
-                        name = f"{name} - {NO_LIVENESS_LABEL}"
-                else:
-                    colour = GREEN
-                    with self._lock:
-                        already_seen = user_id in self._marked_session
-                        if not already_seen:
-                            self._marked_session.add(user_id)
-                    if not already_seen:
-                        outcome = decision.record(user_id, confidence, method)
-                        if outcome == decision.LOGGED:
-                            self._log_event("success", f"Marked {name} present")
-                        elif outcome == decision.ALREADY:
-                            self._log_event("info", f"{name} was already marked today")
-                        else:
-                            colour = AMBER
-                            self._log_event("error", f"Recognised label {user_id}, which has no user: "
-                                            "its dataset/ folder outlived the person. Retrain after removing it.")
-            else:
-                name = "Unknown"
+        if not got.accepted:
+            name, colour = "Unknown", RED
+        else:
+            name = decision.name_of(got.user_id)
+            if got.verdict == "spoof":
+                # Recognised, but the frame looks like a presentation
+                # attack. Name the person anyway -- somebody genuine in
+                # bad light needs to know why they are being refused.
                 colour = RED
+                name = f"{name}? photo"
+                with self._lock:
+                    self._marked_session.discard(got.user_id)
+            elif got.verdict == "unknown":
+                colour = AMBER      # still gathering frames
+                if not faceliveness.available():
+                    # Without the net there is never a verdict, so this
+                    # face would wait here forever with nothing saying why.
+                    name = f"{name} - {NO_LIVENESS_LABEL}"
+            else:
+                colour = GREEN
+                if got.outcome == decision.LOGGED:
+                    self._log_event("success", f"Marked {name} present")
+                elif got.outcome == decision.ALREADY:
+                    self._log_event("info", f"{name} was already marked today")
+                elif got.outcome == decision.NO_USER:
+                    colour = AMBER
+                    self._log_event("error", f"Recognised label {got.user_id}, which has no user: "
+                                    "its dataset/ folder outlived the person. Retrain after removing it.")
 
-            self._draw_face(frame, face, colour,
-                            label=f"{name} ({shown})" if shown else name)
+        self._draw_face(frame, face, colour,
+                        label=f"{name} ({shown})" if shown else name)
 
     # ------------------------------------------------------------- streaming
 

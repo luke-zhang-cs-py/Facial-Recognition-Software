@@ -90,6 +90,7 @@ def _create_tables(conn):
     columns = [row[1] for row in cur.execute("PRAGMA table_info(attendance)")]
     if "method" not in columns:
         cur.execute("ALTER TABLE attendance ADD COLUMN method TEXT NOT NULL DEFAULT 'lbph'")
+    _one_mark_per_day(cur)
 
     # Cache of per-image trait analysis (see traits.py). Keyed by file path
     # plus mtime so an edited or replaced sample is re-analysed automatically.
@@ -119,6 +120,51 @@ def _create_tables(conn):
     """)
 
     conn.commit()
+
+
+# One attendance row per person per day, held by the database itself.
+#
+# log_attendance used to check and then insert, on two connections, so two
+# processes marking the same person at the same instant could both find no
+# row and both write one (notes/CODE_AUDIT.md, third pass).
+#
+# A unique index on the expression DATE(timestamp) rather than a `day` column.
+# `timestamp` is written as datetime.now().isoformat(): local time, no
+# offset, and DATE() of it is that local date unchanged -- the same day
+# get_attendance_for_today compares against date.today(). The index therefore means exactly what every existing query
+# means by "today", needs no ALTER TABLE or backfill, and cannot drift from
+# the timestamp the way a separately written column could. (DATE(timestamp)
+# is deterministic; only DATE('now') is refused in an index.) A timestamp
+# DATE() cannot parse is NULL, and NULLs never collide, so such a row is
+# simply not constrained -- as it was not counted before.
+ONE_MARK_PER_DAY_INDEX = "attendance_one_per_person_per_day"
+
+
+def _one_mark_per_day(cur):
+    """Create the index, first removing duplicates an older database may hold.
+
+    Runs from init_db on every startup, so it has to be idempotent: once the
+    index exists there is nothing to de-duplicate and nothing is scanned.
+    Of each person's marks on one day the earliest is kept -- by julianday(),
+    not string order, since "2026-10-01 10:00" sorts before "2026-10-01T09:00"
+    as text -- with the lower id breaking an exact tie. The delete and the
+    index share the caller's transaction.
+    """
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
+                (ONE_MARK_PER_DAY_INDEX,))
+    if cur.fetchone() is not None:
+        return
+    cur.execute("""
+        DELETE FROM attendance WHERE EXISTS (
+            SELECT 1 FROM attendance AS earlier
+            WHERE earlier.user_id = attendance.user_id
+              AND DATE(earlier.timestamp) = DATE(attendance.timestamp)
+              AND (julianday(earlier.timestamp) < julianday(attendance.timestamp)
+                   OR (julianday(earlier.timestamp) = julianday(attendance.timestamp)
+                       AND earlier.id < attendance.id)))
+    """)
+    cur.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {ONE_MARK_PER_DAY_INDEX} "
+                "ON attendance (user_id, DATE(timestamp))")
 
 
 def add_user(name):
@@ -175,36 +221,27 @@ def user_exists(user_id):
         return cur.fetchone() is not None
 
 
-def already_marked_today(user_id):
-    """Prevent duplicate attendance rows for the same person, same day."""
-    with connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT 1 FROM attendance
-               WHERE user_id = ? AND DATE(timestamp) = ?
-               LIMIT 1""",
-            (user_id, date.today().isoformat()),
-        )
-        return cur.fetchone() is not None
-
-
 def log_attendance(user_id, confidence, method="lbph"):
-    """Insert an attendance record. Returns True if a new row was written.
+    """Insert an attendance record. Returns True if a new row was written,
+    False if the person already has one today.
+
+    The one-per-day rule is the unique index (see _one_mark_per_day), not a
+    check before the insert. That check was already_marked_today(), removed
+    with it: a check and an insert are two steps, and another process can
+    write in between. ON CONFLICT DO NOTHING covers uniqueness
+    only, so a user id with no user row still raises IntegrityError.
 
     `method` says how to read `confidence`: "sface" (a similarity, higher is
     closer) or "lbph" (a distance, lower is closer)."""
-    if already_marked_today(user_id):
-        return False
-
     with connection() as conn:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO attendance (user_id, timestamp, confidence, method) "
-            "VALUES (?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
             (user_id, datetime.now().isoformat(), confidence, method),
         )
         conn.commit()
-        return True
+        return cur.rowcount == 1
 
 
 def get_all_attendance():

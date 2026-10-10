@@ -60,10 +60,17 @@ FairFace path pointing inside a long-dead editor session.
 
 ```bash
 pytest -q -rs
-python -m flake8 . --select=E9,F63,F7,F82
+python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722 --exclude=dataset,models,.venv,mutants
 ```
 
-446 tests locally; 443 pass and 3 skip without the weights.
+The same flake8 selection CI fails on. `pytest.ini` adds `-rs --strict-markers`,
+and `.coveragerc` sets `fail_under`, so `coverage report` fails if the
+offline figure drops. Two workflows run only on demand from the Actions tab:
+`coverage-with-weights.yml` (also weekly) fetches the weights and reports
+coverage with and without them, and `mutation.yml` runs mutmut (it does not
+run on native Windows) and writes the mutation score into the job summary.
+
+827 tests locally; 824 pass and 3 skip here (`-rs` says why).
 
 `python tools/refresh_figures.py` rewrites that sentence, the figures on
 `docs/index.html` and the one in the README from a real measured run — do

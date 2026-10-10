@@ -29,6 +29,13 @@ trainer.yml
 *.npz
 *.npy
 *.parquet
+# Video: a presentation-attack session (notes/BENCHMARK.md) or footage for
+# tools/sample_frames.py is a recording of a real person, same as an image.
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
 !docs/**
 
 # Pretrained third-party weights (~134 MB), fetched by cli/fetch_models.py.
@@ -41,10 +48,16 @@ __pycache__/
 .venv/
 venv/
 
-# Test artifacts
+# Test artifacts. `.coverage.*` are the parallel data files (`coverage run
+# -p`) the CI jobs upload and combine; .hypothesis/ is hypothesis's example
+# database; mutants/ is the working copy mutmut 3 mutates.
 .coverage
+.coverage.*
+coverage.json
 htmlcov/
 .pytest_cache/
+.hypothesis/
+mutants/
 
 # Benchmark output. The runner appends forever by design, so the logs are
 # a local artifact of however long it was left running, not source.

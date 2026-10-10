@@ -1,0 +1,188 @@
+name: Coverage with weights
+
+# The push/PR job (python-package.yml) runs without the ~196 MB of pretrained
+# weights, so every test that needs them skips and the code behind them is
+# never run in CI. This fetches the weights, runs the whole suite with them,
+# and reports two figures side by side: offline (what every push measures) and
+# combined with the weights. Weekly, and on demand from the Actions tab.
+#
+# Still not run here: anything needing a real face. dataset/ and sample frames
+# are images of real people and are never in the repository, so those tests
+# skip on this runner too.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 06:17 UTC. Off the hour, when scheduled runs queue the longest.
+    - cron: '17 6 * * 1'
+
+# Read-only token: nothing here writes to the repository. Artifacts and the
+# cache use the runner's own credentials, not this token.
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    # The normal CI job, called rather than copied. It uploads
+    # coverage-offline-py3.10 and coverage-offline-py3.12.
+    uses: ./.github/workflows/python-package.yml
+
+  weights:
+    # Pinned for the same reason as python-package.yml: ubuntu-latest moves to
+    # Ubuntu 26 on 19 October 2026.
+    runs-on: ubuntu-24.04
+    # The suite is ~1 minute offline; the weights add the real networks, and a
+    # cold cache adds the download.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        # One version, the one the combine step reports with: coverage's
+        # statement and branch counts differ between interpreters, so data from
+        # two of them does not combine cleanly.
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: System libraries for OpenCV
+        # See python-package.yml: the GUI build is the one with the cascades.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgl1 libglib2.0-0t64 \
+            || sudo apt-get install -y -qq libgl1 libglib2.0-0
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore the weights
+        id: weights
+        uses: actions/cache/restore@v6
+        with:
+          path: models/
+          # Keyed on the file that pins every download's SHA-256, so a model
+          # update -- which has to change its line there -- fetches afresh,
+          # and nothing else does.
+          key: models-${{ hashFiles('cli/fetch_models.py') }}
+
+      - name: Fetch the weights
+        # Checks each file against its pinned SHA-256 and refuses a mismatch;
+        # exits 1 if any download failed. With the cache warm it only checks
+        # that every file is present.
+        run: python -m cli.fetch_models
+
+      - name: Save the weights
+        # Saved straight after a verified fetch rather than at the end of the
+        # job, so a failing test run does not throw away a good download.
+        if: steps.weights.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: models/
+          key: models-${{ hashFiles('cli/fetch_models.py') }}
+
+      - name: List the weights
+        run: python -m cli.fetch_models --list
+
+      - name: Run tests under coverage, with the weights
+        env:
+          COVERAGE_FILE: .coverage.weights
+        run: coverage run -m pytest -q
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-weights
+          path: .coverage.weights
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  combine:
+    needs: [offline, weights]
+    # Report whatever was measured, even if one side's tests failed.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install coverage
+        # The same floor as requirements.txt: .coveragerc's source_dirs needs 7.10.
+        run: pip install "coverage>=7.10"
+
+      - name: Download the offline data (Python 3.12)
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-offline-py3.12
+          path: data/offline
+
+      - name: Download the data with weights
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-weights
+          path: data/weights
+
+      - name: Combine and report both figures
+        # Both runners check out to the same path, so the two data files name
+        # the same files and combine without a [paths] remap. --keep leaves
+        # the inputs, so the offline figure can be reported on its own too.
+        run: |
+          set -euo pipefail
+          offline=data/offline/.coverage.offline-py3.12
+          weights=data/weights/.coverage.weights
+          coverage combine --keep --data-file=.coverage.offline "$offline"
+          coverage combine --keep --data-file=.coverage.combined "$offline" "$weights"
+
+          # fail_under is for the push job; here both figures are reported
+          # whatever they are, so the summary is written even if one is low.
+          coverage json --data-file=.coverage.offline -o offline.json --fail-under=0
+          coverage json --data-file=.coverage.combined -o combined.json --fail-under=0
+
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json
+
+          def row(label, path):
+              t = json.load(open(path))["totals"]
+              lines = 100 * t["covered_lines"] / t["num_statements"]
+              branches = 100 * t["covered_branches"] / max(1, t["num_branches"])
+              return ("| %s | %.1f%% (%d/%d) | %.1f%% (%d/%d) | %.1f%% |"
+                      % (label, lines, t["covered_lines"], t["num_statements"],
+                         branches, t["covered_branches"], t["num_branches"],
+                         t["percent_covered"]))
+
+          print("## Coverage: offline and with the weights\n")
+          print("| Run | Lines | Branches | Combined |")
+          print("|---|---|---|---|")
+          print(row("Offline (push CI, no weights)", "offline.json"))
+          print(row("Offline + weights", "combined.json"))
+          print("\nPython 3.12. Real-face tests skip on both: no face images "
+                "are in the repository.\n")
+          EOF
+
+          {
+            echo "### Per file, combined"
+            echo
+            coverage report --data-file=.coverage.combined --format=markdown --fail-under=0
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Offline:";  coverage report --data-file=.coverage.offline --fail-under=0
+          echo "Combined:"; coverage report --data-file=.coverage.combined -m --fail-under=0
+
+      - name: Upload the combined data
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-combined
+          path: |
+            .coverage.combined
+            offline.json
+            combined.json
+          include-hidden-files: true
+          retention-days: 30

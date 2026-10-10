@@ -1,5 +1,160 @@
 # Code audit
 
+## 2026-10-10: fourth pass
+
+The fourth pass: the third pass's open items, coverage of the code that was
+never counted, then making the tests prove more than "this line ran". Suite:
+**443 pass, 3 skip before (446 tests); 824 pass, 3 skip after (827 tests)** on
+this machine. Under CI's conditions (no weights, no `dataset/`, no pyarrow)
+it is **809 pass, 18 skip**. Each bug fix below came with a test that fails
+on the code as it was.
+
+```bash
+python -m coverage run -m pytest -q -p no:cacheprovider
+python -m coverage report -m
+python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722 --exclude=dataset,models,.venv
+HYPOTHESIS_PROFILE=thorough python -m pytest tests/test_properties.py   # 3,000 examples a property
+python tools/refresh_figures.py      # keeps docs/index.html, README, CONTRIBUTING true
+```
+
+The offline figures were measured in a clean copy of the working tree
+(`git ls-files -co --exclude-standard`, so no `models/` or `dataset/`) with
+pyarrow blocked, which is what the push job has. "With the weights" is that
+copy again with `models/` added, combined with the offline data the way
+`coverage-with-weights.yml` does it.
+
+### Bugs fixed
+
+| # | Class | Where | What happened | Fix | Test |
+|---|---|---|---|---|---|
+| 1 | design (shotgun surgery) | `pipeline/camera.py`, `cli/attendance.py` | Each front end ran its own copy of "score, identify, vote, mark". The third pass's two liveness fixes had to be made in both, and the next one could have landed in only one. | `decision.decide()` is that sequence once. Both front ends call it and only draw and report the result. | `test_both_front_ends_decide_through_the_same_function`, the `test_decide_*` tests in `test_fourth_pass_phase1.py` |
+| 2 | data integrity (race) | `core/db.py` `log_attendance` | Check-then-insert on two connections. Two processes marking the same person at the same instant could both find no row and both write one. | `UNIQUE(user_id, DATE(timestamp))` as an expression index, and `INSERT ... ON CONFLICT DO NOTHING`. `init_db` migrates an old database first, keeping each person's earliest mark of the day (by `julianday`, not string order). `already_marked_today` is gone. | `test_two_connections_marking_one_person_at_once_write_one_row`, `test_the_database_itself_refuses_a_second_mark_on_one_day`, `test_the_migration_keeps_the_earliest_mark_of_each_day`, `test_log_attendance_keeps_its_return_values` |
+| 3 | consistency | `pipeline/train_model.py`, `core/paths.py` | Training read a folder's id with `int()`, which takes `" 5"` and `"-1"`. `folder_ids` used `isdigit()`, which refuses those but takes `"²"`, which `int()` then rejects. The two disagreed about which folders hold a person. | `paths.folder_id()`: ASCII digits before the first underscore, or no id. Both use it. | `test_one_rule_decides_a_folders_id`, `test_training_and_folder_ids_agree_on_every_folder` |
+| 4 | input validation | `app.py` `/api/traits`, `/api/analysis/start` | The string `"false"` is truthy. `{"enabled": "false"}` turned the trait panel on, and `{"refresh": "false"}` re-read every image instead of using the cache. | `json_flag()` accepts a real boolean only. Anything else is a 400. | `test_traits_toggle_refuses_anything_but_a_boolean`, `test_traits_toggle_passes_a_boolean_through`, `test_analysis_start_refuses_a_refresh_that_is_not_a_boolean` |
+| 5 | input validation | `cli/face_attendance.py` | `register` called `register_user()` directly and skipped `main()`'s strip-and-refuse check, so `register "  "` created a user called `"  "` and trained on nothing. | Goes through `register_user.main(["--", name])`. | `test_register_refuses_a_name_register_user_refuses`, `test_main_refuses_a_blank_or_flag_like_name` |
+| 6 | data integrity | `cli/seed_demo.py` | Only the `--people` path passed the already-enrolled names to the picker, so `--keep --all-with N` enrolled everyone already enrolled a second time, under a second id. | The exclusion is worked out once, for both paths. | `test_keep_with_all_with_does_not_enroll_anyone_twice` |
+| 7 | output format | `analysis/fairness_benchmark.py` `--json` | An infinite disparity (best group at 0%) was written as the bare token `Infinity`, which no strict JSON parser accepts. `default=float` also wrote booleans as `1.0`. | `json_ready()` turns non-finite numbers into null and numpy scalars into Python values. `allow_nan=False`. | `test_an_infinite_disparity_is_written_as_valid_json`, `test_json_ready` |
+| 8 | measurement | `analysis/fairness_benchmark.py` | An image the decoder could not read counted as a detection failure, and as an unflagged image, for its group. A few corrupt files in one group read as a biased detector. | Only analysed images are in any denominator. The report records `analysed`. | `test_images_that_could_not_be_analysed_are_not_detection_failures` |
+| 9 | workflow | `cli/seed_demo.py` `load_lfw` | pyarrow, which is not in `requirements.txt`, was imported before the corpus check. A fresh install got `ImportError` instead of the download instructions. | Check for the corpus first. A missing pyarrow is then a one-line `pip install pyarrow` message, not a traceback. | `test_load_lfw_without_the_corpus_says_how_to_get_it`, `test_load_lfw_with_the_corpus_but_no_pyarrow_says_what_to_install` |
+| 10 | reporting | `pipeline/recognition.py` `refresh_gallery` | Counted every analysed sample as embedded. Without the SFace weights, seed_demo printed "N samples embedded" over a gallery that could recognise nobody. | Counts only samples that came out with an embedding. seed_demo names the missing weights. | `test_refresh_gallery_does_not_count_a_sample_with_no_embedding` |
+| 11 | functional (found fixing 10) | `pipeline/recognition.py` `refresh_gallery` | Skipped every cached sample. A sample analysed before the weights were fetched was cached with no embedding and then skipped for good, so after `fetch_models` that person never got a centroid and SFace never decided for them. | A cached row with no embedding is redone once the SFace weights are present (`use_cache=False`), and left alone until then. | `test_refresh_gallery_embeds_samples_cached_before_the_weights_arrived`, guarded by `test_refresh_gallery_without_the_weights_does_not_redo_cached_samples` |
+
+**Hypothesis** (`tests/test_properties.py`) found nothing to fix. All ten
+properties held at the default 100 examples and at 3,000 examples each. The
+properties:
+
+- The calibrated threshold never loosens as the gallery grows, and an unreachable target never becomes reachable.
+- A reachable threshold meets its target and is the loosest that does.
+- Gallery risk grows with gallery size.
+- `guidance.instruction` returns exactly one instruction, equal to the first rule in `RULES` that fires, or Ready when none does.
+- Worsening the lowest-priority input never changes an instruction already given.
+- `json_safe` never lets NaN or Infinity through, at any nesting of dicts, lists, tuples, numpy scalars and arrays (0-d included), and leaves plain finite data unchanged.
+- Under any sequence of `follow`/`push`/`reset`, `LivenessVote` says live only on passing frames pushed since it last started over.
+- A photograph, every frame below the threshold, never passes on the previous person's frames, whether through the vote directly or through `decision.decide`.
+
+### Security
+
+- **.gitignore.** Now ignores video files (`*.mp4`, `*.mov`, `*.avi`, `*.mkv`, `*.webm`): a presentation-attack session or footage for `tools/sample_frames.py` records a real person, the same as an image. Also ignored: `.hypothesis/`, mutmut's `mutants/`, and the parallel coverage files `.coverage.*` and `coverage.json`. Nothing tracked is newly ignored (`git ls-files -ci --exclude-standard` is empty). No face image, embedding, database or `trainer.yml` is tracked or untracked-but-unignored. `tests/golden/analytics_golden.json` is computed from grey squares.
+- **Liveness measurement.** The protocol in `notes/BENCHMARK.md` uses consenting adults only, and only a participant's own face as the attack on them. Recordings stay off the repository and are deleted after analysis or on request. The CSV `tools/pad_eval.py` reads holds outcomes keyed by participant code, never images or names.
+- **Workflows.** All three now run with `permissions: contents: read`. The weights job downloads only through `cli.fetch_models`, which refuses any file whose SHA-256 differs from its pin. `models/` is cached, never uploaded as an artifact. The artifacts hold coverage data (file paths and line numbers) and mutmut results, nothing derived from a face. Actions are pinned to major tags, not commit SHAs (see Left for later).
+- **Tests.** Still no network: the property tests generate their own inputs, and `test_cov_cli_small.py` refuses `urlopen` outright. Real-face tests still skip without a sample frame.
+- No secrets in tracked files. The cross-site, DNS-rebinding and `esc()` guards are intact. Nothing new builds HTML from a name.
+
+### Checklist
+
+- **Couplers.** Fixed: the per-frame sequence (bug 1), the third pass's "Left for later".
+- **Bloaters.** Fixed: `analytics.summarize_user` and `lbph_analysis` mixed extraction, statistics and presentation. Each is now three functions, and `tests/golden/analytics_golden.json`, captured before the split, proves the output did not change. `camera.py` is 865 lines (878), with the decision moved out. Left: `camera.py` is still one `CameraManager`, cohesive and 99% covered.
+- **Dispensables.** `db.already_marked_today` was removed with the check-then-insert it served.
+- **Abusers, global data, names.** Nothing new. `decide()`'s outcomes are named constants, like `record()`'s.
+- **Out of bounds.** Folder ids (bug 3). `decide()` on a box with no pixels leaves the vote alone. `pad_eval.wilson(0, 0)` returns no interval rather than dividing by zero.
+- **Test smells.** `pytest.ini` now has `addopts = -rs --strict-markers`, so a misspelt marker fails instead of silently doing nothing, and every run says what skipped. The suite passes under both.
+- **Lint.** CI's flake8 is widened to `E9,F63,F7,F82,F401,F402,F811,F841,E722`, the list this file's first audit used. CONTRIBUTING matches. Clean.
+
+### Coverage
+
+Both runs use `branch = True` and `source_dirs` (coverage 7.10+, now the
+floor in `requirements.txt`). Every shipped module is counted, including
+`cli/seed_demo.py`, `cli/fetch_models.py`, `cli/face_attendance.py` and
+`analysis/fairness_benchmark.py`, which were omitted before the baseline and
+show at 0% in it. Only `tools/` is omitted.
+
+| | Lines | Branches | Lines + branches |
+|---|---|---|---|
+| Before (Phase 0, HEAD with this `.coveragerc`) | 77.5% (2,278/2,941) | 68.8% (647/940) | 75.4% |
+| After, same conditions (weights and pyarrow present) | **99.2%** (2,995/3,019) | **97.7%** (954/976) | **98.8%** |
+| After, offline (CI: no weights, no `dataset/`, no pyarrow) | 97.2% (2,933/3,019) | 94.5% (922/976) | 96.5% |
+| After, offline + weights (what `coverage-with-weights.yml` combines) | 97.2% (2,933/3,019) | 94.9% (926/976) | 96.6% |
+
+The baseline was re-measured from `HEAD` with this `.coveragerc` and the
+weights present. It reproduces the Phase 0 report exactly (2,941 statements,
+663 missed, 940 branches). `fail_under = 96` in `.coveragerc` is the offline
+figure rounded down. CI runs `coverage report` after the tests, so a drop
+fails the push job.
+
+| File | Lines before | Branches before | Lines after | Branches after | Lines offline | Branches offline |
+|---|---|---|---|---|---|---|
+| `analysis/analytics.py` | 76.0% | 63.5% | 100% | 100% | 100% | 100% |
+| `analysis/calibration.py` | 82.7% | 76.7% | 100% | 100% | 100% | 100% |
+| `analysis/fairness_benchmark.py` | 0.0% | 0.0% | 99.4% | 97.9% | 77.8% | 72.9% |
+| `app.py` | 75.4% | 75.0% | 100% | 100% | 100% | 100% |
+| `cli/analyze_faces.py` | 47.0% | 37.5% | 100% | 100% | 100% | 100% |
+| `cli/attendance.py` | 86.7% | 78.6% | 87.5% | 81.8% | 87.5% | 81.8% |
+| `cli/face_attendance.py` | 0.0% | 0.0% | 100% | 90.0% | 100% | 90.0% |
+| `cli/fetch_models.py` | 55.8% | 36.4% | 100% | 100% | 100% | 100% |
+| `cli/register_user.py` | 80.5% | 55.0% | 100% | 100% | 100% | 100% |
+| `cli/seed_demo.py` | 26.8% | 10.0% | 99.4% | 98.1% | 93.9% | 94.2% |
+| `cli/view_report.py` | 100% | 100% | 100% | 100% | 100% | 100% |
+| `core/corpus_paths.py` | 75.0% | (none) | 100% | (none) | 100% | (none) |
+| `core/db.py` | 99.1% | 92.9% | 99.2% | 92.9% | 99.2% | 92.9% |
+| `core/facemodels.py` | 93.6% | 81.2% | 100% | 100% | 100% | 100% |
+| `core/paths.py` | 100% | 100% | 100% | 100% | 100% | 100% |
+| `core/vision.py` | 100% | (none) | 100% | (none) | 100% | (none) |
+| `pipeline/camera.py` | 98.7% | 97.1% | 98.9% | 97.1% | 98.9% | 95.6% |
+| `pipeline/decision.py` | 100% | 93.8% | 100% | 96.9% | 100% | 96.9% |
+| `pipeline/enrollment.py` | 79.3% | 70.8% | 100% | 100% | 100% | 100% |
+| `pipeline/guidance.py` | 95.1% | 88.1% | 100% | 100% | 100% | 100% |
+| `pipeline/landmarks.py` | 85.9% | 62.1% | 100% | 98.3% | 100% | 98.3% |
+| `pipeline/liveness.py` | 65.8% | 50.0% | 100% | 100% | 100% | 100% |
+| `pipeline/readout.py` | 86.8% | 78.6% | 100% | 100% | 100% | 100% |
+| `pipeline/recognition.py` | 93.8% | 87.5% | 100% | 100% | 100% | 100% |
+| `pipeline/sampleframes.py` | 100% | 97.3% | 100% | 97.3% | 86.6% | 75.7% |
+| `pipeline/train_model.py` | 94.6% | 83.3% | 94.4% | 85.7% | 94.4% | 85.7% |
+| `pipeline/traits.py` | 89.8% | 75.0% | 100% | 100% | 100% | 100% |
+
+The gap between "after" and "offline" is almost entirely pyarrow. The
+parquet paths in `fairness_benchmark.py`, `seed_demo.py` and
+`sampleframes.py` are tested, but those tests skip without pyarrow, and CI
+installs only `requirements.txt`. The weights now change little: four
+branches. The networks are mocked in the `test_cov_*` files, so their
+callers run either way. What the weights job adds is the real networks
+themselves.
+
+### Mutation score
+
+Pending: run the mutmut workflow (`.github/workflows/mutation.yml`, on demand)
+over `pipeline/decision.py`, `pipeline/liveness.py`, `core/db.py` and
+`analysis/calibration.py`. The workflow writes the score into the job summary.
+
+### Maintenance types
+
+- **Corrective:** bugs 1 to 11.
+- **Adaptive:** `coverage>=7.10` (`source_dirs`). mutmut 3.8's renamed keys (`source_paths`, `only_mutate`, `pytest_add_cli_args_test_selection` in place of `paths_to_mutate` and `tests_dir`). The node24 majors of `upload-artifact` (v7), `download-artifact` (v8) and `cache` (v6). Runners stay on `ubuntu-24.04` with timeouts.
+- **Perfective:** seed_demo says what to install or fetch instead of failing or overstating. `tools/pad_eval.py`. A side-by-side coverage report with and without the weights. CONTRIBUTING's skip sentence now says "here" instead of claiming the run had no weights.
+- **Preventive:** `fail_under`, `--strict-markers`, the wider flake8, the property tests, the weekly weights job, the mutation workflow, the wider `.gitignore`, and 25 new tests on top of Phases 1 and 2.
+
+### Left for later
+
+- **Kill the mutation survivors** once the workflow has run.
+- **Measure liveness against real attacks** per the protocol in `notes/BENCHMARK.md` (APCER/BPCER, ISO/IEC 30107-3). Not yet measured.
+- **pyarrow in CI.** A job with pyarrow installed would cover the parquet paths offline (the gap above). It is optional on purpose, so this would be a second job, not a requirement.
+- **`refresh_figures.py` measures whatever machine runs it.** Here that means the weights, `dataset/` and pyarrow, so README and the page say 99% of statements where the push job measures 97.2%. It also publishes lines only, not branches. It should either measure in a clean copy, as this pass did by hand, or label which figure it is.
+- **`json_safe` and `np.longdouble`.** On Linux, `longdouble.item()` returns a `longdouble`, which would recurse without end. Not verifiable here, where `longdouble` is a `double`. Nothing produces one today.
+- **Actions pinned by tag, not commit SHA.** Tags can move. Pinning SHAs (with a bot to bump them) is the stricter choice.
+- **Python 3.10.** The offline figure was measured on 3.14 only. CI's 3.10 run may differ by a fraction, and `fail_under` leaves 0.5pp of room.
+- Still uncovered offline: the CLI's camera-opening and model-loading branches and a few loop exits (`cli/attendance.py`), five lines of `camera.py`, `train_model.py`'s unreadable-image and non-folder skips, and one branch of `db.add_user`'s id reservation.
+
+---
+
 ## 2026-10-05: third pass
 
 The third pass over the checklist, after the first audit below and

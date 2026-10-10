@@ -1,6 +1,16 @@
 name: Python Package
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  # coverage-with-weights.yml calls this, so the offline half of its combined
+  # figure is this exact job rather than a copy that could drift from it.
+  workflow_call:
+
+# Read-only token: nothing here writes to the repository. Artifacts and the
+# cache use the runner's own credentials, not this token.
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -43,15 +53,41 @@ jobs:
 
       - name: Lint with flake8
         run: |
-          # Real errors only: syntax problems and undefined names.
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Real errors only: syntax problems, undefined names, unused or
+          # shadowed imports, redefinitions, unused locals and bare excepts.
+          # The same list as .github/CONTRIBUTING.md and notes/CODE_AUDIT.md.
+          flake8 . --count --select=E9,F63,F7,F82,F401,F402,F811,F841,E722 --show-source --statistics
           # Everything else is advisory.
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-      - name: Run tests
+      - name: Run tests under coverage
         # Note what this runner does not have. models/ holds ~196 MB of
         # third-party weights fetched by cli/fetch_models.py, and dataset/ holds
         # captured images of real people -- both gitignored, the second
         # deliberately so. The handful of tests that need those weights skip
         # rather than fail, which is what makes this runnable at all.
-        run: pytest -q -rs
+        # (coverage-with-weights.yml runs them, weekly and on demand.)
+        #
+        # A data file named for its job, so the combine step can tell the
+        # offline run from the one with weights. pytest.ini adds -rs.
+        env:
+          COVERAGE_FILE: .coverage.offline-py${{ matrix.python-version }}
+        run: coverage run -m pytest -q
+
+      - name: Coverage report
+        # Fails under .coveragerc's fail_under: the offline figure, so a
+        # change that drops it fails here rather than going unnoticed.
+        env:
+          COVERAGE_FILE: .coverage.offline-py${{ matrix.python-version }}
+        run: coverage report
+
+      - name: Upload coverage data
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-offline-py${{ matrix.python-version }}
+          path: .coverage.offline-py${{ matrix.python-version }}
+          # The data file is a dotfile, which upload-artifact skips by default.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

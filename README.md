@@ -131,7 +131,7 @@ grouping down once, and the structural tests read it from there.
 pytest -q
 ```
 
-446 tests, 87% of 2,529 statements, needing no webcam, no weights and no
+827 tests, 99% of 3,019 statements, needing no webcam, no weights and no
 corpus. Tests that need a real face use a sample frame if one is present and
 **skip** rather than asserting against a synthetic one, because a face a
 detector accepts cannot be faked convincingly enough to be evidence.

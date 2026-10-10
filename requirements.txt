@@ -19,6 +19,15 @@ Flask>=2.3
 # tests/test_published_figures.py measures the published figures with, so
 # without it that test errors rather than skips -- and CI installs exactly
 # this file. pytest-cov is what the documented coverage command asks for.
+#
+# 7.10 at least: .coveragerc uses `source_dirs`, which is what makes a module
+# no test imports show at 0% instead of vanishing from the report. Older
+# releases print one warning about the unknown setting and carry on, so the
+# floor is what keeps the percentage honest on a fresh install.
 pytest>=7.4
-coverage>=7.0
+coverage>=7.10
 pytest-cov>=4.0
+
+# tests/test_properties.py states its rules as properties and lets hypothesis
+# hunt for the counterexample. No network: it generates its own inputs.
+hypothesis

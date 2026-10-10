@@ -299,7 +299,11 @@ def fix_contributing(counts, changes):
     text = read(CONTRIBUTING)
     total = sum(counts.values())
     skipped = _OUTCOME.get("skipped", 0)
-    wanted = ("%s tests locally; %s pass and %d skip without the weights."
+    # "here", not "without the weights": this counts whatever machine ran it,
+    # and the one that last did had the weights -- its skips were for a
+    # missing sample face frame. CI, with no weights, no dataset/ and no
+    # pyarrow, skips more; `-rs` (pytest.ini) lists each one and why.
+    wanted = ("%s tests locally; %s pass and %d skip here (`-rs` says why)."
               % (format(total, ","), format(total - skipped, ","), skipped))
     found = re.search(r"[\d,]+ tests locally;[^\n]*", text)
     if not found:

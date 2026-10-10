@@ -1,0 +1,132 @@
+name: Mutation testing
+
+# Coverage says a line ran; it does not say a test would notice if the line
+# were wrong. mutmut changes the code one small way at a time (< for <=, 4
+# for 5, `and` for `or`) and runs the tests against each change. A mutant the
+# tests still pass on -- a survivor -- is a rule nothing actually checks.
+#
+# Scope and settings are in setup.cfg [mutmut]: the attendance decision, the
+# liveness vote, the database and the threshold maths. mutmut does not run on
+# native Windows, hence a workflow. On demand only: it runs the relevant tests
+# once per mutant, which is far too slow for every push.
+
+on:
+  workflow_dispatch:
+
+# Read-only token: nothing here writes to the repository. Artifacts and the
+# cache use the runner's own credentials, not this token.
+permissions:
+  contents: read
+
+jobs:
+  mutmut:
+    # Pinned for the same reason as python-package.yml.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: System libraries for OpenCV
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgl1 libglib2.0-0t64 \
+            || sudo apt-get install -y -qq libgl1 libglib2.0-0
+
+      - name: Install dependencies
+        # Pinned: setup.cfg uses 3.x's key names (source_paths, only_mutate,
+        # pytest_add_cli_args_test_selection), checked against 3.8.0.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "mutmut==3.8.0"
+
+      - name: Run mutmut
+        # Without the weights, like the push job. The hypothesis profile draws
+        # the same examples every run, so a mutant is killed by the tests and
+        # not by which random inputs one run happened to draw.
+        env:
+          HYPOTHESIS_PROFILE: mutmut
+        run: |
+          set +e
+          mutmut run --max-children "$(nproc)"
+          echo "mutmut run exited $?"
+
+      - name: Results and score
+        if: ${{ !cancelled() }}
+        run: |
+          mutmut export-cicd-stats
+          mutmut results --all true > mutmut-results.txt || true
+
+          # The diff of every survivor, which is what writing a test to kill
+          # one starts from.
+          : > survivors.diff
+          for name in $(awk -F': ' '$2 == "survived" {gsub(/^ +/, "", $1); print $1}' mutmut-results.txt); do
+            mutmut show "$name" >> survivors.diff 2>&1 || true
+            echo >> survivors.diff
+          done
+
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import collections
+          import json
+
+          stats = json.load(open("mutants/mutmut-cicd-stats.json"))
+          tested = stats["total"] - stats["skipped"]
+          caught = stats["killed"] + stats["timeout"]
+          score = 100.0 * caught / tested if tested else 0.0
+          print("## Mutation score: %.1f%%\n" % score)
+          print("%d of %d mutants killed (%d by timeout). Score = (killed + "
+                "timeout) / (total - skipped), as mutmut's badge computes it.\n"
+                % (caught, tested, stats["timeout"]))
+          print("| Status | Mutants |")
+          print("|---|---|")
+          for key in ("killed", "timeout", "survived", "no_tests", "suspicious",
+                      "segfault", "skipped"):
+              print("| %s | %d |" % (key, stats[key]))
+
+          # Per module, from `mutmut results --all true`: lines of
+          # "    pipeline.decision.x_decide__mutmut_3: killed".
+          by_module = collections.defaultdict(collections.Counter)
+          for line in open("mutmut-results.txt"):
+              name, _, status = line.strip().rpartition(": ")
+              if not name:
+                  continue
+              module = name.split(".x")[0]
+              by_module[module][status] += 1
+          print("\n| Module | Killed | Survived | No tests | Score |")
+          print("|---|---|---|---|---|")
+          for module, c in sorted(by_module.items()):
+              done = c["killed"] + c["timeout"]
+              total = sum(c.values()) - c["skipped"]
+              print("| `%s` | %d | %d | %d | %.1f%% |"
+                    % (module, done, c["survived"], c["no tests"],
+                       100.0 * done / total if total else 0.0))
+          EOF
+
+          {
+            echo
+            echo "### Survivors"
+            echo
+            echo '```'
+            grep -E ": (survived|no tests)$" mutmut-results.txt || echo "none"
+            echo '```'
+            echo
+            echo "Diffs in the mutmut-results artifact (survivors.diff)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutmut-results
+          path: |
+            mutmut-results.txt
+            survivors.diff
+            mutants/mutmut-cicd-stats.json
+            mutants/**/*.meta
+          retention-days: 30

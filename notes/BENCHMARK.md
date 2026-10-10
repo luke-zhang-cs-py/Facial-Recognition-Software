@@ -236,3 +236,98 @@ produces.
 
 The enrollment report now states the measured identification rate for however
 many usable samples a person ended up with, and what more would buy.
+
+
+# Liveness against presentation attacks: protocol
+
+> **Not yet measured.** There are no numbers in this section, and nothing here
+> should be quoted as a result. It is the protocol for a measurement that
+> needs consenting people in front of a real camera, written down before the
+> data exists so the method cannot be fitted to the outcome afterwards.
+
+`pipeline/liveness.py` (MiniFASNet V2, passive, one frame) has been checked
+against genuine faces, where it reports live. It has never been tested
+against a printed photograph or a replayed screen. Until it has, LIVE means
+"no obvious attack detected", not proof of a person.
+
+## What is measured
+
+The metrics are ISO/IEC 30107-3's, computed by `tools/pad_eval.py` from a CSV
+of outcomes:
+
+- **APCER**, per presentation attack instrument (PAI) species: the share of
+  attack presentations of that species the system accepted as bona fide
+  (verdict `live`). Reported **per species and as the worst species**, never
+  averaged, because an average lets a well-handled attack hide a badly
+  handled one.
+- **BPCER**: the share of bona fide presentations (a real person, really
+  there) the system rejected. `unknown`, a vote that never reached a verdict,
+  counts as a rejection here: the person was not marked present.
+
+Each rate is reported with its count and a Wilson 95% interval. With tens of
+attempts per cell, "0 of 20" is a rate between 0% and ~16%, not zero.
+
+The unit is the **attendance decision**, not the single frame: what is scored
+is whether the liveness vote (`LivenessVote`, 4 of the last 7 frames) passed
+during an attempt, because that is what marks somebody present.
+
+## Participants and consent
+
+- Adults who have given written, informed consent to being recorded for this
+  purpose, and who know they can withdraw and have their recordings deleted
+  at any time, with no reason given.
+- At least 10 people, more if possible, with a spread of skin tones, ages and
+  eyewear (the quality gate's history in this file is the reason to check).
+  Report the spread, not identities.
+- Each participant is assigned a code (P01, P02, ...). The key linking codes
+  to people is kept on paper or offline by whoever ran the session, not in
+  this repository and not beside the recordings.
+
+## Attack species
+
+| Species | Instrument | Notes |
+|---|---|---|
+| `print` | The participant's own face, printed on A4 office paper at 300 dpi, matte | held flat, then curved; eyes cut out is a separate species if used |
+| `replay` | A video of the participant on a phone and on a laptop screen | full brightness; note the device models |
+| `none` | The participant themselves | the bona fide presentations |
+
+Only a participant's own face is used as an attack on them. No photograph of
+anyone who has not consented is printed or replayed.
+
+## Procedure
+
+1. Enroll each participant normally (web camera, ~30 samples).
+2. For each participant and condition, make a fixed number of attempts, at
+   least 10 bona fide and 10 per attack species, each attempt lasting until the
+   vote decides or 5 seconds pass (`unknown`).
+3. Conditions: the room's normal lighting, and one dimmer setting. Record the
+   camera model and resolution once per session.
+4. Randomise the order of bona fide and attack attempts per participant, so
+   a drift in lighting or attention does not land on one class.
+5. Log one CSV row per attempt: `participant,attack_type,ground_truth,verdict`
+   (plus any condition columns). No images, crops, embeddings or names.
+
+## Recordings and data handling
+
+- Recordings, if made at all, stay **out of this repository**: on the session
+  machine's local disk or encrypted removable storage, never committed, never
+  uploaded. `.gitignore` ignores images, video files, `dataset/` and
+  databases anywhere outside `docs/`; check `git status` is clean before and
+  after a session.
+- The CSV holds outcomes only, keyed by participant code, and is the only
+  artefact that may be shared or committed (under `notes/`, if at all).
+- Delete recordings when the analysis is done, or sooner on a participant's
+  request. Delete the participant's `dataset/` folder and retrain afterwards.
+
+## Analysis
+
+```bash
+python tools/pad_eval.py attempts.csv          # table
+python tools/pad_eval.py attempts.csv --json   # for the write-up
+```
+
+Report APCER per species and worst-case, BPCER, all counts, the intervals,
+the camera and the lighting. If APCER for any species is high, say so plainly
+and leave the "not validated" caveat in `pipeline/liveness.py` in place;
+tuning `LIVE_THRESHOLD` on the same attempts it is then scored on would be
+fitting the test, not passing it. A threshold change needs a fresh session.

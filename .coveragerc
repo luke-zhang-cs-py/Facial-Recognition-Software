@@ -6,7 +6,19 @@
 # read 61.5% where the honest figure is 58.4%. A coverage report that
 # silently excludes untested modules flatters exactly the code that needs
 # the most attention.
-source = .
+# The code folders have no __init__.py (namespace packages), and `source = .` only reports a never-imported
+# file when its folder is a regular package. So a module no test imports -- cli/face_attendance.py,
+# analysis/fairness_benchmark.py -- dropped out of the report entirely instead of showing at 0%.
+# source_dirs (coverage 7.10+) walks the folders themselves, so every shipped file is counted.
+source_dirs =
+    .
+    cli
+    analysis
+    core
+    pipeline
+
+# Branches as well as lines: a line-only figure counts an `if` whose else-path never ran as fully covered.
+branch = True
 
 # Package-relative now that the modules are grouped. The five `tools_*.py`
 # scripts moved into tools/, which `tools/*` already covered; the four
@@ -18,14 +30,19 @@ source = .
 omit =
     tests/*
     tools/*
-    cli/face_attendance.py
-    cli/seed_demo.py
-    cli/fetch_models.py
-    analysis/fairness_benchmark.py
     .venv/*
     docs/*
 
 [report]
+# The offline figure (no weights, no dataset/, no pyarrow: exactly what the push
+# CI job has) was 96.5% when this was set, on 2026-10-10 -- lines and branches
+# combined, since branch = True. Rounded down, so a run that loses ground fails
+# `coverage report` instead of passing quietly. Raise it when the figure rises;
+# lower it only with a reason in notes/CODE_AUDIT.md. Measured on this machine
+# with the weights, the dataset and pyarrow present the figure is higher, which
+# is why the floor is set from the run CI actually makes.
+fail_under = 96
+
 exclude_lines =
     pragma: no cover
     if __name__ == .__main__.:

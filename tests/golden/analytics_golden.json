@@ -1,0 +1,624 @@
+{
+ "lbph_analysis": {
+  "all_unreadable": {
+   "available": false,
+   "reason": "Not enough samples to cross-validate."
+  },
+  "lopsided": {
+   "accuracy": 100.0,
+   "available": true,
+   "confidence": {
+    "max": 32.5,
+    "mean": 28.8,
+    "min": 25.0
+   },
+   "currentThreshold": 70,
+   "protocol": "3-fold cross-validation of LBPH",
+   "recommendedAccept": 100.0,
+   "recommendedFalseMatch": 0.0,
+   "recommendedThreshold": 40,
+   "samples": 2,
+   "sweep": [
+    {
+     "accept": 50.0,
+     "falseMatch": 0.0,
+     "threshold": 30
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 40
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 50
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 60
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 70
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 80
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 90
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 100
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 110
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 120
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 130
+    }
+   ],
+   "users": 2
+  },
+  "one_image_each": {
+   "available": false,
+   "reason": "Not enough samples to cross-validate."
+  },
+  "one_person": {
+   "available": false,
+   "reason": "Needs at least 2 registered people (found 1)."
+  },
+  "three_people": {
+   "accuracy": 88.9,
+   "available": true,
+   "confidence": {
+    "max": 71.2,
+    "mean": 44.4,
+    "min": 25.0
+   },
+   "currentThreshold": 70,
+   "protocol": "5-fold cross-validation of LBPH",
+   "recommendedAccept": 22.2,
+   "recommendedFalseMatch": 0.0,
+   "recommendedThreshold": 30,
+   "samples": 18,
+   "sweep": [
+    {
+     "accept": 22.2,
+     "falseMatch": 0.0,
+     "threshold": 30
+    },
+    {
+     "accept": 38.9,
+     "falseMatch": 5.6,
+     "threshold": 40
+    },
+    {
+     "accept": 55.6,
+     "falseMatch": 5.6,
+     "threshold": 50
+    },
+    {
+     "accept": 77.8,
+     "falseMatch": 5.6,
+     "threshold": 60
+    },
+    {
+     "accept": 83.3,
+     "falseMatch": 11.1,
+     "threshold": 70
+    },
+    {
+     "accept": 88.9,
+     "falseMatch": 11.1,
+     "threshold": 80
+    },
+    {
+     "accept": 88.9,
+     "falseMatch": 11.1,
+     "threshold": 90
+    },
+    {
+     "accept": 88.9,
+     "falseMatch": 11.1,
+     "threshold": 100
+    },
+    {
+     "accept": 88.9,
+     "falseMatch": 11.1,
+     "threshold": 110
+    },
+    {
+     "accept": 88.9,
+     "falseMatch": 11.1,
+     "threshold": 120
+    },
+    {
+     "accept": 88.9,
+     "falseMatch": 11.1,
+     "threshold": 130
+    }
+   ],
+   "users": 3
+  },
+  "unreadable": {
+   "accuracy": 100.0,
+   "available": true,
+   "confidence": {
+    "max": 40.0,
+    "mean": 32.9,
+    "min": 25.0
+   },
+   "currentThreshold": 70,
+   "protocol": "3-fold cross-validation of LBPH",
+   "recommendedAccept": 100.0,
+   "recommendedFalseMatch": 0.0,
+   "recommendedThreshold": 50,
+   "samples": 6,
+   "sweep": [
+    {
+     "accept": 33.3,
+     "falseMatch": 0.0,
+     "threshold": 30
+    },
+    {
+     "accept": 66.7,
+     "falseMatch": 0.0,
+     "threshold": 40
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 50
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 60
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 70
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 80
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 90
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 100
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 110
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 120
+    },
+    {
+     "accept": 100.0,
+     "falseMatch": 0.0,
+     "threshold": 130
+    }
+   ],
+   "users": 2
+  }
+ },
+ "summarize_user": {
+  "empty": {
+   "age": null,
+   "brightness": null,
+   "contrast": null,
+   "facePx": null,
+   "flags": {},
+   "gender": null,
+   "name": "Person empty",
+   "quality": null,
+   "recommendations": [],
+   "samples": 0,
+   "sharpness": null,
+   "usable": 0,
+   "userId": 7,
+   "verdict": "good",
+   "worstSamples": [],
+   "yawRange": null,
+   "yawSpread": null
+  },
+  "flagged": {
+   "age": {
+    "agreement": 0.67,
+    "distinctLabels": 2,
+    "label": "25-32",
+    "meanConfidence": 0.626,
+    "samples": 12
+   },
+   "brightness": {
+    "max": 110.0,
+    "mean": 110.0,
+    "min": 110.0,
+    "std": 0.0
+   },
+   "contrast": {
+    "max": 45.0,
+    "mean": 45.0,
+    "min": 45.0,
+    "std": 0.0
+   },
+   "facePx": {
+    "max": 200.0,
+    "mean": 200.0,
+    "min": 200.0,
+    "std": 0.0
+   },
+   "flags": {
+    "blurry": 1,
+    "head tilted": 1,
+    "no tonal range": 1,
+    "soft focus": 2,
+    "turned away": 1,
+    "underexposed": 3
+   },
+   "gender": {
+    "agreement": 0.75,
+    "distinctLabels": 2,
+    "label": "female",
+    "meanConfidence": 0.7,
+    "samples": 12
+   },
+   "name": "Person flagged",
+   "quality": {
+    "max": 0.5,
+    "mean": 0.5,
+    "min": 0.5,
+    "std": 0.0
+   },
+   "recommendations": [
+    "More than a quarter of samples are flagged \u2014 recapture.",
+    "3 samples are noticeably softer than the rest \u2014 hold still, or add light so the camera picks a shorter exposure.",
+    "Add light in front of the face, not behind it.",
+    "Every sample is the same angle \u2014 turn your head a little while capturing.",
+    "Only 12 samples; 30 is the intended count.",
+    "4 samples did not re-detect as faces \u2014 the crops may be too tight."
+   ],
+   "samples": 12,
+   "sharpness": {
+    "max": 500.0,
+    "mean": 384.4,
+    "min": 3.0,
+    "std": 200.6
+   },
+   "usable": 6,
+   "userId": 7,
+   "verdict": "needs work",
+   "worstSamples": [
+    {
+     "brightness": 110.0,
+     "file": "6.jpg",
+     "reasons": [
+      "underexposed",
+      "turned away",
+      "head tilted"
+     ],
+     "sharpness": 500.0
+    },
+    {
+     "brightness": 110.0,
+     "file": "3.jpg",
+     "reasons": [
+      "underexposed",
+      "no tonal range"
+     ],
+     "sharpness": 500.0
+    },
+    {
+     "brightness": 110.0,
+     "file": "2.jpg",
+     "reasons": [
+      "blurry"
+     ],
+     "sharpness": 3.0
+    },
+    {
+     "brightness": 110.0,
+     "file": "0.jpg",
+     "reasons": [
+      "soft focus"
+     ],
+     "sharpness": 50.0
+    },
+    {
+     "brightness": 110.0,
+     "file": "1.jpg",
+     "reasons": [
+      "soft focus"
+     ],
+     "sharpness": 60.0
+    }
+   ],
+   "yawRange": [
+    1.0,
+    1.5
+   ],
+   "yawSpread": 0.2
+  },
+  "good": {
+   "age": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "25-32",
+    "meanConfidence": 0.6,
+    "samples": 25
+   },
+   "brightness": {
+    "max": 110.0,
+    "mean": 110.0,
+    "min": 110.0,
+    "std": 0.0
+   },
+   "contrast": {
+    "max": 45.0,
+    "mean": 45.0,
+    "min": 45.0,
+    "std": 0.0
+   },
+   "facePx": {
+    "max": 200.0,
+    "mean": 200.0,
+    "min": 200.0,
+    "std": 0.0
+   },
+   "flags": {},
+   "gender": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "male",
+    "meanConfidence": 0.8,
+    "samples": 25
+   },
+   "name": "Person good",
+   "quality": {
+    "max": 0.6,
+    "mean": 0.5,
+    "min": 0.4,
+    "std": 0.1
+   },
+   "recommendations": [],
+   "samples": 25,
+   "sharpness": {
+    "max": 304.0,
+    "mean": 292.0,
+    "min": 280.0,
+    "std": 7.2
+   },
+   "usable": 25,
+   "userId": 7,
+   "verdict": "good",
+   "worstSamples": [],
+   "yawRange": [
+    -12.0,
+    12.0
+   ],
+   "yawSpread": 7.2
+  },
+  "no_pose": {
+   "age": null,
+   "brightness": {
+    "max": 110.0,
+    "mean": 110.0,
+    "min": 110.0,
+    "std": 0.0
+   },
+   "contrast": {
+    "max": 45.0,
+    "mean": 45.0,
+    "min": 45.0,
+    "std": 0.0
+   },
+   "facePx": {
+    "max": 200.0,
+    "mean": 200.0,
+    "min": 200.0,
+    "std": 0.0
+   },
+   "flags": {},
+   "gender": null,
+   "name": "Person no_pose",
+   "quality": null,
+   "recommendations": [],
+   "samples": 22,
+   "sharpness": {
+    "max": 300.0,
+    "mean": 300.0,
+    "min": 300.0,
+    "std": 0.0
+   },
+   "usable": 22,
+   "userId": 7,
+   "verdict": "good",
+   "worstSamples": [],
+   "yawRange": null,
+   "yawSpread": null
+  },
+  "one_sample": {
+   "age": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "25-32",
+    "meanConfidence": 0.6,
+    "samples": 1
+   },
+   "brightness": {
+    "max": 110.0,
+    "mean": 110.0,
+    "min": 110.0,
+    "std": 0.0
+   },
+   "contrast": {
+    "max": 45.0,
+    "mean": 45.0,
+    "min": 45.0,
+    "std": 0.0
+   },
+   "facePx": {
+    "max": 200.0,
+    "mean": 200.0,
+    "min": 200.0,
+    "std": 0.0
+   },
+   "flags": {},
+   "gender": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "male",
+    "meanConfidence": 0.8,
+    "samples": 1
+   },
+   "name": "Person one_sample",
+   "quality": {
+    "max": 0.5,
+    "mean": 0.5,
+    "min": 0.5,
+    "std": 0.0
+   },
+   "recommendations": [
+    "Only 1 samples; 30 is the intended count."
+   ],
+   "samples": 1,
+   "sharpness": {
+    "max": 300.0,
+    "mean": 300.0,
+    "min": 300.0,
+    "std": 0.0
+   },
+   "usable": 1,
+   "userId": 7,
+   "verdict": "needs work",
+   "worstSamples": [],
+   "yawRange": [
+    7.2,
+    7.2
+   ],
+   "yawSpread": null
+  },
+  "unmeasured": {
+   "age": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "25-32",
+    "meanConfidence": 0.6,
+    "samples": 3
+   },
+   "brightness": null,
+   "contrast": null,
+   "facePx": null,
+   "flags": {},
+   "gender": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "male",
+    "meanConfidence": 0.8,
+    "samples": 3
+   },
+   "name": "Person unmeasured",
+   "quality": null,
+   "recommendations": [
+    "Only 3 samples; 30 is the intended count."
+   ],
+   "samples": 3,
+   "sharpness": null,
+   "usable": 3,
+   "userId": 7,
+   "verdict": "needs work",
+   "worstSamples": [],
+   "yawRange": null,
+   "yawSpread": null
+  },
+  "zero_median": {
+   "age": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "25-32",
+    "meanConfidence": 0.6,
+    "samples": 20
+   },
+   "brightness": {
+    "max": 110.0,
+    "mean": 110.0,
+    "min": 110.0,
+    "std": 0.0
+   },
+   "contrast": {
+    "max": 45.0,
+    "mean": 45.0,
+    "min": 45.0,
+    "std": 0.0
+   },
+   "facePx": {
+    "max": 200.0,
+    "mean": 200.0,
+    "min": 200.0,
+    "std": 0.0
+   },
+   "flags": {},
+   "gender": {
+    "agreement": 1.0,
+    "distinctLabels": 1,
+    "label": "male",
+    "meanConfidence": 0.8,
+    "samples": 20
+   },
+   "name": "Person zero_median",
+   "quality": {
+    "max": 0.5,
+    "mean": 0.5,
+    "min": 0.5,
+    "std": 0.0
+   },
+   "recommendations": [],
+   "samples": 20,
+   "sharpness": {
+    "max": 0.0,
+    "mean": 0.0,
+    "min": 0.0,
+    "std": 0.0
+   },
+   "usable": 20,
+   "userId": 7,
+   "verdict": "good",
+   "worstSamples": [],
+   "yawRange": [
+    0.0,
+    76.0
+   ],
+   "yawSpread": 23.1
+  }
+ }
+}

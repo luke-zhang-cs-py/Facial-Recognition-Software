@@ -47,7 +47,13 @@ def main():
     db.init_db()
 
     if args.command == "register":
-        register_user.register_user(args.name)
+        # Through register_user.main, which strips the name and refuses a
+        # blank or flag-like one. Calling register_user() directly skipped
+        # that check, so `register "  "` created a user called "  " and
+        # trained on nothing. The "--" keeps a name argparse would read as an
+        # option ("-Ada") a name, for main's own check to refuse.
+        if register_user.main(["--", args.name]) != 0:
+            return 1
         # Registering without training leaves somebody enrolled who cannot be
         # recognised, which looks identical to the system being broken.
         train_model.train()

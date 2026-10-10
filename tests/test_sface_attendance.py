@@ -195,9 +195,12 @@ def test_refresh_embeds_enrolled_samples_once_and_skips_orphan_folders(
         os.makedirs(os.path.join(root, folder))
         cv2.imwrite(os.path.join(root, folder, "1.jpg"), np.zeros((8, 8), np.uint8))
     done = {}
-    monkeypatch.setattr(analytics, "analyze_sample",
-                        lambda uid, path: done.setdefault(path, uid))
-    monkeypatch.setattr(isolated_db, "get_cached_traits", lambda path, mtime: path in done)
+    def analyze_sample(uid, path, use_cache=True):
+        done.setdefault(path, uid)
+        return {"embedding": np.ones(4, np.float32)}
+    monkeypatch.setattr(analytics, "analyze_sample", analyze_sample)
+    monkeypatch.setattr(isolated_db, "get_cached_traits",
+                        lambda path, mtime: {"embedding": b"cached" * 4} if path in done else None)
     assert recognition.refresh_gallery() == 1
     assert list(done.values()) == [ada]
     assert recognition.refresh_gallery() == 0, "an embedded sample is not redone"

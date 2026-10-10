@@ -294,40 +294,97 @@ def _recommendations(records, flags, usable, yaw_spread):
     return advice
 
 
-def summarize_user(user_id, name, records):
-    _mark_relative_blur(records)
+# The per-image numbers summarize_user reports a spread for, in report order.
+STAT_KEYS = ("sharpness", "brightness", "contrast", "quality", "facePx")
 
+
+# summarize_user used to do three jobs in one body -- read columns out of the
+# records, compute statistics over them, and phrase the report -- which is
+# what the first audit meant by "mixing extraction, statistics and
+# presentation". Each step is now a function of plain data, testable without
+# building a record list, and tests/test_cov_analytics_golden.py holds the
+# output from before the split to prove nothing moved.
+
+def user_columns(records):
+    """Extraction: the columns summarize_user reasons about.
+
+    Only reads. Relative blur is marked by summarize_user before this runs,
+    because "soft focus" is a flag like any other once it is set.
+    """
     flags = Counter()
     for r in records:
         for f in r["flags"]:
             flags[f] += 1
+    return {
+        "flags": flags,
+        "usable": sum(1 for r in records if not r["flags"]),
+        "yaws": [r["yaw"] for r in records if r["yaw"] is not None],
+        "values": {key: [r[key] for r in records] for key in STAT_KEYS},
+        "age": ([r["age"] for r in records], [r["ageConf"] for r in records]),
+        "gender": ([r["gender"] for r in records],
+                   [r["genderConf"] for r in records]),
+    }
 
-    usable = sum(1 for r in records if not r["flags"])
-    yaws = [r["yaw"] for r in records if r["yaw"] is not None]
-    yaw_spread = round(float(np.std(yaws)), 1) if len(yaws) > 1 else None
-    yaw_range = (round(float(min(yaws)), 1), round(float(max(yaws)), 1)) if yaws else None
 
-    recommendations = _recommendations(records, flags, usable, yaw_spread)
+def yaw_statistics(yaws):
+    """Statistics: (spread, range) of the measured yaws.
 
+    The spread is None for fewer than two readings, where a standard
+    deviation of 0 would read as "every sample the same angle" rather than
+    "not enough to say"; the range is None for no readings at all.
+    """
+    spread = round(float(np.std(yaws)), 1) if len(yaws) > 1 else None
+    span = ((round(float(min(yaws)), 1), round(float(max(yaws)), 1))
+            if yaws else None)
+    return spread, span
+
+
+def user_statistics(columns):
+    """Statistics: every number in the summary, from user_columns()."""
+    yaw_spread, yaw_range = yaw_statistics(columns["yaws"])
+    return {
+        "stats": {key: _stats(columns["values"][key]) for key in STAT_KEYS},
+        "yawSpread": yaw_spread,
+        "yawRange": yaw_range,
+        "age": _modal(*columns["age"]),
+        "gender": _modal(*columns["gender"]),
+    }
+
+
+def present_user(user_id, name, samples, columns, statistics, worst,
+                 recommendations):
+    """Presentation: the summary dict, in the shape the UI and CLI read."""
+    stats = statistics["stats"]
     return {
         "userId": user_id,
         "name": name,
-        "samples": len(records),
-        "usable": usable,
-        "flags": dict(flags.most_common()),
-        "sharpness": _stats([r["sharpness"] for r in records]),
-        "brightness": _stats([r["brightness"] for r in records]),
-        "contrast": _stats([r["contrast"] for r in records]),
-        "quality": _stats([r["quality"] for r in records]),
-        "facePx": _stats([r["facePx"] for r in records]),
-        "yawSpread": yaw_spread,
-        "yawRange": yaw_range,
-        "worstSamples": _worst_samples(records),
-        "age": _modal([r["age"] for r in records], [r["ageConf"] for r in records]),
-        "gender": _modal([r["gender"] for r in records], [r["genderConf"] for r in records]),
+        "samples": samples,
+        "usable": columns["usable"],
+        "flags": dict(columns["flags"].most_common()),
+        "sharpness": stats["sharpness"],
+        "brightness": stats["brightness"],
+        "contrast": stats["contrast"],
+        "quality": stats["quality"],
+        "facePx": stats["facePx"],
+        "yawSpread": statistics["yawSpread"],
+        "yawRange": statistics["yawRange"],
+        "worstSamples": worst,
+        "age": statistics["age"],
+        "gender": statistics["gender"],
         "verdict": "good" if not recommendations else "needs work",
         "recommendations": recommendations,
     }
+
+
+def summarize_user(user_id, name, records):
+    _mark_relative_blur(records)
+    columns = user_columns(records)
+    statistics = user_statistics(columns)
+    recommendations = _recommendations(records, columns["flags"],
+                                       columns["usable"],
+                                       statistics["yawSpread"])
+    return present_user(user_id, name, len(records), columns, statistics,
+                        _worst_samples(records), recommendations)
 
 
 # ------------------------------------------------------- recognition (SFace)
@@ -582,17 +639,24 @@ def _score_fold(model, test_pairs):
     return scored
 
 
-def lbph_analysis(records, folds=KFOLDS):
-    """K-fold cross-validation of the LBPH recogniser, attendance's fallback
-    when the SFace weights are missing."""
+# lbph_analysis is split the same way as summarize_user: extraction (run the
+# cross-validation and collect held-out predictions), statistics (rates and
+# spreads over those predictions) and presentation (the report dict).
+
+def paths_by_user(records):
+    """{user_id: [path, ...]} in the order the records arrived."""
     by_user = defaultdict(list)
     for r in records:
         by_user[r["userId"]].append(r["path"])
+    return by_user
 
-    if len(by_user) < 2:
-        return {"available": False,
-                "reason": f"Needs at least 2 registered people (found {len(by_user)})."}
 
+def lbph_predictions(by_user, folds=KFOLDS):
+    """Extraction: (held-out (true, predicted, confidence) list, folds used).
+
+    A fold is skipped when it has no training side or no test side, and when
+    its training side holds fewer than two people -- LBPH cannot separate one.
+    """
     assignment = _stratify(by_user, folds)
     usable_folds = sorted({f for f, _, _ in assignment})
 
@@ -605,25 +669,36 @@ def lbph_analysis(records, folds=KFOLDS):
         model = _train_lbph(train)
         if model is not None:
             results += _score_fold(model, test)
+    return results, usable_folds
 
-    if not results:
-        return {"available": False, "reason": "Not enough samples to cross-validate."}
 
+def lbph_statistics(results):
+    """Statistics over a non-empty list of held-out predictions."""
     correct = sum(1 for true, pred, _ in results if true == pred)
     sweep = _lbph_sweep(results)
-    best = best_threshold(sweep)
-
     confs = np.array([c for _, _, c in results])
     return {
-        "available": True,
-        "protocol": f"{len(usable_folds)}-fold cross-validation of LBPH",
         "samples": len(results),
-        "users": len(by_user),
         "accuracy": round(100.0 * correct / len(results), 1),
         "confidence": {"mean": round(float(confs.mean()), 1),
                        "min": round(float(confs.min()), 1),
                        "max": round(float(confs.max()), 1)},
         "sweep": sweep,
+        "best": best_threshold(sweep),
+    }
+
+
+def present_lbph(statistics, n_folds, n_users):
+    """Presentation: the report dict the UI and the CLI read."""
+    best = statistics["best"]
+    return {
+        "available": True,
+        "protocol": f"{n_folds}-fold cross-validation of LBPH",
+        "samples": statistics["samples"],
+        "users": n_users,
+        "accuracy": statistics["accuracy"],
+        "confidence": statistics["confidence"],
+        "sweep": statistics["sweep"],
         "recommendedThreshold": best["threshold"],
         "recommendedAccept": best["accept"],
         "recommendedFalseMatch": best["falseMatch"],
@@ -633,6 +708,22 @@ def lbph_analysis(records, folds=KFOLDS):
         # configuration the moment somebody changed the real threshold.
         "currentThreshold": vision.CONFIDENCE_THRESHOLD,
     }
+
+
+def lbph_analysis(records, folds=KFOLDS):
+    """K-fold cross-validation of the LBPH recogniser, attendance's fallback
+    when the SFace weights are missing."""
+    by_user = paths_by_user(records)
+    if len(by_user) < 2:
+        return {"available": False,
+                "reason": f"Needs at least 2 registered people (found {len(by_user)})."}
+
+    results, usable_folds = lbph_predictions(by_user, folds)
+    if not results:
+        return {"available": False, "reason": "Not enough samples to cross-validate."}
+
+    return present_lbph(lbph_statistics(results), len(usable_folds),
+                        len(by_user))
 
 
 # ------------------------------------------------------------------ top API

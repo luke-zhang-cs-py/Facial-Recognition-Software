@@ -84,14 +84,23 @@ def remove_all():
 
 
 def load_lfw(min_images, wanted, requested=None, exclude=()):
-    import pyarrow.parquet as pq
     import json
 
+    # The corpus check comes before the pyarrow import. pyarrow is not in
+    # requirements.txt, so on a fresh install importing it first raised
+    # ImportError and the download instructions below were never printed --
+    # the one message a first run needs.
     if not os.path.exists(LFW):
         print(f"LFW parquet not found at {LFW}")
         print("Download it with:")
         print("  curl -L https://huggingface.co/api/datasets/logasja/lfw/parquet/"
               "default/train/0.parquet -o \"%s\"" % LFW)
+        return None
+
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        print("Reading the LFW parquet needs pyarrow: pip install pyarrow")
         return None
 
     pf = pq.ParquetFile(LFW)
@@ -274,11 +283,14 @@ def main():
     if not args.keep:
         remove_all()   # re-seeding replaces rather than duplicates
 
+    # Worked out for both paths. Only the --people path used to pass it, so
+    # `--keep --all-with N` enrolled everyone already enrolled a second time,
+    # under a second id.
+    enrolled = ([name[len(PREFIX):] for _, name in demo_users()]
+                if args.keep else ())
     if args.all_with:
-        loaded = load_lfw(args.all_with, None, None)
+        loaded = load_lfw(args.all_with, None, None, exclude=enrolled)
     else:
-        enrolled = ([name[len(PREFIX):] for _, name in demo_users()]
-                    if args.keep else ())
         loaded = load_lfw(args.samples, args.people,
                           [n for n in args.names.split(",") if n.strip()],
                           exclude=enrolled)
@@ -294,6 +306,9 @@ def main():
     # including the ones no user owns, on every seed.
     from pipeline import recognition
     print(f"  {recognition.refresh_gallery()} samples embedded")
+    from core import facemodels
+    if not facemodels.have("sface"):
+        print("  (none can be without the SFace weights: python -m cli.fetch_models)")
 
     from pipeline import train_model
     train_model.train()

@@ -151,7 +151,7 @@ def report_rate(name, hits, groups, names, budget=DISPARITY_BUDGET):
     # Calling bias requires both an effect big enough to matter (over budget)
     # and confidence intervals that do not overlap, so the gap survives the
     # sampling error. Otherwise the honest label is "inconclusive".
-    separated = worst["ci"][0] > best["ci"][1]
+    separated = bool(worst["ci"][0] > best["ci"][1])
     if ratio <= budget:
         verdict = "OK"
     elif not separated:
@@ -165,6 +165,27 @@ def report_rate(name, hits, groups, names, budget=DISPARITY_BUDGET):
           f"vs {best['group']} {100 * best['rate']:.2f}%)   [{verdict}]{note}")
     return {"rows": rows, "disparity": ratio, "worst": worst,
             "best": best, "verdict": verdict, "ciSeparated": separated}
+
+
+def json_ready(obj):
+    """The report as strict JSON values.
+
+    A disparity is infinite whenever the best group's rate is zero -- common
+    on a rare flag -- and json.dump wrote that as `Infinity`, which a browser
+    or jq rejects along with the rest of the file. Non-finite numbers become
+    null (the console line still prints "inf"), and numpy scalars become the
+    Python value they hold rather than going through `default=float`, which
+    wrote a boolean as 1.0.
+    """
+    if isinstance(obj, dict):
+        return {k: json_ready(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_ready(v) for v in obj]
+    if isinstance(obj, np.generic):
+        obj = obj.item()
+    if isinstance(obj, float) and not np.isfinite(obj):
+        return None
+    return obj
 
 
 def main():
@@ -194,12 +215,17 @@ def main():
           f"per '{args.group_column}' group")
 
     results = analyse_sample(idx, offsets)
+    # Only the images that were actually analysed are in any denominator.
+    # An image the decoder could not read used to count as a detection
+    # failure (and as an unflagged image) for its group, so a handful of
+    # corrupt files in one group read as a biased detector.
+    analysed = np.array([r is not None for r in results], dtype=bool)
     got = [r for r in results if r is not None]
     print(f"analysed {len(got):,}/{len(idx):,}")
 
-    sel_groups = groups[idx]
-    detected = np.array([bool(r and r["detected"]) for r in results])
-    any_flag = np.array([bool(r and r["flags"]) for r in results])
+    sel_groups = groups[idx][analysed]
+    detected = np.array([bool(r["detected"]) for r in got], dtype=bool)
+    any_flag = np.array([bool(r["flags"]) for r in got], dtype=bool)
 
     names = DEFAULT_NAMES.get(args.group_column,
                               [f"group {i}" for i in range(int(groups.max()) + 1)])
@@ -209,7 +235,8 @@ def main():
     print("=" * 70)
 
     report = {"corpus": args.corpus, "sample": len(idx),
-              "perGroup": args.per_group, "sections": {}}
+              "analysed": len(got), "perGroup": args.per_group,
+              "sections": {}}
 
     report["sections"]["detection_failure"] = report_rate(
         "detection FAILURE rate (lower is better, must be even)",
@@ -220,14 +247,14 @@ def main():
     # Per-flag breakdown: which specific check, if any, is uneven.
     all_flags = sorted({f for r in got for f in r["flags"]})
     for flag in all_flags:
-        hits = np.array([bool(r and flag in r["flags"]) for r in results])
+        hits = np.array([flag in r["flags"] for r in got], dtype=bool)
         if hits.sum() < 20:
             continue
         report["sections"][f"flag_{flag}"] = report_rate(
             f"flag '{flag}'", hits, sel_groups, names)
 
     for col in extra:
-        vals = labels[col][idx]
+        vals = labels[col][idx][analysed]
         nm = DEFAULT_NAMES.get(col, [f"{col} {i}" for i in range(int(vals.max()) + 1)])
         print("\n" + "=" * 70)
         print(f"FAIRNESS BY {col.upper()}")
@@ -248,7 +275,9 @@ def main():
 
     if args.json:
         with open(args.json, "w", encoding="utf-8") as fh:
-            json.dump(report, fh, indent=2, default=float)
+            # allow_nan=False: an infinite disparity was written as the bare
+            # token Infinity, which no strict JSON parser accepts.
+            json.dump(json_ready(report), fh, indent=2, allow_nan=False)
         print(f"\nwrote {args.json}")
     return 1 if biased else 0
 

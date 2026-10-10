@@ -157,11 +157,21 @@ def refresh_gallery():
     cli.register_user, and every enrollment made before SFace decided
     attendance, does not. analytics.analyze_sample caches by path and mtime,
     so a sample already embedded costs a database read. Returns how many
-    samples were newly analysed.
+    samples were newly embedded -- not merely analysed: without the SFace
+    weights a sample is analysed and cached with no embedding, and counting
+    it made seed_demo report "N samples embedded" over a gallery that could
+    recognise nobody.
     """
     import os
 
     from analysis import analytics
+    from core import facemodels
+
+    # A sample cached with no embedding was analysed before the weights were
+    # fetched. Skipping every cached row left it that way for good, so the
+    # person never gained a centroid; it is redone once an embedding can come
+    # out of it, and left alone (no re-read on every call) until then.
+    can_embed = facemodels.have("sface")
 
     # Folders by their id prefix, as train_model reads them -- the gallery
     # and the LBPH model have to be built from the same samples.
@@ -170,8 +180,10 @@ def refresh_gallery():
     for user_id, _, path in analytics.iter_sample_paths():
         if user_id not in enrolled:
             continue
-        if db.get_cached_traits(path, os.path.getmtime(path)):
+        cached = db.get_cached_traits(path, os.path.getmtime(path))
+        if cached and (cached.get("embedding") is not None or not can_embed):
             continue
-        if analytics.analyze_sample(user_id, path) is not None:
+        record = analytics.analyze_sample(user_id, path, use_cache=False)
+        if record is not None and record.get("embedding") is not None:
             added += 1
     return added

@@ -264,10 +264,24 @@ def api_attendance_stop():
     return jsonify({"ok": True})
 
 
+def json_flag(body, key, default):
+    """A true/false field from a JSON body, or None if it is anything else.
+
+    The value used to go straight to bool() or `not`, and the string "false"
+    is truthy: {"enabled": "false"} turned the trait panel ON, and
+    {"refresh": "false"} re-read every image instead of using the cache.
+    The page always sends a real boolean, so anything else is refused.
+    """
+    value = body.get(key, default)
+    return value if isinstance(value, bool) else None
+
+
 @app.route("/api/traits", methods=["POST"])
 def api_traits_toggle():
-    body = json_body()
-    camera.set_traits_enabled(body.get("enabled", True))
+    enabled = json_flag(json_body(), "enabled", True)
+    if enabled is None:
+        return fail("'enabled' has to be true or false.")
+    camera.set_traits_enabled(enabled)
     return jsonify({"ok": True})
 
 
@@ -281,15 +295,16 @@ def api_models():
 
 @app.route("/api/analysis/start", methods=["POST"])
 def api_analysis_start():
-    body = json_body()
+    # refresh=True ignores the sample_traits cache and re-reads every image.
+    refresh = json_flag(json_body(), "refresh", False)
+    if refresh is None:
+        return fail("'refresh' has to be true or false.")
     with _analysis_lock:
         if _analysis["running"]:
             return fail("An analysis is already running.", 409)
         _analysis.update(running=True, done=0, total=0, error=None)
 
-    # refresh=True ignores the sample_traits cache and re-reads every image.
-    use_cache = not body.get("refresh", False)
-    threading.Thread(target=_analysis_worker, args=(use_cache,), daemon=True).start()
+    threading.Thread(target=_analysis_worker, args=(not refresh,), daemon=True).start()
     return jsonify({"ok": True})
 
 

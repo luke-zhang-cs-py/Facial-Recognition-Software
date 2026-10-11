@@ -188,3 +188,22 @@ def test_seed_demo_keep_skips_people_already_enrolled():
     assert [len(idx) for _, idx in picked] == [4, 3]
     everyone = seed_demo.pick_people(labels, names, 4, None)
     assert [names[lab] for lab, _ in everyone] == ["George_W_Bush", "Colin_Powell"]
+
+
+@pytest.mark.parametrize("module", ["attendance", "view_report"])
+def test_help_explains_and_exits_without_running(module, monkeypatch, capsys):
+    """`python -m cli.attendance --help` used to ignore the flag and open the webcam."""
+    import importlib
+    mod = importlib.import_module("cli." + module)
+    ran = []
+    monkeypatch.setattr(mod, "run_attendance" if module == "attendance" else "main", lambda: ran.append(1))
+    with pytest.raises(SystemExit) as stop:
+        mod.cli(["--help"])
+    assert stop.value.code == 0 and ran == []
+    assert "usage: python -m cli." + module in capsys.readouterr().out
+    with pytest.raises(SystemExit) as bad:          # an unknown argument is refused, not ignored
+        mod.cli(["--bogus"])
+    assert bad.value.code == 2 and ran == []
+    mod.cli([])                                     # no arguments: runs as it always did
+    assert ran == [1]
+

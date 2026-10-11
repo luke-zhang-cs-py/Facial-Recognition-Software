@@ -33,5 +33,16 @@ def main():
         print(f"  {timestamp}  |  {name}  |  {reading}")
 
 
-if __name__ == "__main__":
+def cli(argv=None):
+    """`python -m cli.view_report`: --help explains and exits; any other argument is refused rather than
+    ignored. face_attendance calls main() directly."""
+    import argparse
+    argparse.ArgumentParser(
+        prog="python -m cli.view_report",
+        description="Print every registered user and every attendance record, with which recogniser "
+                    "marked it.").parse_args(argv)
     main()
+
+
+if __name__ == "__main__":
+    cli()

@@ -173,5 +173,16 @@ def run_attendance():
     _report_today()
 
 
-if __name__ == "__main__":
+def cli(argv=None):
+    """`python -m cli.attendance`: --help explains and exits instead of opening the webcam, which is what
+    running the loop on any argument used to do. face_attendance calls run_attendance() directly."""
+    import argparse
+    argparse.ArgumentParser(
+        prog="python -m cli.attendance",
+        description="Take attendance from the webcam: recognise the largest face, check it is live, and mark "
+                    "that person present once a day. Press q in the window to stop.").parse_args(argv)
     run_attendance()
+
+
+if __name__ == "__main__":
+    cli()

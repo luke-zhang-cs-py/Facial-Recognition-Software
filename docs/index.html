@@ -400,8 +400,8 @@ var MODULES = [
   { name: 'pipeline/sampleframes.py',       lines: 271, stmts: 134, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
   { name: 'core/db.py',                     lines: 415, stmts: 131, missed:  0, does: 'the schema and every query; one context manager for all access' },
   { name: 'pipeline/guidance.py',           lines: 290, stmts: 103, missed:  0, does: 'turns a live trait read into one instruction to act on' },
+  { name: 'cli/attendance.py',              lines: 188, stmts: 102, missed:  0, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
   { name: 'cli/fetch_models.py',            lines: 187, stmts:  99, missed:  0, does: 'downloads the pretrained weights and checks each against its pinned SHA-256; tested with every download mocked' },
-  { name: 'cli/attendance.py',              lines: 177, stmts:  98, missed:  0, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
   { name: 'pipeline/decision.py',           lines: 236, stmts:  97, missed:  0, does: 'the attendance decision, once: SFace first, LBPH fallback, for the camera and the CLI' },
   { name: 'cli/register_user.py',           lines: 157, stmts:  82, missed:  0, does: 'the CLI capture loop; writing a gallery sample is now its own function' },
   { name: 'analysis/calibration.py',        lines: 291, stmts:  75, missed:  0, does: 'the measured false-match curve and the gallery-size maths' },
@@ -413,7 +413,7 @@ var MODULES = [
   { name: 'core/paths.py',                  lines: 123, stmts:  41, missed:  0, does: 'where the data lives — one decision, resolved per call' },
   { name: 'pipeline/train_model.py',        lines:  69, stmts:  36, missed:  0, does: 'rebuilds the LBPH recogniser from dataset/' },
   { name: 'cli/face_attendance.py',         lines:  73, stmts:  27, missed:  0, does: 'a thin entry point, asserted by test to hold no logic' },
-  { name: 'cli/view_report.py',             lines:  37, stmts:  16, missed:  0, does: 'prints the users and the attendance rows' },
+  { name: 'cli/view_report.py',             lines:  48, stmts:  20, missed:  0, does: 'prints the users and the attendance rows' },
   { name: 'core/corpus_paths.py',           lines:  79, stmts:  16, missed:  0, does: 'one home for the benchmark corpus locations' },
   { name: 'core/vision.py',                 lines:  71, stmts:   6, missed:  0, does: 'the numbers the LBPH capture path shares — threshold, crop size, detector tuning' }
 ];
@@ -451,9 +451,9 @@ var TESTS = [
   { file: 'test_fifth_pass_scan.py',        n: 26, of: 'the scan fixes: a linear one-mark-per-day migration, huge folder ids, benchmark failures, CSV quirks, weight verification' },
   { file: 'test_cov_landmarks.py',          n: 25, of: 'the 68-point measurements on hand-placed point sets, and the divide-by-a-distance cases' },
   { file: 'test_analytics.py',              n: 24, of: 'the sweeps, and refusing to trust a small one' },
+  { file: 'test_paths_and_cli.py',          n: 24, of: 'that every module resolves its paths per call' },
   { file: 'test_cov_analyze_faces.py',      n: 22, of: 'the console analysis report, section by section, over a dataset of grey squares' },
   { file: 'test_fourth_pass_phase1.py',     n: 22, of: 'one per-frame decision for both front ends, one mark per person per day, one rule for a folder id' },
-  { file: 'test_paths_and_cli.py',          n: 22, of: 'that every module resolves its paths per call' },
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
   { file: 'test_analysis_helpers.py',       n: 19, of: 'the leave-one-out measurement, and the console report' },
   { file: 'test_cov_fairness_benchmark.py', n: 19, of: 'the fairness statistics and the benchmark run, on a tiny labelled corpus' },
@@ -482,7 +482,7 @@ var TESTS = [
   { file: 'test_cov_analytics_golden.py',   n:  2, of: 'that splitting summarize_user and lbph_analysis changed nothing, against output captured before the split' }
 ];
 
-var TEST_LINES = 12260;
+var TEST_LINES = 12279;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

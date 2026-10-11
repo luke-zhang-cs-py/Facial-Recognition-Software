@@ -78,7 +78,7 @@ offline figure drops. Two workflows run only on demand from the Actions tab:
 coverage with and without them, and `mutation.yml` runs mutmut (it does not
 run on native Windows) and writes the mutation score into the job summary.
 
-911 tests locally; 908 pass and 3 skip here (`-rs` says why).
+913 tests locally; 910 pass and 3 skip here (`-rs` says why).
 
 `python tools/refresh_figures.py` rewrites that sentence, the figures on
 `docs/index.html` and the one in the README from a real measured run — do

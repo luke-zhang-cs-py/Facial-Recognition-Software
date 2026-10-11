@@ -426,8 +426,9 @@ def test_properties_use_a_derandomized_profile_in_ci():
     path = os.path.join(ROOT, "tests", "test_properties.py")
 
     def profile(**env):
+        # GITHUB_ACTIONS too: it is what Hypothesis's own CI detection reads on a runner.
         clean = {k: v for k, v in os.environ.items()
-                 if k not in ("CI", "HYPOTHESIS_PROFILE")}
+                 if k not in ("CI", "HYPOTHESIS_PROFILE", "GITHUB_ACTIONS")}
         clean.update(env)
         got = subprocess.run([sys.executable, "-c", code, path], env=clean, cwd=ROOT,
                              capture_output=True, text=True)

@@ -27,7 +27,9 @@ from pipeline import decision, guidance, liveness          # noqa: E402
 
 # Windows runners and coverage both slow the first example down; a deadline
 # would fail on the machine, not on the property.
-settings.register_profile("project", deadline=None, print_blob=True,
+# derandomize is stated, not inherited: Hypothesis detects CI on its own (GITHUB_ACTIONS and the like) and then
+# derandomizes its defaults, so without this the local profile would quietly match the ci one on a runner.
+settings.register_profile("project", deadline=None, print_blob=True, derandomize=False,
                           suppress_health_check=[HealthCheck.too_slow])
 # More examples on request: HYPOTHESIS_PROFILE=thorough pytest tests/test_properties.py
 settings.register_profile("thorough", parent=settings.get_profile("project"),

@@ -151,9 +151,9 @@ def report_rate(name, hits, groups, names, budget=DISPARITY_BUDGET):
     rows = []
     for g in sorted(np.unique(groups)):
         sel = groups == g
+        # np.unique yields only values that occur, so n >= 1 and wilson() is
+        # never asked about an empty group.
         n = int(sel.sum())
-        if not n:
-            continue
         k = int(hits[sel].sum())
         lo, hi = wilson(k, n)
         label = names[g] if g < len(names) else f"group {g}"

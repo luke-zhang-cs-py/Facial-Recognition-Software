@@ -239,3 +239,21 @@ def test_triangles_reaching_the_virtual_outer_vertices_are_dropped(monkeypatch):
     edges = landmarks._delaunay_edges(pts, 50, 50)
     assert sorted(edges) == [((1, 1), (1, 20)), ((1, 1), (20, 1)),
                              ((1, 20), (20, 1))]
+
+
+def test_draw_without_a_contour_still_draws_the_rest(monkeypatch):
+    """outline() has nothing to say when the derived points are missing. The
+    feature outlines and the mesh still go on, and nothing hands polylines a
+    None."""
+    monkeypatch.setattr(landmarks, "outline", lambda points: None)
+    polylines = []
+    real = landmarks.cv2.polylines
+    monkeypatch.setattr(landmarks.cv2, "polylines",
+                        lambda img, pts, *a, **k: (polylines.append(pts),
+                                                   real(img, pts, *a, **k))[1])
+    frame = np.zeros((300, 300, 3), np.uint8)
+    landmarks.draw(frame, fake_68())
+
+    assert frame.any(), "the mesh was not drawn"
+    assert len(polylines) == len(landmarks.PARTS), "one per feature, no contour"
+    assert all(p is not None for batch in polylines for p in batch)

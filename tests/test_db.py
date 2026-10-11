@@ -126,3 +126,50 @@ def test_a_new_user_never_gets_an_id_a_dataset_folder_already_claims(isolated_db
     assert new == 41
     assert isolated_db.add_user("Ben") == 42
     assert not any(f.startswith(f"{new}_") for f in os.listdir(root))
+
+
+# ------------------------------------------------ the migration's two entries
+#
+# _create_tables and _one_mark_per_day open their own write transaction only
+# when the caller has not. init_db always arrives with one open, so the other
+# side is reached by handing them a bare connection, and the reverse by
+# handing _create_tables one already inside a transaction.
+
+
+def _bare_connection(tmp_path):
+    import sqlite3
+    # isolation_level=None: no implicit transactions, so in_transaction is
+    # False until a test begins one.
+    return sqlite3.connect(str(tmp_path / "bare.db"), isolation_level=None)
+
+
+def test_the_migration_takes_the_write_lock_itself_when_called_bare(tmp_path):
+    from core import db
+    conn = _bare_connection(tmp_path)
+    try:
+        db._create_tables(conn)          # begins its own, and ends it
+        assert not conn.in_transaction
+        cur = conn.cursor()
+        assert not conn.in_transaction
+        db._one_mark_per_day(cur)        # index exists: begins, then returns
+        assert conn.in_transaction, "it did not take the lock before looking"
+        conn.execute("COMMIT")
+        names = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'")]
+        assert db.ONE_MARK_PER_DAY_INDEX in names
+    finally:
+        conn.close()
+
+
+def test_the_migration_joins_a_transaction_the_caller_already_holds(tmp_path):
+    from core import db
+    conn = _bare_connection(tmp_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        db._create_tables(conn)          # must not try to BEGIN again
+        assert not conn.in_transaction, "the migration left it open"
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert {"users", "attendance"} <= tables
+    finally:
+        conn.close()

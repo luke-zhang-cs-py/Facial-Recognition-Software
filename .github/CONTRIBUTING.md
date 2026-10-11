@@ -59,9 +59,17 @@ FairFace path pointing inside a long-dead editor session.
 ## Tests
 
 ```bash
+pip install -r requirements-test.txt   # the app, plus pyarrow and Pillow
 pytest -q -rs
 python -m flake8 . --select=E9,F63,F7,F82,F401,F402,F811,F841,E722 --exclude=dataset,models,.venv,mutants
 ```
+
+`requirements-test.txt` is `requirements.txt` plus the two libraries the tests
+of the corpus readers import and the app never does: pyarrow (parquet shards)
+and Pillow (decoding the images in them). Without them those tests skip and the
+code behind them is not measured; CI installs them, so install them too or your
+coverage figure will read lower than CI's. They only read shards a test writes
+itself, so there is still no corpus, weights, webcam or network in the suite.
 
 The same flake8 selection CI fails on. `pytest.ini` adds `-rs --strict-markers`,
 and `.coveragerc` sets `fail_under`, so `coverage report` fails if the
@@ -70,7 +78,7 @@ offline figure drops. Two workflows run only on demand from the Actions tab:
 coverage with and without them, and `mutation.yml` runs mutmut (it does not
 run on native Windows) and writes the mutation score into the job summary.
 
-884 tests locally; 881 pass and 3 skip here (`-rs` says why).
+911 tests locally; 908 pass and 3 skip here (`-rs` says why).
 
 `python tools/refresh_figures.py` rewrites that sentence, the figures on
 `docs/index.html` and the one in the README from a real measured run — do

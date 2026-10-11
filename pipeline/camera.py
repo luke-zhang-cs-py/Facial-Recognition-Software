@@ -166,7 +166,7 @@ class CameraError(Exception):
 
 
 def open_default_camera():
-    """The real device: index 0 over DirectShow.
+    """The real device: index 0, over DirectShow on Windows.
 
     This is the only call in this module that needs hardware, which is worth
     stating plainly -- for a long time it made the whole file look
@@ -175,8 +175,15 @@ def open_default_camera():
     generator) only needs an object with `isOpened`, `read` and `release`,
     and `read` only has to hand back a numpy frame. A webcam is one way to
     get that. It is not the only way.
+
+    DirectShow is a Windows API. Asked for on Linux or macOS it is not an
+    available backend, so the capture never opens and the web camera says
+    "could not open webcam" on a machine whose webcam works; there OpenCV
+    picks its own backend (V4L2, AVFoundation).
     """
-    return cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if os.name == "nt":
+        return cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    return cv2.VideoCapture(0)
 
 
 class CameraManager:

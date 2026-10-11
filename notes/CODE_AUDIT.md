@@ -1,5 +1,59 @@
 # Code audit
 
+## 2026-10-11: sixth pass (CI coverage)
+
+The gap between what CI measured and what this machine measured. CI ("Python
+Package", Linux, 3.10 and 3.12; no weights, no `dataset/`, no sample face, no
+pyarrow or Pillow) reported **3,073 statements, 109 missed, 1,006 branches, 23
+partial, 96%**, 863 passed and 21 skipped; this machine, with all of those,
+said 99%. Reproduced exactly in a clean clone of 1afe29c (no `models/`,
+`dataset/`, `attendance.db` or `trainer.yml`, `CI` and `GITHUB_ACTIONS` set,
+pyarrow and Pillow made unimportable, a fresh 3.12 venv from `requirements.txt`
+only): the same 3,073 / 109 / 1,006 / 23 and 863 passed, 21 skipped.
+
+**After, in the same clean clone with pyarrow and Pillow installed (as CI now
+installs them): 3,072 statements, 0 missed, 1,004 branches, 0 partial, 100%;
+901 passed, 8 skipped** (the 8 are the three that need a seeded `dataset/`,
+three that need a real face, and two that need the published page's Python
+(3.14) or a prior `.coverage`). `fail_under` 96 -> 100. No tests were removed
+and no real-face test was changed; no face image, embedding, database or
+`trainer.yml` was added.
+
+### What closed it, by category
+
+| Missed before | Category | Closed by |
+|---|---|---|
+| 87 of the 109 lines (fairness benchmark 71-80, 110-145; seed_demo 106-116, 222-243; sampleframes 75-93, 101-103; plus their branches) | optional libraries | `requirements-test.txt` (the app's requirements plus pyarrow and Pillow), installed by the `build` job and by the weights job. The tests were already written and were skipping with "could not import". `requirements.txt` is unchanged. CONTRIBUTING's test setup says to install it. `test_ci_portability.py` pins that both workflows install it and that the app's own file does not list them. |
+| `cli/attendance.py` 67-72, 83-85, 115, 121, 153, 169 | code reached only with a webcam or trained model | `_open_camera` and `_load_recognizer` driven with a recorder for `cv2.VideoCapture` and a fake LBPH recogniser; the loop's quit key, the no-confidence label and the "no usable embedding" report with a mocked gallery and `Decision`. |
+| `pipeline/camera.py` 179, 233, 409-410, 804, 521->525, 334->339, 339->exit, 831->846 | hardware, weights, OS | `open_default_camera` with `os.name` set both ways; an empty Haar cascade; an unreadable sample in `ensure_trained`; an `imencode` that fails; a second face in view; `start_attendance` and `_draw_decision` with the liveness and SFace answers stubbed (not the networks). |
+| `core/db.py` 184, 68->72 | the migration's two entry points | `_create_tables` and `_one_mark_per_day` called on a bare connection and on one already in a transaction. |
+| `pipeline/train_model.py` 30, 44 | a stray file in `dataset/`, an unreadable sample | `load_training_data` over a folder holding both; `train()` with nothing to train on. |
+| `pipeline/sampleframes.py` 122->120, 177->179, 224->222 | undecodable file, learned quality score, failed write | a folder with a corrupt file; `quality_metrics` stubbed to return a score; `cv2.imwrite` stubbed to fail for one name. |
+| `pipeline/landmarks.py` 384->388 | defensive branch | `draw` with `outline` returning None. |
+| `cli/seed_demo.py` 315->318 | weights-dependent | `facemodels.have` stubbed both ways. |
+| `cli/face_attendance.py` 64->66, `analysis/fairness_benchmark.py` 156 | unreachable | `elif args.command == "report"` became `else` (the parser is `required` with four choices); `if not n: continue` removed from `report_rate` (`np.unique` only yields values that occur; empty groups are reported by the warning at line 194). Neither changes behaviour. |
+
+### Bug found by the OS-branch work
+
+`open_default_camera` asked for `cv2.CAP_DSHOW` on every platform. DirectShow
+is Windows-only, so on Linux or macOS the web camera could not open on a
+machine whose webcam works. It now asks for it only when `os.name == "nt"`.
+Tests: `test_elsewhere_lets_opencv_choose_the_backend` (fails on the old code),
+`test_windows_asks_for_directshow`.
+
+### Pragmas
+
+None. Every line and branch is run; nothing is marked `# pragma: no cover`.
+(`if __name__ == "__main__"` was already covered by `.coveragerc`'s
+`exclude_lines`.)
+
+### Left alone, for the owner
+
+- `models/minifasnet_v2.onnx` here is the development copy, not the pinned download: `fetch_models --verify` reports a mismatch (local sha256 d7b3cd9b..., 1,744,116 bytes; pin b32929ad..., which the current download does hash to, 1,743,581 bytes). The pin's own comment says so. Refetching it (`--force`) would change the liveness weights this machine was tuned with, so it was not done.
+- `python -m cli.attendance --help` and `cli.view_report --help` ignore the flag: the first opens the webcam and runs.
+- The analysis of a 4,080-sample, 111-person dataset took 933 s here, and the last stage (LBPH cross-validation) reports 4080/4080 with no further progress for most of it. `/api/attendance/start` blocks for 12 to 30 s while SFace embeds uncached samples.
+- Not measured: Python 3.10 (not installed here); Linux (this run is Windows 11, so the new tests set `os.name` rather than rely on it).
+
 ## 2026-10-11: fifth pass (scan)
 
 A scan of the fourth pass's code, each finding reproduced before it was fixed.

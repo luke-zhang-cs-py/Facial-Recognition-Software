@@ -61,7 +61,10 @@ def main():
         train_model.train()
     elif args.command == "attendance":
         attendance.run_attendance()
-    elif args.command == "report":
+    else:
+        # "report": the parser is `required` and its choices are the four
+        # above, so nothing else can arrive. An `elif` here left a branch no
+        # input could take.
         view_report.main()
     return 0
 

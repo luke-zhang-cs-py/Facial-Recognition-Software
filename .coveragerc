@@ -34,14 +34,16 @@ omit =
     docs/*
 
 [report]
-# The offline figure (no weights, no dataset/, no pyarrow: exactly what the push
-# CI job has) was 96.5% when this was set, on 2026-10-10 -- lines and branches
-# combined, since branch = True. Rounded down, so a run that loses ground fails
-# `coverage report` instead of passing quietly. Raise it when the figure rises;
-# lower it only with a reason in notes/CODE_AUDIT.md. Measured on this machine
-# with the weights, the dataset and pyarrow present the figure is higher, which
-# is why the floor is set from the run CI actually makes.
-fail_under = 96
+# The CI figure (no weights, no dataset/, no sample face: exactly what the push
+# job has, but with pyarrow and Pillow installed from requirements-test.txt) is
+# 100%: every statement and every branch, lines and branches combined since
+# branch = True. That was 96% (109 lines missed) on 2026-10-11 before the sixth
+# pass in notes/CODE_AUDIT.md closed the gap; 96.5% on 2026-10-10 before that.
+# Rounded down, so a run that loses ground fails `coverage report` instead of
+# passing quietly. Lower it only with a reason in notes/CODE_AUDIT.md. A line
+# that truly cannot run in CI is marked `# pragma: no cover` with the reason
+# beside it, not allowed to leak out through this number.
+fail_under = 100
 
 exclude_lines =
     pragma: no cover

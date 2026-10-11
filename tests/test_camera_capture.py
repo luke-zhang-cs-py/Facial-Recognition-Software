@@ -17,6 +17,7 @@ One branch here is worth more than the coverage: a read that fails
 part-way through a session. On real hardware that means unplugging the
 webcam at the right moment; against a fake it is a list that runs out.
 """
+import os
 import threading
 
 import cv2
@@ -414,3 +415,84 @@ def test_a_failed_landmark_fit_is_not_fatal(manager, blank_frame, monkeypatch):
 
     assert len(faces) == 1, "the face was lost with the mesh"
     assert faces[0]["points68"] is None
+
+
+# ------------------------------------------- the device, and the guards around it
+#
+# open_default_camera is the one call that needs hardware, but what it asks
+# OpenCV for is not hardware: it is an argument list. A recorder stands in for
+# cv2.VideoCapture and the branch on the operating system is taken both ways
+# by setting os.name, so Linux CI runs the Windows side and Windows runs the
+# POSIX one.
+
+
+@pytest.fixture
+def capture_calls(monkeypatch):
+    calls = []
+
+    def fake_capture(*args):
+        calls.append(args)
+        return FakeCapture()
+    monkeypatch.setattr(cv2, "VideoCapture", fake_capture)
+    return calls
+
+
+def test_windows_asks_for_directshow(capture_calls, monkeypatch):
+    monkeypatch.setattr(camera.os, "name", "nt")
+    assert isinstance(camera.open_default_camera(), FakeCapture)
+    assert capture_calls == [(0, cv2.CAP_DSHOW)]
+
+
+@pytest.mark.parametrize("name", ["posix"])
+def test_elsewhere_lets_opencv_choose_the_backend(capture_calls, monkeypatch,
+                                                  name):
+    """DirectShow is not a backend off Windows: asking for it there made the
+    capture fail to open on a machine whose webcam works."""
+    monkeypatch.setattr(camera.os, "name", name)
+    camera.open_default_camera()
+    assert capture_calls == [(0,)]
+
+
+def test_a_cascade_that_will_not_load_is_named(monkeypatch):
+    class Empty:
+        def __init__(self, path):
+            self.path = path
+
+        def empty(self):
+            return True
+
+    monkeypatch.setattr(cv2, "CascadeClassifier", Empty)
+    with pytest.raises(camera.CameraError) as raised:
+        camera.CameraManager(capture_factory=lambda: None)
+    assert "Haar cascade" in str(raised.value)
+    assert camera.FACE_CASCADE_PATH in str(raised.value)
+
+
+def test_a_frame_that_will_not_encode_is_not_published(manager, blank_frame,
+                                                       monkeypatch):
+    """The stream keeps whatever it last published rather than sending a
+    buffer that is not an image."""
+    monkeypatch.setattr(cv2, "imencode", lambda *a, **k: (False, None))
+    monkeypatch.setattr(camera.time, "sleep", lambda s: None)
+    run_loop_once(manager, FakeCapture([blank_frame.copy()]))
+    assert manager._latest_jpeg is None
+
+
+def test_a_file_that_cannot_be_dated_does_not_stop_the_startup_check(
+        manager, isolated_root, monkeypatch):
+    """ensure_trained walks dataset/ for the newest sample. One that cannot be
+    read (deleted between the listing and the stat, say) is skipped; when none
+    can be, there is nothing to train from and it does not try."""
+    folder = os.path.join(camera.paths.dataset_dir(), "1_Ada")
+    os.makedirs(folder)
+    open(os.path.join(folder, "0.jpg"), "wb").close()
+
+    def gone(path):
+        raise OSError("vanished")
+    monkeypatch.setattr(camera.os.path, "getmtime", gone)
+    retrained = []
+    monkeypatch.setattr(manager, "retrain",
+                        lambda reason=None: retrained.append(reason) or True)
+
+    assert manager.ensure_trained() is False
+    assert retrained == []

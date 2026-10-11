@@ -378,3 +378,116 @@ def test_the_cli_requires_exactly_one_name(capsys):
 
     assert register_user.main(["Grace", "Hopper"]) == 1
     assert "Full Name" in capsys.readouterr().out
+
+
+# ============================================ the parts around the capture loop
+# `run_cli` above replaces _open_camera and _load_recognizer, so neither was
+# ever run. A recorder stands in for cv2.VideoCapture and for the LBPH
+# recogniser; what is checked is what they are asked and what the user hears.
+
+
+class FakeDevice:
+    def __init__(self, opened):
+        self.opened = opened
+        self.released = False
+
+    def isOpened(self):
+        return self.opened
+
+    def release(self):
+        self.released = True
+
+
+def test_an_open_webcam_is_handed_back(monkeypatch):
+    device = FakeDevice(True)
+    asked = []
+    monkeypatch.setattr(cv2, "VideoCapture",
+                        lambda *args: asked.append(args) or device)
+    assert attendance._open_camera() is device
+    assert asked == [(0,)]
+    assert not device.released
+
+
+def test_a_webcam_that_will_not_open_is_released_and_reported(monkeypatch,
+                                                              capsys):
+    device = FakeDevice(False)
+    monkeypatch.setattr(cv2, "VideoCapture", lambda *args: device)
+    assert attendance._open_camera() is None
+    assert device.released, "a device that would not open was left held"
+    assert "Could not open webcam" in capsys.readouterr().out
+
+
+def test_the_trained_model_is_read_from_where_paths_says(isolated_root,
+                                                         monkeypatch):
+    from core import paths
+
+    class Recognizer:
+        read_from = None
+
+        def read(self, path):
+            Recognizer.read_from = path
+
+    open(paths.model_path(), "wb").close()    # present; the fake never parses it
+    monkeypatch.setattr(cv2.face, "LBPHFaceRecognizer_create", Recognizer)
+    got = attendance._load_recognizer()
+    assert isinstance(got, Recognizer)
+    assert Recognizer.read_from == paths.model_path()
+
+
+def test_with_a_gallery_but_no_webcam_it_says_who_is_missing_and_stops(
+        isolated_db, monkeypatch, capsys):
+    gallery = {1: [np.zeros(128, np.float32)]}
+    monkeypatch.setattr(decision, "sface_gallery", lambda: gallery)
+    monkeypatch.setattr(decision, "unenrolled", lambda gal: ["Grace", "Alan"])
+    monkeypatch.setattr(liveness, "available", lambda: False)
+    monkeypatch.setattr(attendance, "_open_camera", lambda: None)
+    shown = []
+    monkeypatch.setattr(cv2, "imshow", lambda *a: shown.append(a))
+
+    assert attendance.run_attendance() is None
+
+    out = capsys.readouterr().out
+    assert "Recognising with SFace: 1 people in the gallery." in out
+    assert "never recognised: Grace, Alan" in out
+    assert "liveness model is missing" in out
+    assert shown == [], "it went on to the capture loop with no camera"
+    assert "Attendance system running" not in out
+
+
+def test_pressing_q_ends_the_session_and_reports_today(isolated_db, gray,
+                                                        monkeypatch, capsys):
+    """The loop reads frames until 'q'. A face with no confidence (nothing to
+    compare it against) is labelled with a dash, not a number."""
+    reads = []
+
+    class Cap:
+        def read(self):
+            reads.append(1)
+            return True, gray.copy()
+
+        def release(self):
+            self.released = True
+
+    cap = Cap()
+    labels = []
+    monkeypatch.setattr(decision, "faces", lambda bgr: [(BOX, None)])
+    monkeypatch.setattr(decision, "sface_gallery", lambda: None)
+    monkeypatch.setattr(attendance, "_load_recognizer",
+                        lambda: FakeRecognizer(1, 0))
+    monkeypatch.setattr(attendance, "_open_camera", lambda: cap)
+    monkeypatch.setattr(decision, "decide",
+                        lambda *a, **k: decision.Decision(
+                            decision.UNRECOGNISED, None, None, False, None,
+                            None, "unknown"))
+    monkeypatch.setattr(attendance, "annotate",
+                        lambda frm, box, label, colour: labels.append(label))
+    monkeypatch.setattr(cv2, "imshow", lambda *a: None)
+    monkeypatch.setattr(cv2, "destroyAllWindows", lambda: None)
+    monkeypatch.setattr(cv2, "waitKey", lambda ms: ord("q"))
+
+    attendance.run_attendance()
+
+    assert len(reads) == 1, "it kept reading after q"
+    assert labels == ["Unknown (-)"]
+    assert cap.released
+    assert "Today's attendance" in capsys.readouterr().out

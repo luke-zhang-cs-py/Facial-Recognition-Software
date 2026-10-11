@@ -1,0 +1,17 @@
+# What the test suite needs on top of the app: `pip install -r requirements-test.txt`.
+#
+# requirements.txt is the app (plus the test runner and coverage, which
+# tests/test_published_figures.py measures with). This adds the two libraries
+# the corpus readers import on demand and the app itself never does:
+#
+#   pyarrow  reads the parquet shards of LFW / FairFace / CASIA
+#            (pipeline/sampleframes.py, cli/seed_demo.py, analysis/fairness_benchmark.py)
+#   Pillow   decodes the images inside those shards
+#            (cli/seed_demo.py, analysis/fairness_benchmark.py)
+#
+# Without them the tests that build a tiny shard in memory skip ("could not
+# import 'pyarrow'") and the parquet code behind them is never run in CI.
+# They only ever read a shard the test writes itself: no corpus, no network.
+-r requirements.txt
+pyarrow
+Pillow

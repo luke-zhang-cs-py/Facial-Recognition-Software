@@ -45,6 +45,9 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
 
       - name: System libraries for OpenCV
         # See python-package.yml: the GUI build is the one with the cascades.
@@ -56,10 +59,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          # Not in requirements.txt (the app does not need them), but the corpus readers do: without them
-          # the parquet and image-decoding tests skip here as they do in the offline job.
-          pip install pyarrow Pillow
+          # requirements-test.txt: the app plus pyarrow and Pillow, which the app does not need but the
+          # corpus readers' tests do. Without them the parquet and image-decoding tests skip.
+          pip install -r requirements-test.txt
 
       - name: Restore the weights
         id: weights

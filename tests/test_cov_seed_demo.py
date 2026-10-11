@@ -362,3 +362,17 @@ def test_a_large_run_reports_progress_sparingly(isolated_db, monkeypatch,
     assert total == len(people)
     assert lines == [f"  {'[demo] ' + str(len(people) - 1):<34} 1 samples   "
                      f"({len(people)} images so far)"], "only the last person"
+
+
+@pytest.mark.parametrize("have_sface, warned", [(True, False), (False, True)])
+def test_the_seed_says_so_only_when_sface_is_missing(corpus, monkeypatch,
+                                                     capsys, have_sface,
+                                                     warned):
+    """Without the SFace weights nothing can be embedded and the seed tells
+    you how to fetch them; with them it has nothing to apologise for."""
+    from core import facemodels
+    monkeypatch.setattr(facemodels, "have", lambda name: have_sface)
+    assert seed(monkeypatch, "--people", "1", "--samples", "2") == 0
+    out = capsys.readouterr().out
+    assert ("python -m cli.fetch_models" in out) is warned
+    assert "samples embedded" in out

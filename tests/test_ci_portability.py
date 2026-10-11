@@ -117,3 +117,34 @@ def test_the_machine_path_pattern_catches_what_broke_run_1():
     for fine in ("os.path.join(paths.dataset_dir(), 'users')", "url = 'https://x.org/home/a'",
                  "db.get_all_users()", "'api/users'"):
         assert not MACHINE_PATH.search(fine), fine
+
+
+# ------------------------------------------- the libraries the readers' tests need
+# pyarrow and Pillow are test-time needs, not the app's. If CI stops
+# installing them the parquet tests skip again and the code behind them
+# quietly leaves the coverage figure, which .coveragerc's fail_under then
+# has to be lowered for.
+
+def _lines(rel):
+    path = os.path.join(layout.ROOT, rel)
+    with open(path, encoding="utf-8") as fh:
+        return [ln.strip() for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
+
+
+def test_the_test_requirements_add_the_corpus_readers_libraries():
+    lines = _lines("requirements-test.txt")
+    assert "-r requirements.txt" in lines
+    assert {"pyarrow", "Pillow"} <= set(lines)
+
+
+def test_the_app_itself_does_not_require_them():
+    lowered = [ln.lower() for ln in _lines("requirements.txt")]
+    assert not any(ln.startswith(("pyarrow", "pillow")) for ln in lowered)
+
+
+@pytest.mark.parametrize("workflow", ["python-package.yml",
+                                      "coverage-with-weights.yml"])
+def test_the_workflows_that_run_the_suite_install_them(workflow):
+    text = "\n".join(_lines(".github/workflows/" + workflow))
+    assert "pip install -r requirements-test.txt" in text
+    assert "pip install -r requirements.txt" not in text

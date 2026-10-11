@@ -617,3 +617,68 @@ def test_an_empty_crop_is_not_judged(mgr):
     empty = np.zeros((0, 0, 3), np.uint8)
     assert camera.weak_photograph(empty, {"box": (0, 0, 0, 0)}) == []
     assert camera.weak_photograph(None, {"box": (0, 0, 0, 0)}) == []
+
+
+# ------------------------------------- the gaps CI measured without the weights
+#
+# CI has no SFace and no liveness network, so `faceliveness.available()` is
+# False there and the gallery is None. The sides of those branches that need
+# the networks are taken here with stand-ins for the answers, not the nets.
+
+
+def test_starting_attendance_with_sface_reports_the_gallery(mgr, opens,
+                                                            isolated_db,
+                                                            monkeypatch):
+    user_id = isolated_db.add_user("Ada")
+    open(camera.paths.model_path(), "w").close()
+    monkeypatch.setattr(mgr, "_load_recognizer", lambda: None)
+    monkeypatch.setattr(camera.faceliveness, "available", lambda: True)
+    monkeypatch.setattr(camera.decision, "sface_gallery",
+                        lambda: {user_id: [np.zeros(128, np.float32)]})
+    mgr.start_attendance()
+
+    events = [(e["kind"], e["message"]) for e in mgr.status()["events"]]
+    assert ("info", "Recognising with SFace: 1 person in the gallery.") in events
+    assert not [e for e in events if e[0] == "error"], (
+        "everybody enrolled has an embedding and liveness is present, so "
+        "there is nothing to warn about: %s" % events)
+    assert mgr._gallery is not None
+
+
+def test_a_second_person_in_view_is_drawn_but_not_recognised(
+        attending, faces, blank_frame, monkeypatch):
+    """Only the largest face is decided; the others are outlined so they are
+    not silently invisible."""
+    set_verdict(attending, monkeypatch, "live")
+    drawn = []
+    monkeypatch.setattr(attending, "_draw_face",
+                        lambda frame, face, colour, label=None:
+                        drawn.append((label, face["box"])))
+    beside = yunet_row()
+    beside[0], beside[1], beside[2], beside[3] = 20.0, 20.0, 60.0, 60.0
+    faces(FRONTAL, beside)
+    attending._handle_attendance(blank_frame)
+
+    assert attending._recognizer.calls == 1, "the small face was recognised too"
+    labels = [label for label, _ in drawn]
+    assert labels.count("Other face") == 1
+    other_box = [box for label, box in drawn if label == "Other face"][0]
+    assert other_box[2:] == (60, 60), "the label went on the wrong face"
+
+
+def test_an_undecided_verdict_with_liveness_present_carries_no_excuse(
+        attending, faces, blank_frame, monkeypatch):
+    """Waiting for more frames is amber with the plain label. The 'no
+    liveness model' suffix is for when no verdict can ever arrive."""
+    monkeypatch.setattr(camera.faceliveness, "available", lambda: True)
+    set_verdict(attending, monkeypatch, "unknown")
+    labels = []
+    monkeypatch.setattr(attending, "_draw_face",
+                        lambda frame, face, colour, label=None:
+                        labels.append((label, colour)))
+    faces(FRONTAL)
+    attending._handle_attendance(blank_frame)
+
+    assert labels and labels[0][1] == camera.AMBER
+    assert camera.NO_LIVENESS_LABEL not in labels[0][0]
+    assert labels[0][0].startswith("Ada")

@@ -502,3 +502,49 @@ def test_an_empty_cell_is_skipped(tmp_path):
     path = str(tmp_path / "empty.parquet")
     pq.write_table(pa.table({"image": pa.array(cells)}), path)
     assert len(list(sampleframes.frames(path))) == 1
+
+
+# ------------------------------------------- the gaps CI measured offline
+#
+# CI has no eDifFIQA network, so qualityScore is always None there and the
+# "learned score" side of assess() never ran. The metrics are replaced; the
+# detector row and the geometry are the real ones.
+
+
+def test_the_learned_score_ranks_when_the_model_is_present(one_face,
+                                                           monkeypatch):
+    real = facetraits.quality_metrics
+
+    def with_model(crop):
+        metrics = dict(real(crop))
+        metrics["qualityScore"] = 0.8125
+        return metrics
+
+    monkeypatch.setattr(facetraits, "quality_metrics", with_model)
+    cand, reason = sampleframes.assess(photo())
+    assert cand is not None, reason
+    assert cand.score == pytest.approx(0.8125), (
+        "the learned score, not sharpness / 1000, ranked the frame")
+
+
+def test_a_file_cv2_cannot_decode_is_skipped_in_a_folder(tmp_path):
+    good = photo()
+    cv2.imwrite(str(tmp_path / "a.png"), good)
+    (tmp_path / "b.jpg").write_bytes(b"not a jpeg")
+    cv2.imwrite(str(tmp_path / "c.png"), good)
+
+    got = list(sampleframes.frames(str(tmp_path)))
+    assert len(got) == 2, "the unreadable file was yielded or stopped the walk"
+
+
+def test_a_frame_that_will_not_write_is_not_reported_written(tmp_path,
+                                                             monkeypatch):
+    cands = [sampleframes.Candidate(photo(), 0.5, ROW.copy()),
+             sampleframes.Candidate(photo(shift=5), 0.4, ROW.copy())]
+    real = cv2.imwrite
+    monkeypatch.setattr(cv2, "imwrite",
+                        lambda path, img: False if path.endswith(
+                            sampleframes.NAMES[0]) else real(path, img))
+    written = sampleframes.write(cands, str(tmp_path))
+    assert [os.path.basename(p) for p in written] == [sampleframes.NAMES[1]]
+    assert os.path.exists(written[0])

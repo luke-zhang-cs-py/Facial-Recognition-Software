@@ -240,3 +240,33 @@ def test_no_report_is_not_an_empty_report(mgr, monkeypatch):
 
     assert mgr.status()["report"] == {"samples": 30}, (
         "an absent report overwrote the one already there")
+
+
+# ------------------------------------------------ what training reads and skips
+
+
+def test_training_skips_a_stray_file_and_a_file_that_is_not_an_image(
+        isolated_root):
+    """dataset/ holds one folder per person. A loose file beside them (a
+    .DS_Store, a README) is not a person, and an unreadable file inside a
+    person's folder is not a sample; neither takes the others down."""
+    from pipeline import train_model
+    folder = seed_dataset(isolated_root, user_id=4, name="Ada", count=2)
+    with open(os.path.join(folder, "notes.txt"), "w") as handle:
+        handle.write("not an image")
+    with open(os.path.join(camera.paths.dataset_dir(), "stray.txt"), "w") as h:
+        h.write("not a person")
+
+    faces, labels = train_model.load_training_data()
+
+    assert labels == [4, 4]
+    assert all(img.ndim == 2 for img in faces), "samples are read as grey"
+
+
+def test_training_with_nothing_to_train_on_says_what_to_run(isolated_root,
+                                                            capsys):
+    from pipeline import train_model
+    os.makedirs(camera.paths.dataset_dir())
+    train_model.train()
+    assert "register_user" in capsys.readouterr().out
+    assert not os.path.exists(camera.paths.model_path())

@@ -21,6 +21,8 @@ import cv2
 import numpy as np
 import pytest
 
+from pipeline import decision, liveness
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "dataset")
 NEW_PEOPLE = 8          # people added on top of an empty system
@@ -82,6 +84,36 @@ def _whole(img):
     return (0, 0, img.shape[1], img.shape[0])
 
 
+@pytest.fixture(autouse=True)
+def live(monkeypatch):
+    """A real photograph of a real face, so every frame scores live; the
+    liveness model is not what these tests are about."""
+    monkeypatch.setattr(liveness, "score", lambda bgr, box: 0.9)
+
+
+def _see(recognizer, img, session):
+    """One camera frame through the real decision and report, as run_attendance
+    does it: decision.decide with the once-per-session rule, then report().
+
+    Returns (user_id, confidence, name shown, accepted).
+    """
+    from cli import attendance
+
+    def claim(user_id):
+        if user_id in session:
+            return False
+        session.add(user_id)
+        return True
+    frame = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    one_frame = liveness.LivenessVote(window=1, required=1)
+    got = decision.decide(frame, _whole(img), None, one_frame,
+                          recognizer=recognizer, first_mark=claim)
+    name = decision.name_of(got.user_id) if got.accepted else "Unknown"
+    if got.outcome in (decision.LOGGED, decision.ALREADY, decision.NO_USER):
+        attendance.report(got.outcome, got.user_id, name, got.confidence, got.method)
+    return got.user_id, got.confidence, name, got.accepted
+
+
 def _trained(people):
     """Enroll NEW_PEOPLE, train the real model, and return (recognizer, enrolled)."""
     from core import db, paths
@@ -99,7 +131,6 @@ def _trained(people):
 
 def test_more_faces_are_enrolled_recognised_and_logged_once_each(client, people):
     from core import db, vision
-    from cli import attendance
     recognizer, enrolled = _trained(people)
 
     assert len(db.get_all_users()) == NEW_PEOPLE
@@ -108,10 +139,9 @@ def test_more_faces_are_enrolled_recognised_and_logged_once_each(client, people)
         # two frames of the same person, as a camera would see them
         for photo in photos[:2]:
             img = _gray(photo)
-            got, confidence, shown, accepted = attendance.identify(recognizer, img, _whole(img))
+            got, confidence, shown, accepted = _see(recognizer, img, session)
             assert accepted and got == uid and shown == name, \
                 f"{name}: an enrolled photo came back as {shown} ({confidence:.1f})"
-            attendance.mark_present(got, shown, confidence, session)
 
     today = db.get_attendance_for_today()
     assert sorted(n for n, _, _ in today) == sorted(name for name, _ in enrolled.values()), \
@@ -129,8 +159,7 @@ def test_more_faces_are_enrolled_recognised_and_logged_once_each(client, people)
     again = set()
     uid, (name, photos) = next(iter(enrolled.items()))
     img = _gray(photos[0])
-    got, confidence, shown, accepted = attendance.identify(recognizer, img, _whole(img))
-    attendance.mark_present(got, shown, confidence, again)
+    _see(recognizer, img, again)
     assert len(db.get_attendance_for_today()) == NEW_PEOPLE
 
 
@@ -138,15 +167,13 @@ def test_adding_people_later_keeps_the_earlier_log_and_logs_the_new_ones(client,
     """Enrolling more people after attendance has run must not lose or relabel
     anyone already logged: labels are user ids, so a retrain cannot shift them."""
     from core import db, paths
-    from cli import attendance
     from pipeline import train_model
 
     recognizer, enrolled = _trained(people)
     first_uid, (first_name, first_photos) = next(iter(enrolled.items()))
     img = _gray(first_photos[0])
-    got, confidence, shown, accepted = attendance.identify(recognizer, img, _whole(img))
+    got, confidence, shown, accepted = _see(recognizer, img, set())
     assert accepted and got == first_uid
-    attendance.mark_present(got, shown, confidence, set())
 
     late = people[NEW_PEOPLE:NEW_PEOPLE + 2]
     late_ids = {_enroll(db, paths, name, photos[:TRAIN_PER_PERSON]): name for name, photos in late}
@@ -157,22 +184,20 @@ def test_adding_people_later_keeps_the_earlier_log_and_logs_the_new_ones(client,
     session = set()
     for (name, photos), uid in zip(late, late_ids):
         img = _gray(photos[0])
-        got, confidence, shown, accepted = attendance.identify(recognizer, img, _whole(img))
+        got, confidence, shown, accepted = _see(recognizer, img, session)
         assert accepted and got == uid and shown == name, f"{name} came back as {shown}"
-        attendance.mark_present(got, shown, confidence, session)
 
     names = sorted(n for n, _, _ in db.get_attendance_for_today())
     assert names == sorted([first_name] + list(late_ids.values()))
-    still = attendance.identify(recognizer, img, _whole(img))
+    still = _see(recognizer, img, session)
     assert still[0] != first_uid, "a later person is not relabelled as the first"
 
 
 def test_a_rejected_face_is_never_logged(client, people):
     from core import db
-    from cli import attendance
     recognizer, _ = _trained(people)
     noise = np.random.default_rng(7).integers(0, 256, (200, 200), dtype=np.uint8)
-    got, confidence, shown, accepted = attendance.identify(recognizer, noise, _whole(noise))
+    got, confidence, shown, accepted = _see(recognizer, noise, set())
     assert not accepted and shown == "Unknown", f"noise was accepted as {shown} ({confidence:.1f})"
     assert db.get_attendance_for_today() == []
     assert client.get("/api/report").get_json()["today"] == []

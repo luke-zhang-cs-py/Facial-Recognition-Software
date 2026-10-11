@@ -201,13 +201,17 @@ def test_cli_registration_crops_with_the_detector_the_camera_uses(
     assert np.abs(written - true_crop(frame, BOX).astype(float)).mean() < 3
 
 
-def test_a_box_off_the_edge_of_the_frame_is_clipped_not_wrapped(isolated_db):
+def test_a_box_off_the_edge_of_the_frame_is_clipped_not_wrapped(isolated_db,
+                                                                monkeypatch):
     """YuNet can report a box starting left of the frame. A negative slice
     start counts from the far edge, so the crop came from the other side."""
-    from cli import attendance
-    gray = cv2.cvtColor(raw_frame(), cv2.COLOR_BGR2GRAY)
+    from pipeline import decision
+    monkeypatch.setattr(liveness, "score", lambda bgr, box: 0.9)
+    frame = raw_frame()
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     rec = Recorder(isolated_db.add_user("Ada"))
-    attendance.identify(rec, gray, (-20, 100, 120, 120))
+    decision.decide(frame, (-20, 100, 120, 120), None,
+                    liveness.LivenessVote(window=1, required=1), recognizer=rec)
     want = cv2.resize(gray[100:220, 0:100], vision.LBPH_INPUT_SIZE)
     assert np.array_equal(rec.seen[0], want)
 
@@ -272,12 +276,20 @@ def test_the_cli_decides_on_the_largest_face_only(isolated_db, monkeypatch):
 
 # ------------------------------------------------- a label with no user row
 
-def test_the_cli_does_not_crash_on_a_label_with_no_user(isolated_db, capsys):
+def test_the_cli_does_not_crash_on_a_label_with_no_user(isolated_db, capsys,
+                                                        monkeypatch):
     """train_model trains every folder in dataset/, including ones whose user
     row is gone (this checkout has 322 folders and 9 users). LBPH can then
     predict a label the foreign key refuses, and the CLI died on it."""
     from cli import attendance
-    attendance.mark_present(9999, "Unknown (id 9999)", 10.0, set())
+    from pipeline import decision
+    monkeypatch.setattr(liveness, "score", lambda bgr, box: 0.9)
+    got = decision.decide(raw_frame(), BOX, None,
+                          liveness.LivenessVote(window=1, required=1),
+                          recognizer=Recorder(9999))
+    assert got.outcome == decision.NO_USER
+    attendance.report(got.outcome, got.user_id, decision.name_of(got.user_id),
+                      got.confidence)
     assert isolated_db.get_attendance_for_today() == []
     assert "9999" in capsys.readouterr().out
 

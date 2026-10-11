@@ -41,43 +41,6 @@ LABEL_SCALE = 0.7
 LABEL_OFFSET = 10       # pixels above the box, so the text clears the line
 
 
-def identify(recognizer, gray, box):
-    """Who this face is, and whether the match is close enough to accept.
-
-    Returns (user_id, confidence, name, accepted). Split out of the capture
-    loop because it is the actual decision this program makes, and inside a
-    `while True:` around a webcam it could not be reached by a test -- so the
-    one piece of logic worth verifying was the one piece that was not.
-
-    `accepted` is `confidence < CONFIDENCE_THRESHOLD` and not the other way
-    round: LBPH's "confidence" is a distance, so a lower number is a closer
-    match. Getting that backwards accepts every stranger and rejects
-    everyone enrolled, which is why it is written down once, here.
-    """
-    face = decision.crop(gray, box)
-    if face is None:
-        return None, float("inf"), "Unknown", False
-    user_id, confidence, accepted = decision.match(recognizer, face)
-    if not accepted:
-        return user_id, confidence, "Unknown", False
-    return user_id, confidence, decision.name_of(user_id), True
-
-
-def mark_present(user_id, name, confidence, marked_this_session, method=decision.LBPH):
-    """Log an accepted match once per session, and say what happened.
-
-    The session set is why this exists: without it every frame re-queries
-    the database for somebody standing in front of the camera, and the
-    console fills with one line per frame. The capture loop gets the same
-    once-per-session rule from decision.decide(first_mark=...).
-    """
-    if user_id in marked_this_session:
-        return
-    outcome = decision.record(user_id, confidence, method)
-    marked_this_session.add(user_id)
-    report(outcome, user_id, name, confidence, method)
-
-
 def report(outcome, user_id, name, confidence, method=decision.LBPH):
     """Say what record() did, in the console."""
     if outcome == decision.LOGGED:

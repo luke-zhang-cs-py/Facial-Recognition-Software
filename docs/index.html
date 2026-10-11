@@ -392,25 +392,25 @@ var MODULES = [
   { name: 'pipeline/camera.py',             lines: 865, stmts: 466, missed:  5, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
   { name: 'analysis/analytics.py',          lines: 778, stmts: 283, missed:  0, does: 'dataset-wide enrollment quality and threshold sweeps' },
   { name: 'pipeline/traits.py',             lines: 566, stmts: 215, missed:  0, does: 'per-face quality, pose, embedding and demographics' },
+  { name: 'analysis/fairness_benchmark.py', lines: 337, stmts: 188, missed:  1, does: 'the stratified FairFace run; its statistics and main() are tested on a tiny labelled corpus' },
   { name: 'pipeline/landmarks.py',          lines: 403, stmts: 185, missed:  0, does: 'the face mesh, and the overlay drawn on the frame' },
   { name: 'app.py',                         lines: 381, stmts: 173, missed:  0, does: 'the Flask UI; fifteen endpoints, loopback only' },
-  { name: 'cli/seed_demo.py',               lines: 320, stmts: 164, missed:  1, does: 'enrolls faces from LFW for testing; the parquet read is tested on a tiny corpus built at test time' },
-  { name: 'analysis/fairness_benchmark.py', lines: 286, stmts: 162, missed:  1, does: 'the stratified FairFace run; its statistics and main() are tested on a tiny labelled corpus' },
+  { name: 'cli/seed_demo.py',               lines: 325, stmts: 167, missed:  1, does: 'enrolls faces from LFW for testing; the parquet read is tested on a tiny corpus built at test time' },
   { name: 'cli/analyze_faces.py',           lines: 238, stmts: 134, missed:  0, does: 'the console version of the analysis panel' },
   { name: 'pipeline/sampleframes.py',       lines: 271, stmts: 134, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
-  { name: 'core/db.py',                     lines: 373, stmts: 118, missed:  0, does: 'the schema and every query; one context manager for all access' },
-  { name: 'cli/attendance.py',              lines: 214, stmts: 112, missed: 14, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
+  { name: 'core/db.py',                     lines: 415, stmts: 131, missed:  1, does: 'the schema and every query; one context manager for all access' },
   { name: 'pipeline/guidance.py',           lines: 290, stmts: 103, missed:  0, does: 'turns a live trait read into one instruction to act on' },
+  { name: 'cli/fetch_models.py',            lines: 187, stmts:  99, missed:  0, does: 'downloads the pretrained weights and checks each against its pinned SHA-256; tested with every download mocked' },
+  { name: 'cli/attendance.py',              lines: 177, stmts:  98, missed: 13, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
   { name: 'pipeline/decision.py',           lines: 236, stmts:  97, missed:  0, does: 'the attendance decision, once: SFace first, LBPH fallback, for the camera and the CLI' },
   { name: 'cli/register_user.py',           lines: 157, stmts:  82, missed:  0, does: 'the CLI capture loop; writing a gallery sample is now its own function' },
-  { name: 'cli/fetch_models.py',            lines: 149, stmts:  77, missed:  0, does: 'downloads the pretrained weights and checks each against its pinned SHA-256; tested with every download mocked' },
   { name: 'analysis/calibration.py',        lines: 291, stmts:  75, missed:  0, does: 'the measured false-match curve and the gallery-size maths' },
   { name: 'pipeline/liveness.py',           lines: 168, stmts:  73, missed:  0, does: 'is this a person or a photograph of one' },
   { name: 'pipeline/recognition.py',        lines: 189, stmts:  69, missed:  0, does: 'identification by SFace embedding, against the gallery threshold; decides attendance' },
   { name: 'pipeline/enrollment.py',         lines: 174, stmts:  58, missed:  0, does: 'the post-capture report: pose coverage, and who this face sits closest to' },
   { name: 'pipeline/readout.py',            lines: 145, stmts:  53, missed:  0, does: 'the live sidebar payload, assembled from one frame' },
   { name: 'core/facemodels.py',             lines: 144, stmts:  47, missed:  0, does: 'lazy loader for the pretrained analysis models' },
-  { name: 'core/paths.py',                  lines: 110, stmts:  37, missed:  0, does: 'where the data lives — one decision, resolved per call' },
+  { name: 'core/paths.py',                  lines: 123, stmts:  41, missed:  0, does: 'where the data lives — one decision, resolved per call' },
   { name: 'pipeline/train_model.py',        lines:  69, stmts:  36, missed:  2, does: 'rebuilds the LBPH recogniser from dataset/' },
   { name: 'cli/face_attendance.py',         lines:  70, stmts:  28, missed:  0, does: 'a thin entry point, asserted by test to hold no logic' },
   { name: 'cli/view_report.py',             lines:  37, stmts:  16, missed:  0, does: 'prints the users and the attendance rows' },
@@ -429,7 +429,7 @@ var OMITTED = [
   { name: 'tools/benchmark_loop.py',  lines: 600, why: 'the continuous benchmark runner' },
   { name: 'tools/refresh_figures.py', lines: 352, why: 'measures and rewrites the figures on this page' },
   { name: 'tools/build_gallery.py',   lines: 216, why: 'builds a 10,590-identity gallery from CASIA-WebFace' },
-  { name: 'tools/pad_eval.py',        lines: 170, why: 'APCER/BPCER from a CSV of presentation-attack outcomes; tested on synthetic rows (test_pad_eval.py), omitted with the rest of tools/' },
+  { name: 'tools/pad_eval.py',        lines: 179, why: 'APCER/BPCER from a CSV of presentation-attack outcomes; tested on synthetic rows (test_pad_eval.py), omitted with the rest of tools/' },
   { name: 'tools/trials.py',          lines: 148, why: 'the 4,500-trial robustness sweep' },
   { name: 'tools/scale_benchmark.py', lines: 106, why: 'the gallery-size sweep' },
   { name: 'tools/sample_frames.py',   lines:  88, why: 'fills the sample-frame directory from footage you own' }
@@ -447,14 +447,15 @@ var TESTS = [
   { file: 'test_mutation_kills.py',         n: 29, of: 'the rules the first mutation run showed no test was checking: boundaries, interpolation, an untested branch, dropped arguments' },
   { file: 'test_camera_capture.py',         n: 28, of: 'the grab loop and its failure branches, against a synthetic camera' },
   { file: 'test_cov_traits.py',             n: 26, of: 'what traits.py does with a detection, every network mocked' },
+  { file: 'test_fifth_pass_scan.py',        n: 26, of: 'the scan fixes: a linear one-mark-per-day migration, huge folder ids, benchmark failures, CSV quirks, weight verification' },
   { file: 'test_analytics.py',              n: 24, of: 'the sweeps, and refusing to trust a small one' },
   { file: 'test_cov_landmarks.py',          n: 24, of: 'the 68-point measurements on hand-placed point sets, and the divide-by-a-distance cases' },
   { file: 'test_cov_analyze_faces.py',      n: 22, of: 'the console analysis report, section by section, over a dataset of grey squares' },
   { file: 'test_fourth_pass_phase1.py',     n: 22, of: 'one per-frame decision for both front ends, one mark per person per day, one rule for a folder id' },
   { file: 'test_paths_and_cli.py',          n: 22, of: 'that every module resolves its paths per call' },
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
+  { file: 'test_attendance_decision.py',    n: 21, of: 'the accept/refuse decision, and writing a gallery sample' },
   { file: 'test_analysis_helpers.py',       n: 19, of: 'the leave-one-out measurement, and the console report' },
-  { file: 'test_attendance_decision.py',    n: 19, of: 'the accept/refuse decision, and writing a gallery sample' },
   { file: 'test_cov_fairness_benchmark.py', n: 19, of: 'the fairness statistics and the benchmark run, on a tiny labelled corpus' },
   { file: 'test_app_routes.py',             n: 17, of: 'the HTTP surface' },
   { file: 'test_cov_liveness.py',           n: 17, of: 'the liveness crop, softmax and vote, with an injected network' },
@@ -481,7 +482,7 @@ var TESTS = [
   { file: 'test_cov_analytics_golden.py',   n:  2, of: 'that splitting summarize_user and lbph_analysis changed nothing, against output captured before the split' }
 ];
 
-var TEST_LINES = 11237;
+var TEST_LINES = 11811;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

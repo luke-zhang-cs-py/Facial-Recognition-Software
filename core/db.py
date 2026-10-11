@@ -9,6 +9,7 @@ the same function signatures.
 """
 
 import sqlite3
+import sys
 from contextlib import contextmanager
 from datetime import datetime, date
 
@@ -64,6 +65,9 @@ def init_db():
 
 def _create_tables(conn):
     cur = conn.cursor()
+    if not conn.in_transaction:
+        # One writer at a time through the whole migration; see _one_mark_per_day.
+        cur.execute("BEGIN IMMEDIATE")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -148,23 +152,61 @@ def _one_mark_per_day(cur):
     Of each person's marks on one day the earliest is kept -- by julianday(),
     not string order, since "2026-10-01 10:00" sorts before "2026-10-01T09:00"
     as text -- with the lower id breaking an exact tie. The delete and the
-    index share the caller's transaction.
+    index share one transaction.
+
+    The write lock is taken (BEGIN IMMEDIATE) *before* looking for the index.
+    Checked first, two processes starting together on an old database both saw
+    no index, both ran the migration, and the loser died with "database is
+    locked" or "index already exists". Now the second starter waits, then
+    finds the index there and has nothing to do.
+
+    One pass, not one scan per row: a ROW_NUMBER() window over
+    (user_id, DATE(timestamp)) numbers each person-day's marks in time order
+    and everything after the first is deleted. The earlier correlated DELETE
+    was quadratic -- about 40 s at 50,000 rows. Window functions need SQLite
+    3.25 (2018).
+
+    What it drops is reported on stderr, since a startup that deletes rows
+    should not do it silently:
+      * the number of duplicate marks removed;
+      * the number of rows whose timestamp DATE() cannot read. DATE() of those
+        is NULL, NULLs never collide in a unique index, so the rule does not
+        apply to them and they are kept, unconstrained.
+
+    A timestamp carrying a UTC offset is dated by DATE() in UTC, so
+    "2026-10-01T23:30:00+05:00" is the 1st of October 18:30 UTC and one with
+    "+05:00" at 01:00 is the 30th of September. log_attendance never writes an
+    offset (datetime.now().isoformat() is naive local time), so this only
+    touches rows imported from elsewhere; they collapse by UTC date.
     """
+    conn = cur.connection
+    if not conn.in_transaction:
+        cur.execute("BEGIN IMMEDIATE")
     cur.execute("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
                 (ONE_MARK_PER_DAY_INDEX,))
     if cur.fetchone() is not None:
         return
     cur.execute("""
-        DELETE FROM attendance WHERE EXISTS (
-            SELECT 1 FROM attendance AS earlier
-            WHERE earlier.user_id = attendance.user_id
-              AND DATE(earlier.timestamp) = DATE(attendance.timestamp)
-              AND (julianday(earlier.timestamp) < julianday(attendance.timestamp)
-                   OR (julianday(earlier.timestamp) = julianday(attendance.timestamp)
-                       AND earlier.id < attendance.id)))
+        DELETE FROM attendance WHERE id IN (
+            SELECT id FROM (
+                SELECT id, ROW_NUMBER() OVER (
+                           PARTITION BY user_id, DATE(timestamp)
+                           ORDER BY julianday(timestamp), id) AS n
+                FROM attendance WHERE DATE(timestamp) IS NOT NULL)
+            WHERE n > 1)
     """)
+    removed = cur.rowcount
+    cur.execute("SELECT COUNT(*) FROM attendance WHERE DATE(timestamp) IS NULL")
+    undated = cur.fetchone()[0]
     cur.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {ONE_MARK_PER_DAY_INDEX} "
                 "ON attendance (user_id, DATE(timestamp))")
+    if removed:
+        print(f"attendance migration: removed {removed} duplicate mark(s), keeping "
+              "each person's earliest of the day", file=sys.stderr)
+    if undated:
+        print(f"attendance migration: {undated} row(s) have a timestamp that cannot "
+              "be dated, so the one-mark-per-day rule does not apply to them",
+              file=sys.stderr)
 
 
 def add_user(name):

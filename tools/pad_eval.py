@@ -62,12 +62,21 @@ def wilson(errors, n, z=Z95):
     denom = 1 + z * z / n
     centre = (p + z * z / (2 * n)) / denom
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return max(0.0, centre - half), min(1.0, centre + half)
+    # Clamp to [0, 1]. The arithmetic leaves residue at the ends -- a lower
+    # bound of 3.5e-18 for 0 errors, an upper of 0.9999999999999999 for all
+    # errors -- which printed as a bound that is not quite the rate's own.
+    low = 0.0 if errors == 0 else max(0.0, centre - half)
+    high = 1.0 if errors == n else min(1.0, centre + half)
+    return low, high
 
 
 def read_rows(handle):
     """Validated (attack_type, ground_truth, verdict) tuples from a CSV."""
     reader = csv.DictReader(handle)
+    # Excel writes a UTF-8 byte-order mark and people write "a, b": either
+    # made "attack_type" a different name from the one asked for.
+    if reader.fieldnames:
+        reader.fieldnames = [name.lstrip("﻿").strip() for name in reader.fieldnames]
     wanted = {"attack_type", "ground_truth", "verdict"}
     missing = wanted - set(reader.fieldnames or ())
     if missing:
@@ -156,7 +165,7 @@ def main(argv=None):
     ap.add_argument("csv", help="attempt results: attack_type,ground_truth,verdict")
     ap.add_argument("--json", action="store_true", help="print JSON instead")
     args = ap.parse_args(argv)
-    with io.open(args.csv, newline="", encoding="utf-8") as handle:
+    with io.open(args.csv, newline="", encoding="utf-8-sig") as handle:
         try:
             result = evaluate(read_rows(handle))
         except ValueError as exc:

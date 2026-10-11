@@ -1,5 +1,27 @@
 # Code audit
 
+## 2026-10-11: fifth pass (scan)
+
+A scan of the fourth pass's code, each finding reproduced before it was fixed.
+Suite: **853 pass, 3 skip before (856 tests); 881 pass, 3 skip after (884
+tests)**, 99% offline coverage (`fail_under` 96). Each fix below has a test
+that fails on the code as it was (`tests/test_fifth_pass_scan.py`, unless
+stated); the old migration took 139.7 s on 50,000 rows.
+
+### Bugs fixed
+
+| # | Class | Where | What happened | Fix | Test |
+|---|---|---|---|---|---|
+| 1 | performance, race | `core/db.py` `_one_mark_per_day` | The correlated DELETE compared every row with every other of the same person: quadratic (about 40 to 140 s at 50,000 rows). Starters racing on such a database checked for the index before taking the write lock, so the waiters outlasted the 10 s busy timeout and died with "database is locked". | One `ROW_NUMBER()` pass over (user_id, DATE(timestamp)), ordered by `julianday`, id. `BEGIN IMMEDIATE` before looking for the index, so a second starter waits and then finds it. The migration prints what it removed and how many rows have a timestamp `DATE()` cannot read (NULL, so the constraint does not apply to them). Offsets collapse by UTC date, now documented. | `test_the_migration_is_one_pass_not_one_scan_per_row`, `test_starters_running_at_once_on_a_big_database_all_succeed`, `test_the_migration_says_how_many_marks_it_removed_and_how_many_it_cannot_date`, `test_offset_timestamps_collapse_by_their_utc_date` |
+| 2 | input validation | `core/paths.py` `folder_id` | A folder id of 2**63 or more raised in `add_user`, and the folder outlived the attempt, so registration failed for good. | `folder_id` returns None above 2**31 - 1, LBPH's label range; training and id allocation both skip such a folder. | `test_an_id_past_int32_claims_nothing`, `test_a_folder_with_a_huge_id_blocks_neither_registration_nor_training` |
+| 3 | error handling | `analysis/fairness_benchmark.py` | `DEFAULT_NAMES.get(col, [... vals.max() ...])` evaluated its default eagerly, so with no image analysed `max()` of an empty array crashed. `except Exception: pass` hid every failure, a corrupt file and a broken analyser alike. | `if col in DEFAULT_NAMES`. Nothing analysed exits 1 with "analysed 0 of N". A group left with n=0 is warned about. Failures are counted by stage and exception type and reported; a failure after decoding prints its message once per type. | `test_nothing_analysed_is_an_error_that_says_so_not_a_crash`, `test_a_group_with_no_analysed_image_is_warned_about`, `test_failures_are_reported_by_reason`, `test_analyse_sample_counts_decode_failures_and_names_analyser_errors` |
+| 4 | dead code | `cli/attendance.py` | `identify()` and `mark_present()` were dead since `decision.decide()`, so the tests were testing a copy, not the path a frame takes. | Deleted. `test_attendance_decision.py`, `test_enroll_and_log_many.py` and two tests in `test_recognition_paths.py` go through `decide()`, `report()` and `run_attendance()`, keeping every behaviour they asserted. | the ported tests |
+| 5 | resource leak | `tests/conftest.py` | `tempfile.mkdtemp()` left a directory per test in the system temp directory. | `tmp_path_factory`. The 38,995 leaked directories that held only `attendance.db` (and `dataset/`) were removed. | `test_isolated_root_lives_under_pytests_own_temp_tree` |
+| 6 | input validation | `tools/pad_eval.py` | The CSV was read as plain UTF-8, so Excel's byte-order mark and `attack_type, ground_truth` headers read as missing columns. Wilson bounds had float residue (3.5e-18, 0.9999999999999999). | `utf-8-sig`, header names stripped; the bounds are exactly 0 and 1 at 0 and n errors. | `test_an_excel_csv_with_a_byte_order_mark_is_read`, `test_headers_with_spaces_after_the_commas_are_read`, `test_the_wilson_bounds_are_exactly_zero_and_one_at_the_ends` |
+| 7 | data integrity | `cli/seed_demo.py` `pick_people` | `--keep --names X` enrolled somebody already enrolled again, under a new id. | The exclusion applies to requested names too, with a printed note. | `test_keep_with_names_skips_somebody_already_enrolled` |
+| 8 | workflow | `coverage-with-weights.yml`, `cli/fetch_models.py` | A cache hit was never re-hashed: the fetch only saw that each file was there. | `fetch_models --verify` re-hashes every file against its pin (no network, no repair, exit 1 on a miss or mismatch); the workflow runs it before saving the cache. | `test_verify_passes_files_that_match_their_pins`, `test_verify_fails_on_a_file_that_is_not_what_is_pinned`, `test_verify_fails_on_a_missing_file`, `test_the_weights_workflow_verifies_after_restoring_the_cache` |
+| 9 | reproducibility | `tests/test_properties.py` | CI drew new examples every run, so a failure could not be replayed. | A `ci` profile (derandomized, `print_blob`) selected when `CI` is set; `print_blob` in the default profile too. | `test_properties_use_a_derandomized_profile_in_ci` |
+
 ## 2026-10-10: fourth pass
 
 The fourth pass: the third pass's open items, coverage of the code that was

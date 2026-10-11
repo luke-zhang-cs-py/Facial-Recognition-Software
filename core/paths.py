@@ -82,13 +82,26 @@ FOLDER_NAME_MAX = 64
 # but both readers have always read it as 5, and refusing it now would drop a
 # hand-made folder from training without a word. A "05_" and a "5_" folder
 # are therefore the same id -- the same as any two folders sharing an id.
+#
+# An id above MAX_FOLDER_ID claims nothing either. LBPH labels are int32, so
+# training on a larger one fails, and add_user raised past SQLite's 2**63 - 1
+# -- and since the folder outlives the user row, every later registration hit
+# the same folder and failed for good. A folder like "99999999999999999999_X"
+# is therefore skipped by training and by id allocation alike.
 _FOLDER_ID = re.compile(r"[0-9]+")
+MAX_FOLDER_ID = 2**31 - 1
 
 
 def folder_id(folder):
-    """The user id a dataset/ folder name claims, or None if it claims none."""
+    """The user id a dataset/ folder name claims, or None if it claims none.
+
+    None as well for an id above MAX_FOLDER_ID (2**31 - 1, the LBPH label
+    range)."""
     head = folder.split("_", 1)[0]
-    return int(head) if _FOLDER_ID.fullmatch(head) else None
+    if not _FOLDER_ID.fullmatch(head):
+        return None
+    user_id = int(head)
+    return user_id if user_id <= MAX_FOLDER_ID else None
 
 
 def folder_ids():

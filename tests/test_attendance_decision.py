@@ -1,10 +1,11 @@
 """The decision attendance.py actually makes, and the report it prints.
 
-`run_attendance` was one 65-line function around `while True:` on a webcam,
-so the only logic in the program that decides whether to accept a face was
-the one piece no test could reach. It is three functions now -- `identify`,
-`mark_present`, `annotate` -- and the loop that calls them is the only part
-that still needs a camera.
+`cli.attendance` used to have `identify` and `mark_present`, which were this
+program's own copy of the decision. Since decision.decide() became the one
+version both front ends call they were dead code, and these tests were
+testing them rather than the path a camera frame takes. They now go through
+`decision.decide` (the decision), `attendance.report` (what is said about it)
+and `attendance.run_attendance` (the loop, driven by a fake camera).
 
 The direction of the comparison is the thing worth pinning. LBPH's
 "confidence" is a *distance*: lower is a closer match. Reading it as a
@@ -15,6 +16,7 @@ rather than an inverted comparison.
 import os
 import sys
 
+import cv2
 import numpy as np
 import pytest
 
@@ -23,6 +25,7 @@ sys.path.insert(0, ROOT)
 
 from cli import attendance                       # noqa: E402
 from core import vision                           # noqa: E402
+from pipeline import decision, liveness           # noqa: E402
 
 BOX = (10, 20, 60, 60)
 
@@ -42,7 +45,56 @@ class FakeRecognizer:
 
 @pytest.fixture
 def gray():
-    return np.full((200, 200), 128, np.uint8)
+    """A frame, named for what the old tests passed; decide() takes BGR."""
+    return np.full((200, 200, 3), 128, np.uint8)
+
+
+@pytest.fixture(autouse=True)
+def live(monkeypatch):
+    """Every frame scores live, so these tests are about who, not whether."""
+    monkeypatch.setattr(liveness, "score", lambda bgr, box: 0.9)
+
+
+RealVote = liveness.LivenessVote
+
+
+def one_frame_vote():
+    return RealVote(window=1, required=1)
+
+
+def decide(frame, recognizer, first_mark=None):
+    return decision.decide(frame, BOX, None, one_frame_vote(),
+                           recognizer=recognizer, first_mark=first_mark)
+
+
+def run_cli(monkeypatch, recognizer, frames):
+    """Run the real capture loop over `frames` with a fake camera.
+
+    Returns the (label, colour) pairs it drew. The detector, the camera and
+    the window are stand-ins; the decision, the session rule and the report
+    are the real ones.
+    """
+    labels = []
+    queue = list(frames)
+
+    class Cap:
+        def read(self):
+            return (True, queue.pop(0)) if queue else (False, None)
+
+        def release(self):
+            pass
+    monkeypatch.setattr(decision, "faces", lambda bgr: [(BOX, None)])
+    monkeypatch.setattr(decision, "sface_gallery", lambda: None)
+    monkeypatch.setattr(attendance, "_load_recognizer", lambda: recognizer)
+    monkeypatch.setattr(attendance, "_open_camera", Cap)
+    monkeypatch.setattr(liveness, "LivenessVote", one_frame_vote)
+    monkeypatch.setattr(attendance, "annotate",
+                        lambda frm, box, label, colour: labels.append((label, colour)))
+    for name, fn in (("imshow", lambda *a: None), ("waitKey", lambda *a: -1),
+                     ("destroyAllWindows", lambda: None)):
+        monkeypatch.setattr(cv2, name, fn)
+    attendance.run_attendance()
+    return labels
 
 
 # ------------------------------------------------------------- the decision
@@ -51,26 +103,31 @@ def test_a_close_match_is_accepted_and_named(isolated_db, gray):
     user_id = isolated_db.add_user("Ada Lovelace")
     recognizer = FakeRecognizer(user_id, vision.CONFIDENCE_THRESHOLD - 1)
 
-    got_id, distance, name, accepted = attendance.identify(
-        recognizer, gray, BOX)
+    got = decide(gray, recognizer)
 
-    assert accepted is True
-    assert got_id == user_id
-    assert name == "Ada Lovelace"
-    assert distance == vision.CONFIDENCE_THRESHOLD - 1
+    assert got.accepted is True
+    assert got.user_id == user_id
+    assert decision.name_of(got.user_id) == "Ada Lovelace"
+    assert got.confidence == vision.CONFIDENCE_THRESHOLD - 1
+    assert got.outcome == decision.LOGGED
 
 
-def test_a_distant_match_is_refused_and_unnamed(isolated_db, gray):
+def test_a_distant_match_is_refused_and_unnamed(isolated_db, gray, monkeypatch):
     """The name is withheld, not just flagged. A refused match that still
-    carries somebody's name onto the frame is the thing to avoid."""
+    carries somebody's name onto the frame is the thing to avoid -- so this
+    looks at what the capture loop draws, not only at the decision."""
     user_id = isolated_db.add_user("Ada Lovelace")
     recognizer = FakeRecognizer(user_id, vision.CONFIDENCE_THRESHOLD + 1)
 
-    _id, _distance, name, accepted = attendance.identify(
-        recognizer, gray, BOX)
+    got = decide(gray, recognizer)
+    assert got.accepted is False
+    assert got.outcome == decision.UNRECOGNISED
+    assert isolated_db.get_attendance_for_today() == [], "a refused face was logged"
 
-    assert accepted is False
-    assert name == "Unknown"
+    labels = run_cli(monkeypatch, recognizer, [gray])
+    assert labels and all(label.startswith("Unknown") for label, _ in labels)
+    assert all("Ada" not in label for label, _ in labels)
+    assert all(colour == attendance.UNKNOWN_COLOUR for _, colour in labels)
 
 
 def test_the_threshold_is_a_distance_and_the_comparison_is_strict(isolated_db,
@@ -85,22 +142,27 @@ def test_the_threshold_is_a_distance_and_the_comparison_is_strict(isolated_db,
     user_id = isolated_db.add_user("Ada Lovelace")
 
     at_cut = FakeRecognizer(user_id, vision.CONFIDENCE_THRESHOLD)
-    assert attendance.identify(at_cut, gray, BOX)[3] is False
+    assert decide(gray, at_cut).accepted is False
 
     below = FakeRecognizer(user_id, vision.CONFIDENCE_THRESHOLD - 0.001)
-    assert attendance.identify(below, gray, BOX)[3] is True
+    assert decide(gray, below).accepted is True
 
 
 def test_an_accepted_id_with_no_database_row_says_so_rather_than_crashing(
-        isolated_db, gray):
+        isolated_db, gray, monkeypatch, capsys):
     """LBPH predicts a *label*, and the label is a user id that may have been
-    deleted. The old code's `or f"Unknown (id {user_id})"` is what keeps that
-    from putting `None` on the frame."""
+    deleted. name_of's `or f"Unknown (id {user_id})"` keeps that from putting
+    `None` on the frame, and the report says why nothing was logged."""
     recognizer = FakeRecognizer(9999, vision.CONFIDENCE_THRESHOLD - 5)
-    _id, _distance, name, accepted = attendance.identify(
-        recognizer, gray, BOX)
-    assert accepted is True
-    assert "9999" in name
+
+    got = decide(gray, recognizer)
+    assert got.accepted is True
+    assert got.outcome == decision.NO_USER
+    assert "9999" in decision.name_of(got.user_id)
+
+    labels = run_cli(monkeypatch, recognizer, [gray])
+    assert any("9999" in label for label, _ in labels)
+    assert "has no user" in capsys.readouterr().out
 
 
 def test_the_face_is_resized_to_the_shared_lbph_geometry(isolated_db, gray):
@@ -108,37 +170,65 @@ def test_the_face_is_resized_to_the_shared_lbph_geometry(isolated_db, gray):
     and the size comes from vision.py rather than from a literal here."""
     user_id = isolated_db.add_user("Ada Lovelace")
     recognizer = FakeRecognizer(user_id, 10)
-    attendance.identify(recognizer, gray, BOX)
+    decide(gray, recognizer)
     assert recognizer.shapes == [vision.LBPH_INPUT_SIZE]
 
 
 # ------------------------------------------------------------------ logging
 
-def test_an_accepted_face_is_logged_once_per_session(isolated_db, capsys):
+def test_an_accepted_face_is_logged_once_per_session(isolated_db, gray,
+                                                     monkeypatch, capsys):
     """Without the session set, every frame re-queries the database for
     somebody standing still and the console fills with a line per frame."""
     user_id = isolated_db.add_user("Ada Lovelace")
+    recognizer = FakeRecognizer(user_id, 40.0)
+
+    run_cli(monkeypatch, recognizer, [gray, gray, gray])
+    printed = capsys.readouterr().out
+
+    assert printed.count("Logged attendance") == 1, printed
+    assert "already marked" not in printed, "the second frame hit the database"
+    assert len(isolated_db.get_attendance_for_today()) == 1
+
+
+def test_a_second_frame_in_one_session_is_seen_not_logged(isolated_db, gray):
+    user_id = isolated_db.add_user("Ada Lovelace")
     marked = set()
 
-    attendance.mark_present(user_id, "Ada Lovelace", 40.0, marked)
-    first = capsys.readouterr().out
-    assert "Logged attendance" in first
-    assert marked == {user_id}
+    def claim(uid):
+        if uid in marked:
+            return False
+        marked.add(uid)
+        return True
+    first = decide(gray, FakeRecognizer(user_id, 40.0), claim)
+    second = decide(gray, FakeRecognizer(user_id, 41.0), claim)
 
-    attendance.mark_present(user_id, "Ada Lovelace", 41.0, marked)
-    assert capsys.readouterr().out == "", "it logged the same person twice"
+    assert first.outcome == decision.LOGGED and marked == {user_id}
+    assert second.outcome == decision.SEEN
 
 
-def test_somebody_already_marked_today_is_told_so(isolated_db, capsys):
+def test_somebody_already_marked_today_is_told_so(isolated_db, gray,
+                                                  monkeypatch, capsys):
     """A second session on the same day: the database refuses the duplicate,
     and the message distinguishes that from a fresh log."""
     user_id = isolated_db.add_user("Ada Lovelace")
     isolated_db.log_attendance(user_id, 40.0)
 
-    attendance.mark_present(user_id, "Ada Lovelace", 42.0, set())
+    run_cli(monkeypatch, FakeRecognizer(user_id, 42.0), [gray])
     printed = capsys.readouterr().out
     assert "already marked present today" in printed
     assert "Logged attendance" not in printed
+
+
+def test_report_says_what_record_did(capsys):
+    attendance.report(decision.LOGGED, 3, "Ada", 41.26)
+    assert capsys.readouterr().out == "Logged attendance: Ada at distance 41.3\n"
+    attendance.report(decision.LOGGED, 3, "Ada", 0.8123, decision.SFACE)
+    assert "similarity 0.812" in capsys.readouterr().out
+    attendance.report(decision.ALREADY, 3, "Ada", 41.0)
+    assert "Ada already marked present today." in capsys.readouterr().out
+    attendance.report(decision.NO_USER, 3, "Ada", 41.0)
+    assert "Recognised label 3, which has no user" in capsys.readouterr().out
 
 
 def test_todays_report_lists_what_was_logged(isolated_db, capsys):
@@ -223,14 +313,13 @@ def test_creating_a_user_makes_both_the_row_and_the_folder(isolated_db,
     assert "Grace Hopper" in capsys.readouterr().out
 
 
-def test_a_saved_sample_is_the_shared_lbph_geometry(isolated_db, gray,
-                                                    tmp_path):
-    """The gallery side of the comparison. If this and attendance.identify
+def test_a_saved_sample_is_the_shared_lbph_geometry(isolated_db, tmp_path):
+    """The gallery side of the comparison. If this and the decision's crop
     disagree about the size, recognition gets worse with nothing to point
     at -- which is why both read it from vision.py."""
-    import cv2
     from cli import register_user
 
+    gray = np.full((200, 200), 128, np.uint8)
     path = register_user.save_sample(gray, BOX, str(tmp_path), 1)
     assert os.path.isfile(path)
 
@@ -240,8 +329,10 @@ def test_a_saved_sample_is_the_shared_lbph_geometry(isolated_db, gray,
         "recogniser queries at")
 
 
-def test_samples_are_numbered_from_one_per_user(isolated_db, gray, tmp_path):
+def test_samples_are_numbered_from_one_per_user(isolated_db, tmp_path):
     from cli import register_user
+
+    gray = np.full((200, 200), 128, np.uint8)
 
     names = [os.path.basename(register_user.save_sample(
         gray, BOX, str(tmp_path), i)) for i in (1, 2, 3)]

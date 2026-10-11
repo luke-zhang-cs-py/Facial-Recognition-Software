@@ -6,6 +6,7 @@ Download the pretrained weights the trait analysis needs into models/.
     python -m cli.fetch_models           # everything missing
     python -m cli.fetch_models --force   # re-download even if present
     python -m cli.fetch_models --list    # just show what is and isn't there
+    python -m cli.fetch_models --verify  # re-hash every file against its pin; no download
 
 Roughly 196 MB total, mostly the two Caffe demographic nets and the LBF
 landmark model. The CLI's LBPH pipeline needs none of it. The web app's
@@ -112,13 +113,50 @@ def download(filename, url, force=False):
     return True
 
 
+def verify():
+    """Re-hash every pinned file on disk; return [(filename, problem)].
+
+    download() checks a file only as it arrives, so a file already in models/
+    -- restored from a CI cache, copied from elsewhere, or edited since -- was
+    trusted on sight ("have"). This is the check for those. It never touches
+    the network and never repairs: a bad file is reported, not replaced.
+    """
+    bad = []
+    for filename in URLS:
+        dest = path_for(filename)
+        if not os.path.exists(dest):
+            bad.append((filename, "missing"))
+            print(f"  MISSING   {filename}")
+            continue
+        got = sha256_of(dest)
+        if got != SHA256[filename]:
+            bad.append((filename, f"checksum {got[:12]}... is not the expected "
+                                  f"{SHA256[filename][:12]}..."))
+            print(f"  MISMATCH  {filename}: {bad[-1][1]}")
+        else:
+            print(f"  verified  {filename}")
+    return bad
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="re-download files already present")
     ap.add_argument("--list", action="store_true", help="show status and exit")
+    ap.add_argument("--verify", action="store_true",
+                    help="check every file on disk against its pinned SHA-256 "
+                         "and exit 1 on a missing or different one; downloads nothing")
     args = ap.parse_args()
 
     os.makedirs(models_dir(), exist_ok=True)
+
+    if args.verify:
+        bad = verify()
+        if bad:
+            print(f"\n{len(bad)} file(s) missing or not what is pinned. Delete "
+                  "them (and any cache that holds them) and fetch again.")
+            return 1
+        print("\nEvery model matches its pinned checksum.")
+        return 0
 
     if args.list:
         for name, (files, desc) in SPECS.items():

@@ -74,8 +74,16 @@ jobs:
       - name: Fetch the weights
         # Checks each file against its pinned SHA-256 and refuses a mismatch;
         # exits 1 if any download failed. With the cache warm it only checks
-        # that every file is present.
+        # that every file is present; the next step re-hashes them.
         run: python -m cli.fetch_models
+
+      - name: Verify the weights
+        # A cache hit is not re-hashed by the fetch above, which only sees
+        # that each file is there. Re-check every file against its pinned
+        # SHA-256, whether it came from the cache or the download, before it
+        # is saved or loaded by a test. Fails the job on a missing or
+        # different file.
+        run: python -m cli.fetch_models --verify
 
       - name: Save the weights
         # Saved straight after a verified fetch rather than at the end of the

@@ -1,6 +1,5 @@
 import os
 import sys
-import tempfile
 
 import numpy as np
 import pytest
@@ -10,7 +9,7 @@ sys.path.insert(0, ROOT)
 
 
 @pytest.fixture
-def isolated_root():
+def isolated_root(tmp_path_factory):
     """Point the whole project -- database and dataset -- at a fresh folder.
 
     This used to monkeypatch db.DB_PATH, because the modules read their paths
@@ -19,7 +18,9 @@ def isolated_root():
     and the database and the dataset can no longer end up in different places.
     """
     from core import paths
-    tmp = tempfile.mkdtemp()
+    # tmp_path_factory, not mkdtemp(): that left one directory per test in %TEMP%
+    # forever; pytest owns this one and prunes it.
+    tmp = str(tmp_path_factory.mktemp("root"))
     previous = paths.use(tmp)
     try:
         yield tmp

@@ -29,6 +29,7 @@ label you want to slice by.
 """
 
 import argparse
+from collections import Counter
 import glob
 import io
 import json
@@ -89,14 +90,30 @@ def stratified_indices(groups, per_group, seed=0):
     return np.sort(np.concatenate(out))
 
 
+class Results(list):
+    """The per-image results (None for an image that was not analysed), plus
+    `failures`: how many images failed, by reason."""
+    failures = None
+
+
 def analyse_sample(indices, offsets):
-    """Run traits.analyze over the sampled images; return per-image flags."""
+    """Run traits.analyze over the sampled images; return per-image flags.
+
+    An image that cannot be read stays None and is left out of every
+    denominator. Each failure is counted under its stage and exception type
+    ("decode: UnidentifiedImageError") in the result's `failures`, and a
+    failure after decoding -- the analyser itself raising -- also prints its
+    message once per type, since that is a bug, not a bad file. It used to be
+    `except Exception: pass`, so a broken analyser looked like a corrupt
+    corpus.
+    """
     import cv2
     import pyarrow.parquet as pq
     from PIL import Image
     from pipeline import traits
 
-    results = [None] * len(indices)
+    results = Results([None] * len(indices))
+    results.failures = Counter()
     position = {gi: k for k, gi in enumerate(indices)}
     done = 0
 
@@ -106,16 +123,22 @@ def analyse_sample(indices, offsets):
             continue
         col = pq.read_table(path, columns=["image"]).column("image")
         for gi in want:
+            stage = "row"
             try:
                 raw = col[gi - f_start].as_py()["bytes"]
+                stage = "decode"
                 im = Image.open(io.BytesIO(raw)).convert("RGB")
                 bgr = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
+                stage = "analyse"
                 t = traits.analyze(bgr, want_embedding=False,
                                    want_demographics=False,
                                    require_detection=True)
                 results[position[gi]] = t
-            except Exception:
-                pass
+            except Exception as exc:
+                reason = f"{stage}: {type(exc).__name__}"
+                if stage != "decode" and reason not in results.failures:
+                    print(f"    {reason}: {exc}", file=sys.stderr, flush=True)
+                results.failures[reason] += 1
             done += 1
             if done % 250 == 0:
                 print(f"    {done}/{len(indices)}", flush=True)
@@ -165,6 +188,20 @@ def report_rate(name, hits, groups, names, budget=DISPARITY_BUDGET):
           f"vs {best['group']} {100 * best['rate']:.2f}%)   [{verdict}]{note}")
     return {"rows": rows, "disparity": ratio, "worst": worst,
             "best": best, "verdict": verdict, "ciSeparated": separated}
+
+
+def warn_empty_groups(sampled, analysed, names, what):
+    """Say which groups were sampled but ended up with no analysed image.
+
+    Such a group has n = 0 and simply vanishes from the table, which reads as
+    "this group is fine" rather than "this group was not measured".
+    """
+    for g in np.unique(sampled):
+        if not (analysed == g).any():
+            label = names[g] if g < len(names) else f"group {g}"
+            print(f"  WARNING: {what} group '{label}' has n=0: none of its "
+                  f"{int((sampled == g).sum())} sampled images could be analysed, "
+                  "so it is missing from the results below")
 
 
 def json_ready(obj):
@@ -222,13 +259,24 @@ def main():
     analysed = np.array([r is not None for r in results], dtype=bool)
     got = [r for r in results if r is not None]
     print(f"analysed {len(got):,}/{len(idx):,}")
+    failures = getattr(results, "failures", None)
+    if failures:
+        print("  not analysed, by reason: "
+              + ", ".join(f"{k} x{v}" for k, v in sorted(failures.items())))
+    if not got:
+        print(f"analysed 0 of {len(idx):,} sampled images: nothing to report. "
+              "Every image failed (see the reasons above).")
+        return 1
 
     sel_groups = groups[idx][analysed]
     detected = np.array([bool(r["detected"]) for r in got], dtype=bool)
     any_flag = np.array([bool(r["flags"]) for r in got], dtype=bool)
 
-    names = DEFAULT_NAMES.get(args.group_column,
-                              [f"group {i}" for i in range(int(groups.max()) + 1)])
+    if args.group_column in DEFAULT_NAMES:
+        names = DEFAULT_NAMES[args.group_column]
+    else:
+        names = [f"group {i}" for i in range(int(groups.max()) + 1)]
+    warn_empty_groups(groups[idx], sel_groups, names, args.group_column)
 
     print("\n" + "=" * 70)
     print(f"FAIRNESS BY {args.group_column.upper()}  (disparity budget {DISPARITY_BUDGET}x)")
@@ -255,7 +303,10 @@ def main():
 
     for col in extra:
         vals = labels[col][idx][analysed]
-        nm = DEFAULT_NAMES.get(col, [f"{col} {i}" for i in range(int(vals.max()) + 1)])
+        if col in DEFAULT_NAMES:
+            nm = DEFAULT_NAMES[col]
+        else:
+            nm = [f"{col} {i}" for i in range(int(vals.max()) + 1)]
         print("\n" + "=" * 70)
         print(f"FAIRNESS BY {col.upper()}")
         print("=" * 70)

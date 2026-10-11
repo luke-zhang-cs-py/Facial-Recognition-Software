@@ -131,11 +131,11 @@ def pick_people(labels, names, min_images, wanted, requested=None, exclude=()):
     # Most-photographed first: more images means a more stable centroid, and
     # these are the identities LFW actually supports testing on.
     ranked = sorted(by_person.items(), key=lambda kv: -len(kv[1]))
+    skip = {n.lower() for n in exclude}
     if exclude and names:
         # --keep adds to what is enrolled. Without this the most-photographed
         # people -- the ones already enrolled -- were enrolled a second time,
         # under a second id, splitting one face across two users.
-        skip = {n.lower() for n in exclude}
         ranked = [(lab, idx) for lab, idx in ranked
                   if names[lab].replace("_", " ").lower() not in skip]
     if requested:
@@ -149,6 +149,11 @@ def pick_people(labels, names, min_images, wanted, requested=None, exclude=()):
             lab = lookup.get(key)
             if lab is None or lab not in by_person:
                 print(f"  !! not in LFW: {want}")
+                continue
+            if names[lab].replace("_", " ").lower() in skip:
+                # `--keep --names X` for somebody already enrolled enrolled
+                # them again under a new id, the same split as above.
+                print(f"  {want}: already enrolled, skipped")
                 continue
             picked.append((lab, by_person[lab]))
         return picked

@@ -27,7 +27,7 @@ from pipeline import decision, guidance, liveness          # noqa: E402
 
 # Windows runners and coverage both slow the first example down; a deadline
 # would fail on the machine, not on the property.
-settings.register_profile("project", deadline=None,
+settings.register_profile("project", deadline=None, print_blob=True,
                           suppress_health_check=[HealthCheck.too_slow])
 # More examples on request: HYPOTHESIS_PROFILE=thorough pytest tests/test_properties.py
 settings.register_profile("thorough", parent=settings.get_profile("project"),
@@ -36,7 +36,14 @@ settings.register_profile("thorough", parent=settings.get_profile("project"),
 # the tests, not on which inputs this run happened to draw.
 settings.register_profile("mutmut", parent=settings.get_profile("project"),
                           derandomize=True, database=None)
-settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "project"))
+# CI: the same examples every run, and a failure prints the blob that replays
+# it. Random draws made a push fail on one run and pass on the rerun with
+# nothing to reproduce from. GitHub sets CI=true; the property search is still
+# run freely, and at length, with HYPOTHESIS_PROFILE=thorough.
+settings.register_profile("ci", parent=settings.get_profile("project"),
+                          derandomize=True, database=None, print_blob=True)
+settings.load_profile(os.environ.get(
+    "HYPOTHESIS_PROFILE", "ci" if os.environ.get("CI") else "project"))
 
 # float32 of a huge float is infinity, which is one of the inputs wanted here;
 # numpy warns about the cast every time.

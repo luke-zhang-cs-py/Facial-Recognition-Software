@@ -410,6 +410,11 @@ def delete_user(user_id):
         conn.commit()
 
 
-if __name__ == "__main__":
+def main():
+    """`python -m core.db`: create the schema, and say where."""
     init_db()
     print(f"Database initialized at {paths.db_path()}")
+
+
+if __name__ == "__main__":
+    main()

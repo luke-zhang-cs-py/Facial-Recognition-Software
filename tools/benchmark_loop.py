@@ -452,9 +452,12 @@ def load_state(path):
     try:
         with open(path, encoding="utf-8") as handle:
             state = json.load(handle)
-    except (OSError, ValueError, KeyError):
+        # Read inside the try: valid JSON without the totals is as unusable
+        # as a truncated file, and used to escape as a KeyError here.
+        rounds = state["rounds"]
+    except (OSError, ValueError, KeyError, TypeError):
         return fresh_state()
-    print(f"  resuming from {state['rounds']} previous rounds\n")
+    print(f"  resuming from {rounds} previous rounds\n")
     return state
 
 
@@ -513,7 +516,11 @@ def report_round(record, readable):
 
     if record.get("detection"):
         found = record["detection"]
-        lines.append(f"           detection {100 * found['rate']:.1f}% over "
+        # rate is None when no sampled image decoded; `100 * None` raised
+        # TypeError and ended the loop mid-round.
+        rate = ("n/a" if found["rate"] is None
+                else f"{100 * found['rate']:.1f}%")
+        lines.append(f"           detection {rate} over "
                      f"{found['sampled']} FairFace images, "
                      f"disparity {found['disparity']}")
     if record.get("age"):
@@ -528,8 +535,8 @@ def report_round(record, readable):
         append(readable, line)
 
 
-def main():
-    args = build_parser().parse_args()
+def main(argv=None):
+    args = build_parser().parse_args(argv)
 
     os.makedirs(LOG_DIR, exist_ok=True)
     jsonl = os.path.join(LOG_DIR, "benchmark.jsonl")

@@ -24,9 +24,9 @@ PACKAGES = ("core", "pipeline", "analysis", "cli")
 # the Flask entry point and `python app.py` is a documented command.
 ROOT_MODULES = ("app.py",)
 
-# Developer scripts. Shipped in the repository, omitted from coverage, and
-# not part of the running system -- but still code, and still bound by the
-# rules about resolving paths.
+# Developer scripts. Shipped in the repository and measured by coverage like
+# everything else, but not part of the running system -- still code, and
+# still bound by the rules about resolving paths.
 SCRIPT_DIRS = ("tools",)
 
 _SKIP = {"__pycache__", ".git", ".venv", "venv", "node_modules"}

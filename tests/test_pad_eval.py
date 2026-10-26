@@ -96,3 +96,15 @@ def test_main_prints_a_table_or_json_and_exits_2_on_a_bad_file(tmp_path, capsys)
     bad.write_text(HEADER + "print,attack,perhaps\n", encoding="utf-8")
     assert pad_eval.main([str(bad)]) == 2
     assert "verdict must be" in capsys.readouterr().err
+
+
+def test_an_empty_csv_is_refused_rather_than_read_as_no_attempts():
+    with pytest.raises(ValueError,
+                       match="no attack_type, ground_truth, verdict column"):
+        pad_eval.read_rows(io.StringIO(""))
+
+
+def test_a_report_with_no_attacks_has_no_apcer_rows():
+    text = pad_eval.report(pad_eval.evaluate(rows("none,bona_fide,live\n" * 3)))
+    assert "APCER" not in text
+    assert text.splitlines()[-1].split()[:4] == ["BPCER", "3", "0", "0.0%"]

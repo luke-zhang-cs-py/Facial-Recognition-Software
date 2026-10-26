@@ -372,3 +372,40 @@ def test_a_rebound_host_cannot_post_either(client, monkeypatch):
     assert r.status_code == 403
     assert "only answers to 127.0.0.1" in r.get_json()["error"]
     assert calls == []
+
+
+# ------------------------------------------------------------ python app.py
+
+@pytest.fixture
+def served(isolated_db, monkeypatch):
+    """`python app.py` up to the point it would bind a socket."""
+    runs = []
+    monkeypatch.setattr(web.app, "run", lambda **kw: runs.append(kw))
+    return runs
+
+
+@pytest.mark.parametrize("retrained, model_on_disk, said", [
+    (True, False, "Model retrained from dataset/"),
+    (False, True, "Model is up to date."),
+    (False, False, None),
+])
+def test_main_readies_the_database_and_the_model_then_serves_on_loopback(
+        served, monkeypatch, capsys, retrained, model_on_disk, said):
+    from core import paths
+    isolated = web.db
+    isolated.add_user("Ada")
+    monkeypatch.setattr(web.camera, "ensure_trained", lambda: retrained)
+    if model_on_disk:
+        with open(paths.model_path(), "w") as handle:
+            handle.write("model")
+
+    web.main()
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "Database ready — 1 registered user(s)."
+    assert out[-1] == "Open http://127.0.0.1:5001"
+    if said:
+        assert out[1].startswith(said) and len(out) == 3
+    else:
+        assert len(out) == 2, "no model and nothing to train: no claim"
+    assert served == [{"host": "127.0.0.1", "port": 5001, "threaded": True,
+                       "use_reloader": False}]

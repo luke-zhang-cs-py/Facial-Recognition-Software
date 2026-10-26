@@ -134,7 +134,7 @@ def has_coverage_data():
     try:
         cov.load()
         return bool(cov.get_data().measured_files())
-    except Exception:                                  # pragma: no cover
+    except Exception:
         return False
 
 
@@ -335,14 +335,46 @@ def test_every_module_is_on_the_page(page):
 
 def test_the_omitted_modules_really_are_omitted(page):
     """If a page claims a module is left out of coverage on purpose and the
-    config does not omit it, the omission has become an accident."""
-    claimed = listed_omissions(page)
-    if not claimed:
-        pytest.skip("this page claims no omissions")
-    for name in claimed:
+    config does not omit it, the omission has become an accident -- and the
+    other way round: a module the page lists as measured, with a coverage
+    figure beside it, must not be one the config leaves out.
+
+    The second half is the one that bites now that nothing is omitted.
+    tools/ used to be, as a folder; a pattern that crept back into `omit`
+    would drop those modules out of the report while the page went on
+    printing 100% beside them."""
+    for name in listed_omissions(page):
         assert is_omitted(name), (
             f"the page says {name} is omitted from coverage, but nothing in "
             f".coveragerc matches it: {omit_patterns()}")
+    measured = sorted(listed_modules(page))
+    assert measured, "no module is listed, so this check is vacuous"
+    hidden = [name for name in measured if is_omitted(name)]
+    assert not hidden, (
+        f"the page reports coverage for {hidden}, but .coveragerc omits "
+        f"them: {omit_patterns()}")
+
+
+def test_no_line_is_hidden_from_coverage():
+    """100% means every line ran, not every line that was not excused.
+
+    The only exclusion .coveragerc makes is the `__main__` guard, whose body
+    only calls an entry point the tests call. coverage still honours its default
+    `pragma: no cover` marker, so a module carrying one would drop lines out
+    of every figure on this page without anything else noticing."""
+    import coverage
+    cov = coverage.Coverage(config_file=os.path.join(ROOT, ".coveragerc"))
+    added = [line for line in cov.config.exclude_list
+             if line not in coverage.config.DEFAULT_EXCLUDE]
+    assert added == ["if __name__ == .__main__.:"]
+    # coverage's own default pattern for the marker, spelled out.
+    marker = re.compile(r"#\s*(pragma|PRAGMA)[:\s]?\s*(no|NO)\s*(cover|COVER)")
+    modules = sorted(source_files())
+    assert modules, "no module was found, so this check is vacuous"
+    marked = [name for name in modules
+              if marker.search(io.open(os.path.join(ROOT, name),
+                                       encoding="utf-8").read())]
+    assert not marked, f"these modules excuse lines from coverage: {marked}"
 
 
 def measured_with(page):

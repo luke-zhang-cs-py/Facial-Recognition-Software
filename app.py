@@ -364,7 +364,8 @@ def api_report():
     })
 
 
-if __name__ == "__main__":
+def main():
+    """`python app.py`: ready the database and the model, then serve."""
     db.init_db()
     users = db.get_all_users()
     print(f"Database ready — {len(users)} registered user(s).")
@@ -379,3 +380,7 @@ if __name__ == "__main__":
     # so a single-threaded server would never answer anything else.
     # No reloader — it would spawn a second process fighting for the webcam.
     app.run(host="127.0.0.1", port=5001, threaded=True, use_reloader=False)
+
+
+if __name__ == "__main__":
+    main()

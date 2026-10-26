@@ -380,7 +380,7 @@ footer a { color: inherit; }
 /* Every number on this page is read from here, so the tiles, the charts and
  * the table cannot drift apart.
  *
- * Measured on 10 October 2026 in the repository: `pytest -q --cov` for the
+ * Measured on 26 October 2026 in the repository: `pytest -q --cov` for the
  * statements and what is uncovered, `wc -l` for length, and `pytest
  * --collect-only -q` for the test counts. The benchmark figures come from
  * notes/BENCHMARK.md, which records a run over the whole of FairFace. Not
@@ -389,59 +389,60 @@ footer a { color: inherit; }
  * rewrites them. */
 
 var MODULES = [
+  { name: 'tools/build_static.py',          lines: 1398, stmts: 496, missed:  0, does: 'generates the browser demo, and fails if its JS disagrees with the Python; tested against a stand-in browser, so neither Playwright nor Node is needed' },
   { name: 'pipeline/camera.py',             lines: 872, stmts: 468, missed:  0, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
+  { name: 'tools/benchmark_loop.py',        lines: 607, stmts: 302, missed:  0, does: 'the continuous benchmark runner; tested a round at a time on corpora built at test time' },
   { name: 'analysis/analytics.py',          lines: 778, stmts: 283, missed:  0, does: 'dataset-wide enrollment quality and threshold sweeps' },
   { name: 'pipeline/traits.py',             lines: 566, stmts: 215, missed:  0, does: 'per-face quality, pose, embedding and demographics' },
   { name: 'analysis/fairness_benchmark.py', lines: 337, stmts: 186, missed:  0, does: 'the stratified FairFace run; its statistics and main() are tested on a tiny labelled corpus' },
   { name: 'pipeline/landmarks.py',          lines: 403, stmts: 185, missed:  0, does: 'the face mesh, and the overlay drawn on the frame' },
-  { name: 'app.py',                         lines: 381, stmts: 173, missed:  0, does: 'the Flask UI; fifteen endpoints, loopback only' },
+  { name: 'app.py',                         lines: 386, stmts: 183, missed:  0, does: 'the Flask UI; fifteen endpoints, loopback only' },
+  { name: 'tools/refresh_figures.py',       lines: 352, stmts: 176, missed:  0, does: 'measures and rewrites the figures on this page; tested against a miniature page' },
   { name: 'cli/seed_demo.py',               lines: 325, stmts: 167, missed:  0, does: 'enrolls faces from LFW for testing; the parquet read is tested on a tiny corpus built at test time' },
   { name: 'cli/analyze_faces.py',           lines: 238, stmts: 134, missed:  0, does: 'the console version of the analysis panel' },
+  { name: 'core/db.py',                     lines: 420, stmts: 134, missed:  0, does: 'the schema and every query; one context manager for all access' },
   { name: 'pipeline/sampleframes.py',       lines: 271, stmts: 134, missed:  0, does: 'picks the usable frames out of a video, by the same quality gate' },
-  { name: 'core/db.py',                     lines: 415, stmts: 131, missed:  0, does: 'the schema and every query; one context manager for all access' },
+  { name: 'tools/build_gallery.py',         lines: 221, stmts: 118, missed:  0, does: 'builds a 10,590-identity gallery from CASIA-WebFace; tested with curl and the worker pool replaced' },
+  { name: 'tools/trials.py',                lines: 179, stmts: 116, missed:  0, does: 'the 4,500-trial robustness sweep, over a tiny LFW shard with the recogniser scripted' },
   { name: 'pipeline/guidance.py',           lines: 290, stmts: 103, missed:  0, does: 'turns a live trait read into one instruction to act on' },
   { name: 'cli/attendance.py',              lines: 188, stmts: 102, missed:  0, does: 'the CLI attendance loop, deciding through pipeline/decision.py like the camera' },
   { name: 'cli/fetch_models.py',            lines: 187, stmts:  99, missed:  0, does: 'downloads the pretrained weights and checks each against its pinned SHA-256; tested with every download mocked' },
   { name: 'pipeline/decision.py',           lines: 236, stmts:  97, missed:  0, does: 'the attendance decision, once: SFace first, LBPH fallback, for the camera and the CLI' },
+  { name: 'tools/pad_eval.py',              lines: 179, stmts:  89, missed:  0, does: 'APCER/BPCER from a CSV of presentation-attack outcomes, on synthetic rows' },
   { name: 'cli/register_user.py',           lines: 157, stmts:  82, missed:  0, does: 'the CLI capture loop; writing a gallery sample is now its own function' },
   { name: 'analysis/calibration.py',        lines: 291, stmts:  75, missed:  0, does: 'the measured false-match curve and the gallery-size maths' },
   { name: 'pipeline/liveness.py',           lines: 168, stmts:  73, missed:  0, does: 'is this a person or a photograph of one' },
+  { name: 'tools/scale_benchmark.py',       lines: 138, stmts:  70, missed:  0, does: 'the gallery-size sweep, over a gallery of hand-placed embeddings' },
   { name: 'pipeline/recognition.py',        lines: 189, stmts:  69, missed:  0, does: 'identification by SFace embedding, against the gallery threshold; decides attendance' },
   { name: 'pipeline/enrollment.py',         lines: 174, stmts:  58, missed:  0, does: 'the post-capture report: pose coverage, and who this face sits closest to' },
   { name: 'pipeline/readout.py',            lines: 145, stmts:  53, missed:  0, does: 'the live sidebar payload, assembled from one frame' },
   { name: 'core/facemodels.py',             lines: 144, stmts:  47, missed:  0, does: 'lazy loader for the pretrained analysis models' },
   { name: 'core/paths.py',                  lines: 123, stmts:  41, missed:  0, does: 'where the data lives — one decision, resolved per call' },
   { name: 'pipeline/train_model.py',        lines:  69, stmts:  36, missed:  0, does: 'rebuilds the LBPH recogniser from dataset/' },
+  { name: 'tools/sample_frames.py',         lines:  88, stmts:  35, missed:  0, does: 'fills the sample-frame directory from footage you own' },
   { name: 'cli/face_attendance.py',         lines:  73, stmts:  27, missed:  0, does: 'a thin entry point, asserted by test to hold no logic' },
   { name: 'cli/view_report.py',             lines:  48, stmts:  20, missed:  0, does: 'prints the users and the attendance rows' },
   { name: 'core/corpus_paths.py',           lines:  79, stmts:  16, missed:  0, does: 'one home for the benchmark corpus locations' },
   { name: 'core/vision.py',                 lines:  71, stmts:   6, missed:  0, does: 'the numbers the LBPH capture path shares — threshold, crop size, detector tuning' }
 ];
 
-/* Left out of coverage on purpose: the developer scripts in tools/. Most
- * stream a corpus, build the demo or rewrite this page, so exercising them in
- * the suite would mean shipping gigabytes; `.coveragerc` omits the folder as a
- * whole. Every shipped module is counted -- seed_demo, fetch_models,
- * fairness_benchmark and face_attendance used to sit here and are now in the
- * table above. Named here so the omission is visible rather than silent. */
-var OMITTED = [
-  { name: 'tools/build_static.py',    lines: 1398, why: 'generates the browser demo, and fails if its JS disagrees with the Python' },
-  { name: 'tools/benchmark_loop.py',  lines: 600, why: 'the continuous benchmark runner' },
-  { name: 'tools/refresh_figures.py', lines: 352, why: 'measures and rewrites the figures on this page' },
-  { name: 'tools/build_gallery.py',   lines: 216, why: 'builds a 10,590-identity gallery from CASIA-WebFace' },
-  { name: 'tools/pad_eval.py',        lines: 179, why: 'APCER/BPCER from a CSV of presentation-attack outcomes; tested on synthetic rows (test_pad_eval.py), omitted with the rest of tools/' },
-  { name: 'tools/trials.py',          lines: 148, why: 'the 4,500-trial robustness sweep' },
-  { name: 'tools/scale_benchmark.py', lines: 106, why: 'the gallery-size sweep' },
-  { name: 'tools/sample_frames.py',   lines:  88, why: 'fills the sample-frame directory from footage you own' }
-];
+/* Left out of coverage on purpose: nothing. The developer scripts in
+ * tools/ sat here, omitted as a folder, until each was given tests that
+ * build its corpus, its browser or its page at test time; they are in the
+ * table above now. The block stays, empty, so an omission added later has
+ * somewhere visible to be named rather than going silent. */
+var OMITTED = [];
 
 var TESTS = [
-  { file: 'test_cov_app.py',                n: 62, of: 'the error branches of app.py, through the Flask test client' },
+  { file: 'test_cov_app.py',                n: 65, of: 'the error branches of app.py, through the Flask test client' },
   { file: 'test_sample_frames.py',          n: 45, of: 'choosing sample frames, over a real video file' },
   { file: 'test_cov_remaining.py',          n: 42, of: 'the last branches of calibration, guidance, readout and recognition, and the gallery refresh count' },
+  { file: 'test_cov_build_static.py',       n: 39, of: 'the demo build against a stand-in browser: every refusal, --prove, and the published bundle byte for byte' },
   { file: 'test_camera_modes.py',           n: 37, of: 'registration and attendance, given a face rather than a camera' },
   { file: 'test_cov_seed_demo.py',          n: 37, of: 'the LFW demo seeder against a tiny corpus built at test time; nothing downloaded' },
+  { file: 'test_cov_tools.py',              n: 37, of: 'the corpus scripts: sample frames, the gallery build, the scale and trial sweeps' },
   { file: 'test_camera_capture.py',         n: 33, of: 'the grab loop and its failure branches, against a synthetic camera' },
+  { file: 'test_cov_benchmark_loop.py',     n: 31, of: 'the benchmark loop a round at a time, on corpora built at test time' },
   { file: 'test_cov_cli_small.py',          n: 31, of: 'the small entry points, with every download mocked and the network refused' },
   { file: 'test_pure_helpers.py',           n: 31, of: 'the functions with no camera, no model and no database' },
   { file: 'test_cov_analytics.py',          n: 29, of: 'the pure parts of analytics.py, and the sample cache and dataset walk around them' },
@@ -452,6 +453,7 @@ var TESTS = [
   { file: 'test_cov_landmarks.py',          n: 25, of: 'the 68-point measurements on hand-placed point sets, and the divide-by-a-distance cases' },
   { file: 'test_analytics.py',              n: 24, of: 'the sweeps, and refusing to trust a small one' },
   { file: 'test_paths_and_cli.py',          n: 24, of: 'that every module resolves its paths per call' },
+  { file: 'test_cov_refresh_figures.py',    n: 23, of: 'the script that rewrites this page, against a miniature one' },
   { file: 'test_cov_analyze_faces.py',      n: 22, of: 'the console analysis report, section by section, over a dataset of grey squares' },
   { file: 'test_fourth_pass_phase1.py',     n: 22, of: 'one per-frame decision for both front ends, one mark per person per day, one rule for a folder id' },
   { file: 'test_readout_and_enrollment.py', n: 22, of: 'the two modules split out of the camera manager' },
@@ -466,14 +468,14 @@ var TESTS = [
   { file: 'test_frontend_escaping.py',      n: 15, of: 'that a registered name cannot become script' },
   { file: 'test_nonfinite.py',              n: 15, of: 'that no endpoint can emit NaN into JSON' },
   { file: 'test_recognition_paths.py',      n: 15, of: 'that every path into and out of LBPH agrees: orientation, detector, liveness' },
+  { file: 'test_db.py',                     n: 14, of: 'the schema, and that a failed write closes its connection' },
   { file: 'test_sface_attendance.py',       n: 14, of: 'attendance decided by SFace, LBPH only as the fallback' },
   { file: 'test_cov_enrollment.py',         n: 13, of: 'the post-registration report end to end, over known numbers' },
-  { file: 'test_db.py',                     n: 13, of: 'the schema, and that a failed write closes its connection' },
+  { file: 'test_pad_eval.py',               n: 13, of: 'APCER and BPCER from presentation-attack outcomes, on synthetic rows' },
   { file: 'test_shared_constants.py',       n: 13, of: 'that one number lives in one place' },
   { file: 'test_traits_landmarks.py',       n: 13, of: 'the trait read and the mesh' },
   { file: 'test_guidance.py',               n: 12, of: 'which instruction wins, and what is never said' },
-  { file: 'test_pad_eval.py',               n: 11, of: 'APCER and BPCER from presentation-attack outcomes, on synthetic rows' },
-  { file: 'test_published_figures.py',      n: 11, of: 'the numbers on this page, against a fresh measurement' },
+  { file: 'test_published_figures.py',      n: 12, of: 'the numbers on this page, against a fresh measurement' },
   { file: 'test_properties.py',             n: 10, of: 'properties hypothesis tries to break: the threshold, the instruction, NaN-free JSON, the liveness vote' },
   { file: 'test_recognition_liveness.py',   n: 10, of: 'identification, and refusing a photograph' },
   { file: 'test_ci_portability.py',         n:  8, of: 'that the code runs on a machine that is not this one: no optional package, no local path' },
@@ -482,7 +484,7 @@ var TESTS = [
   { file: 'test_cov_analytics_golden.py',   n:  2, of: 'that splitting summarize_user and lbph_analysis changed nothing, against output captured before the split' }
 ];
 
-var TEST_LINES = 12279;
+var TEST_LINES = 14380;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so
@@ -632,23 +634,16 @@ function drawTiles() {
       '<span class="n">' + esc(t[2]) + '</span></div>';
   }).join('');
 
-  /* Derived, not typed: these are the modules nothing imports, so their
-   * statements were the ones missing from the report. Writing the total out
-   * would be a number beside a number, and the two would drift. */
-  var unexecuted = MODULES.filter(function (m) { return covered(m) === 0; });
-  var hidden = sum(unexecuted, function (m) { return m.stmts; });
-
+  /* Derived, not typed: the module count and the percentage come from the
+   * table, so the sentence cannot disagree with it. */
   el('tilesNote').textContent =
-    'Coverage is ' + Math.round(100 * COVERED / STMTS) + '%, and that ' +
-    'figure is lower than it used to read for an honest reason: the config ' +
-    'had no source setting, so coverage reported only files something ' +
-    'imported — and ' +
-    unexecuted.map(function (m) { return m.name; }).join(' and ') +
-    ' are never imported by a test. ' + hidden + ' statements of shipped ' +
-    'code were missing from the report rather than showing as uncovered, ' +
-    'which flattered exactly the code that needed the most attention. They ' +
-    'are in the table now, at 0%. The rest of the gap is pipeline/camera.py, which ' +
-    'cannot be driven without a webcam on the machine.';
+    'Coverage is ' + Math.round(100 * COVERED / STMTS) + '%, lines and ' +
+    'branches together, over all ' + MODULES.length + ' modules in the ' +
+    'repository: the shipped code and the developer scripts in tools/. The ' +
+    'only lines excused are the __main__ guards, each of which only calls ' +
+    'an entry point the tests call directly. It is measured with no webcam, no ' +
+    'weights and no corpus, so the camera, the networks and the corpora are ' +
+    'stood in for by fakes built at test time.';
 }
 
 /* --------------------------------------------------------------- charts */
@@ -674,10 +669,11 @@ function drawModules() {
   el('moduleSub').textContent =
     'By executable statements, largest first. One measure, so one colour and ' +
     'no legend — the heading names it, and every bar is labelled directly. ' +
-    'The widest by a distance is pipeline/camera.py at ' + rows[0].stmts + ': owning ' +
-    'one webcam across capture, streaming, registration and recognition is ' +
-    'most of this project’s difficulty, and it is also the hardest thing ' +
-    'here to test without hardware.';
+    'The widest is ' + rows[0].name + ' at ' + rows[0].stmts + '. Of the ' +
+    'shipped code, pipeline/camera.py is the largest: owning one webcam ' +
+    'across capture, streaming, registration and recognition is most of ' +
+    'this project’s difficulty, and it is also the hardest thing here to ' +
+    'test without hardware.';
   drawBars('moduleBars', rows,
            function (m) { return m.name; },
            function (m) { return m.stmts + ' · ' + coverage(m) + '%'; },
@@ -716,7 +712,8 @@ function drawTable() {
       '<td>' + esc(o.why) + '</td></tr>';
   }).join('');
   el('tableBody').innerHTML = rows + omitted +
-    '<tr class="total"><td>Total, excluding the omitted tools</td>' +
+    '<tr class="total"><td>Total' + (OMITTED.length ? ', excluding the ' +
+      'omitted modules' : '') + '</td>' +
     '<td class="num">' + LINES.toLocaleString() + '</td>' +
     '<td class="num">' + STMTS.toLocaleString() + '</td>' +
     '<td class="num">' + Math.round(100 * COVERED / STMTS) + '%</td>' +
@@ -856,7 +853,7 @@ el('tableBtn').addEventListener('click', function () {
 });
 
 el('footNote').textContent =
-  'Code figures measured on 10 October 2026 in the repository with pytest ' +
+  'Code figures measured on 26 October 2026 in the repository with pytest ' +
   '--cov, wc -l and pytest --collect-only, and checked against a fresh ' +
   'measurement by tests/test_published_figures.py. The benchmark figures ' +
   'come from a run over the whole of FairFace — ' +

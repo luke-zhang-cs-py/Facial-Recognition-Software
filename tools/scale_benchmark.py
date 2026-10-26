@@ -48,29 +48,32 @@ def load_gallery():
     return np.load(path, allow_pickle=True)
 
 
-G = load_gallery()
-labels, vecs = G["labels"], G["vecs"]
-print(f"loaded {len(vecs)} embeddings, {len(set(labels.tolist()))} identities\n")
-
-by = collections.defaultdict(list)
-for lab, v in zip(labels.tolist(), vecs):
-    by[lab].append(v)
-usable = {k: v for k, v in by.items() if len(v) >= 4}
-print(f"{len(usable)} identities have the 4 embeddings this needs\n")
-
-ids = sorted(usable)
-rng = np.random.default_rng(0)
-rng.shuffle(ids)
-
+# The gallery sizes to measure at, smallest first. The corpus decides how far
+# up the list a run gets; the full gallery is always measured as well.
 SIZES = [100, 250, 500, 1000, 2500, 5000, 7500, 10000]
-SIZES = [n for n in SIZES if n <= len(ids)]
-if len(ids) not in SIZES:
-    SIZES.append(len(ids))
 
-print(f"{'gallery':>8}{'thresh':>8}{'rank1':>8}{'correct':>9}{'rejected':>10}"
-      f"{'MISID':>8}{'predicted risk':>16}")
-print("-" * 70)
-for n in SIZES:
+# Probes scored per matrix multiply, to bound memory on a large gallery.
+BATCH = 512
+
+
+def usable_identities(labels, vecs):
+    """identity -> its embeddings, for the identities that have the 4 needed."""
+    by = collections.defaultdict(list)
+    for lab, v in zip(labels.tolist(), vecs):
+        by[lab].append(v)
+    return {k: v for k, v in by.items() if len(v) >= 4}
+
+
+def sizes_for(count):
+    """SIZES up to `count`, and `count` itself."""
+    sizes = [n for n in SIZES if n <= count]
+    if count not in sizes:
+        sizes.append(count)
+    return sizes
+
+
+def measure(usable, ids, n):
+    """(rank1, correct, rejected, misid, thr, risk, reachable) for the first n."""
     sub = ids[:n]
     cents, probes = [], []
     for i in sub:
@@ -86,21 +89,50 @@ for n in SIZES:
     thr, risk, reachable = calibration.recommend_threshold(n)
 
     rank1 = correct = rejected = misid = 0
-    B = 512
-    for s in range(0, n, B):
-        S = P[s:s + B] @ C.T
+    for s in range(0, n, BATCH):
+        S = P[s:s + BATCH] @ C.T
         idx = S.argmax(axis=1)
         best = S.max(axis=1)
-        truth = np.arange(s, min(s + B, n))
+        truth = np.arange(s, min(s + BATCH, n))
         rank1 += int((idx == truth).sum())
         above = best >= thr
         correct += int(((idx == truth) & above).sum())
         misid += int(((idx != truth) & above).sum())
         rejected += int((~above).sum())
+    return rank1, correct, rejected, misid, thr, risk, reachable
 
-    mark = "" if reachable else "  UNREACHABLE"
-    print(f"{n:>8}{thr:>8.3f}{100 * rank1 / n:>7.1f}%{100 * correct / n:>8.1f}%"
-          f"{100 * rejected / n:>9.1f}%{100 * misid / n:>7.1f}%{100 * risk:>14.2f}%{mark}")
 
-print("\nrank1 ignores the threshold: it asks only 'was the right person nearest',")
-print("which stays high while the usable accuracy falls away underneath it.")
+def main():
+    G = load_gallery()
+    labels, vecs = G["labels"], G["vecs"]
+    print(f"loaded {len(vecs)} embeddings, {len(set(labels.tolist()))} identities\n")
+
+    usable = usable_identities(labels, vecs)
+    print(f"{len(usable)} identities have the 4 embeddings this needs\n")
+    if not usable:
+        # Nothing to measure. This used to fall through to np.vstack([]) and
+        # die with "need at least one array to concatenate".
+        sys.exit("No identity has 4 embeddings. Rebuild the gallery with "
+                 "tools/build_gallery.py --per-id 4 or more.")
+
+    ids = sorted(usable)
+    rng = np.random.default_rng(0)
+    rng.shuffle(ids)
+
+    print(f"{'gallery':>8}{'thresh':>8}{'rank1':>8}{'correct':>9}{'rejected':>10}"
+          f"{'MISID':>8}{'predicted risk':>16}")
+    print("-" * 70)
+    for n in sizes_for(len(ids)):
+        rank1, correct, rejected, misid, thr, risk, reachable = measure(
+            usable, ids, n)
+        mark = "" if reachable else "  UNREACHABLE"
+        print(f"{n:>8}{thr:>8.3f}{100 * rank1 / n:>7.1f}%{100 * correct / n:>8.1f}%"
+              f"{100 * rejected / n:>9.1f}%{100 * misid / n:>7.1f}%{100 * risk:>14.2f}%{mark}")
+
+    print("\nrank1 ignores the threshold: it asks only 'was the right person nearest',")
+    print("which stays high while the usable accuracy falls away underneath it.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

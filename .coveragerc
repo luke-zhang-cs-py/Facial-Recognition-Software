@@ -16,36 +16,42 @@ source_dirs =
     analysis
     core
     pipeline
+    tools
 
 # Branches as well as lines: a line-only figure counts an `if` whose else-path never ran as fully covered.
 branch = True
 
-# Package-relative now that the modules are grouped. The five `tools_*.py`
-# scripts moved into tools/, which `tools/*` already covered; the four
-# shipped-but-omitted modules moved into cli/ and analysis/.
+# Only what is not shipped code: the tests, a virtualenv, the published page.
+# tools/ used to be here as a folder -- the corpus scripts, the demo build and
+# the figure refresher, 1,300 statements in all -- and is not any more: each
+# is tested against a corpus or a browser stand-in built at test time, so the
+# 100% below is over every .py file in the repository outside tests/.
 #
 # A stale name here does not fail: `omit` that matches nothing is silently
 # ignored, the module rejoins the report, and the published coverage
-# percentage moves for reasons that have nothing to do with the tests.
+# percentage moves for reasons that have nothing to do with the tests. Do not
+# add to this list to make a number go up.
 omit =
     tests/*
-    tools/*
     .venv/*
     docs/*
 
 [report]
 # The CI figure (no weights, no dataset/, no sample face: exactly what the push
 # job has, but with pyarrow and Pillow installed from requirements-test.txt) is
-# 100%: every statement and every branch, lines and branches combined since
-# branch = True. That was 96% (109 lines missed) on 2026-10-11 before the sixth
-# pass in notes/CODE_AUDIT.md closed the gap; 96.5% on 2026-10-10 before that.
+# 100%: every statement and every branch of every module, tools/ included,
+# lines and branches combined since branch = True. That was 96% (109 lines
+# missed) on 2026-10-11 before the sixth pass in notes/CODE_AUDIT.md closed the
+# gap; 96.5% on 2026-10-10 before that.
 # Rounded down, so a run that loses ground fails `coverage report` instead of
-# passing quietly. Lower it only with a reason in notes/CODE_AUDIT.md. A line
-# that truly cannot run in CI is marked `# pragma: no cover` with the reason
-# beside it, not allowed to leak out through this number.
+# passing quietly. Lower it only with a reason in notes/CODE_AUDIT.md.
 fail_under = 100
 
-exclude_lines =
-    pragma: no cover
+# The one exclusion: the `if __name__ == "__main__":` guard, whose body only
+# calls the module's entry point -- main(), cli() or train() -- which the
+# tests call directly. A guard that did more (app.py, core/db.py) had its body
+# moved into a tested main() instead. coverage's default `pragma: no cover`
+# marker still works under exclude_also, so tests/test_published_figures.py
+# fails if any module carries one.
+exclude_also =
     if __name__ == .__main__.:
-    raise NotImplementedError

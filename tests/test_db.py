@@ -173,3 +173,15 @@ def test_the_migration_joins_a_transaction_the_caller_already_holds(tmp_path):
         assert {"users", "attendance"} <= tables
     finally:
         conn.close()
+
+
+def test_running_the_module_creates_the_schema_and_says_where(
+        isolated_root, capsys):
+    """`python -m core.db`, which used to be inline under the main guard."""
+    from core import db, paths
+    assert not os.path.exists(paths.db_path())
+    db.main()
+    assert os.path.exists(paths.db_path())
+    assert db.get_all_users() == []
+    assert capsys.readouterr().out == (
+        "Database initialized at %s\n" % paths.db_path())

@@ -21,7 +21,6 @@ import sys
 import time
 
 import numpy as np
-import pyarrow.parquet as pq
 
 # The project root -- one level up, because this file lives in tools/. The
 # worker below chdir()s to it, so getting this wrong moves every relative
@@ -126,6 +125,10 @@ def collect_images(path, index, per_id):
     Row groups keep peak memory to one batch at a time, which is the only
     reason a multi-gigabyte shard fits.
     """
+    # Imported here, as the other corpus readers do, so the module imports
+    # without pyarrow installed.
+    import pyarrow.parquet as pq
+
     wanted = collections.defaultdict(list)
     parquet = pq.ParquetFile(path)
     try:
@@ -169,6 +172,9 @@ def save(labels, vectors):
 
 
 def main(argv=None):
+    # The pool's workers re-import this module; in a frozen Windows build
+    # that needs freeze_support() first. It does nothing otherwise.
+    mp.freeze_support()
     args = build_parser().parse_args(argv)
 
     # Was a directory that happened to exist on one machine; now it is
@@ -212,5 +218,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    mp.freeze_support()
     sys.exit(main())

@@ -286,9 +286,13 @@ def test_the_parser_defaults_are_the_named_constants():
                                 bl.DEFAULT_AGE_EVERY)
 
 
-@pytest.mark.parametrize("content", ["{trunc", "[1, 2]", '{"cumulative": {}}'])
+@pytest.mark.parametrize("content", [
+    "{trunc", "[1, 2]", '{"cumulative": {}}', '{"rounds": 2}',
+    '{"rounds": 2, "cumulative": {"identity": {}}}'])
 def test_an_unusable_state_file_starts_fresh(tmp_path, capsys, content):
-    """The last case escaped as a KeyError before: valid JSON, no totals."""
+    """Valid JSON without the round count escaped as a KeyError before; with
+    the count but without a running total it was resumed, and accumulate()
+    raised one after the first round."""
     path = tmp_path / "state.json"
     path.write_text(content, encoding="utf-8")
     state = bl.load_state(str(path))

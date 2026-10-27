@@ -23,7 +23,7 @@ branch = True
 
 # Only what is not shipped code: the tests, a virtualenv, the published page.
 # tools/ used to be here as a folder -- the corpus scripts, the demo build and
-# the figure refresher, 1,300 statements in all -- and is not any more: each
+# the figure refresher, about 1,400 statements in all -- and is not any more: each
 # is tested against a corpus or a browser stand-in built at test time, so the
 # 100% below is over every .py file in the repository outside tests/.
 #
@@ -50,8 +50,9 @@ fail_under = 100
 # The one exclusion: the `if __name__ == "__main__":` guard, whose body only
 # calls the module's entry point -- main(), cli() or train() -- which the
 # tests call directly. A guard that did more (app.py, core/db.py) had its body
-# moved into a tested main() instead. coverage's default `pragma: no cover`
-# marker still works under exclude_also, so tests/test_published_figures.py
-# fails if any module carries one.
+# moved into a tested main() instead. coverage's defaults still apply under
+# exclude_also (`pragma: no cover`, `if TYPE_CHECKING:`, `...` stub bodies, and
+# `pragma: no branch` for branches), so tests/test_published_figures.py fails
+# if any line of any module matches one.
 exclude_also =
     if __name__ == .__main__.:

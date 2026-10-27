@@ -551,12 +551,24 @@ def built(folder):
     return out
 
 
+def test_the_published_demo_is_what_the_build_writes_today(written):
+    """docs/app and docs/camera are generated from tools/static_src and from
+    the constants in guidance.py, landmarks.py and calibration.py. Change one
+    of those without rebuilding and GitHub Pages goes on serving the old
+    numbers; this is the only check that notices. No browser is needed: the
+    files are compared, not run."""
+    rebuild = "is stale: run `python tools/build_static.py` and commit docs/"
+    assert published("app") == written, "docs/app " + rebuild
+    assert published("camera") == bs.collect_camera(written), (
+        "docs/camera " + rebuild)
+
+
 def test_a_proven_build_writes_exactly_the_published_demo(browser, tmp_path,
-                                                          monkeypatch,
+                                                          written, monkeypatch,
                                                           capsys):
     """Both bundles go to tmp_path, never over docs/. What lands there is
-    the demo GitHub Pages serves, byte for byte, and a file an older build
-    left behind is removed."""
+    every file the build collected, and a file an older build left behind is
+    removed. (Whether docs/ is that build is the test above.)"""
     app, camera = tmp_path / "app", tmp_path / "camera"
     monkeypatch.setattr(bs, "OUT", str(app))
     monkeypatch.setattr(bs, "CAMERA_OUT", str(camera))
@@ -566,8 +578,8 @@ def test_a_proven_build_writes_exactly_the_published_demo(browser, tmp_path,
     bs.main(["build_static.py", "--prove"])
     out = capsys.readouterr().out
 
-    assert built(app) == published("app")
-    assert built(camera) == published("camera")
+    assert built(app) == written
+    assert built(camera) == bs.collect_camera(written)
     assert "the 1% recommendation stops being reachable at 1,646 people" in out
     assert "all %d caught" % len(bs.SABOTAGE) in out
     assert "removed stale %s" % os.path.join("js", "renamed.js") in out
@@ -587,11 +599,12 @@ def test_a_refused_build_writes_nothing(browser, tmp_path, monkeypatch):
 
 
 def test_a_build_without_prove_checks_once_and_writes(browser, tmp_path,
-                                                      monkeypatch, capsys):
+                                                      written, monkeypatch,
+                                                      capsys):
     monkeypatch.setattr(bs, "OUT", str(tmp_path / "app"))
     monkeypatch.setattr(bs, "CAMERA_OUT", str(tmp_path / "camera"))
     bs.main(["build_static.py"])
     out = capsys.readouterr().out
     assert "proving" not in out
     assert len(browser.pages) == 1, "one page: the checks, and no proofs"
-    assert built(tmp_path / "app") == published("app")
+    assert built(tmp_path / "app") == written

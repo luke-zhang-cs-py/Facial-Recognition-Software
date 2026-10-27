@@ -359,22 +359,31 @@ def test_no_line_is_hidden_from_coverage():
     """100% means every line ran, not every line that was not excused.
 
     The only exclusion .coveragerc makes is the `__main__` guard, whose body
-    only calls an entry point the tests call. coverage still honours its default
-    `pragma: no cover` marker, so a module carrying one would drop lines out
-    of every figure on this page without anything else noticing."""
+    only calls an entry point the tests call. coverage still honours its own
+    defaults -- `pragma: no cover`, `if TYPE_CHECKING:` and `...` stub bodies
+    for lines, `pragma: no branch` for branches -- so a module matching one
+    would drop lines or branches out of every figure on this page without
+    anything else noticing. The patterns are read from coverage rather than
+    copied here, so a default a later version adds is checked too."""
     import coverage
     cov = coverage.Coverage(config_file=os.path.join(ROOT, ".coveragerc"))
+    guard = "if __name__ == .__main__.:"
     added = [line for line in cov.config.exclude_list
              if line not in coverage.config.DEFAULT_EXCLUDE]
-    assert added == ["if __name__ == .__main__.:"]
-    # coverage's own default pattern for the marker, spelled out.
-    marker = re.compile(r"#\s*(pragma|PRAGMA)[:\s]?\s*(no|NO)\s*(cover|COVER)")
+    assert added == [guard]
+    hiding = [re.compile(pattern) for pattern in
+              cov.config.exclude_list + cov.config.partial_list
+              if pattern != guard]
+    assert hiding, "coverage excludes nothing by default, so this is vacuous"
     modules = sorted(source_files())
     assert modules, "no module was found, so this check is vacuous"
-    marked = [name for name in modules
-              if marker.search(io.open(os.path.join(ROOT, name),
-                                       encoding="utf-8").read())]
-    assert not marked, f"these modules excuse lines from coverage: {marked}"
+    marked = []
+    for name in modules:
+        with io.open(os.path.join(ROOT, name), encoding="utf-8") as handle:
+            marked += ["%s:%d" % (name, number)
+                       for number, line in enumerate(handle, 1)
+                       if any(p.search(line) for p in hiding)]
+    assert not marked, f"these lines are excused from coverage: {marked}"
 
 
 def measured_with(page):

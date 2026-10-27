@@ -452,9 +452,15 @@ def load_state(path):
     try:
         with open(path, encoding="utf-8") as handle:
             state = json.load(handle)
-        # Read inside the try: valid JSON without the totals is as unusable
-        # as a truncated file, and used to escape as a KeyError here.
+        # Read inside the try: valid JSON without the round count or one of
+        # the running totals is as unusable as a truncated file. A missing
+        # count used to escape as a KeyError here, and a missing total as one
+        # from accumulate(), after the first round's trials had already run.
         rounds = state["rounds"]
+        totals = state["cumulative"]
+        if any(set(keys) - set(totals[name])
+               for name, keys in fresh_state()["cumulative"].items()):
+            return fresh_state()
     except (OSError, ValueError, KeyError, TypeError):
         return fresh_state()
     print(f"  resuming from {rounds} previous rounds\n")

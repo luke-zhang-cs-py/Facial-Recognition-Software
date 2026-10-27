@@ -391,7 +391,7 @@ footer a { color: inherit; }
 var MODULES = [
   { name: 'tools/build_static.py',          lines: 1398, stmts: 496, missed:  0, does: 'generates the browser demo, and fails if its JS disagrees with the Python; tested against a stand-in browser, so neither Playwright nor Node is needed' },
   { name: 'pipeline/camera.py',             lines: 872, stmts: 468, missed:  0, does: 'the webcam manager: capture, annotate, stream, and the capture state machine' },
-  { name: 'tools/benchmark_loop.py',        lines: 607, stmts: 302, missed:  0, does: 'the continuous benchmark runner; tested a round at a time on corpora built at test time' },
+  { name: 'tools/benchmark_loop.py',        lines: 613, stmts: 305, missed:  0, does: 'the continuous benchmark runner; tested a round at a time on corpora built at test time' },
   { name: 'analysis/analytics.py',          lines: 778, stmts: 283, missed:  0, does: 'dataset-wide enrollment quality and threshold sweeps' },
   { name: 'pipeline/traits.py',             lines: 566, stmts: 215, missed:  0, does: 'per-face quality, pose, embedding and demographics' },
   { name: 'analysis/fairness_benchmark.py', lines: 337, stmts: 186, missed:  0, does: 'the stratified FairFace run; its statistics and main() are tested on a tiny labelled corpus' },
@@ -437,12 +437,12 @@ var TESTS = [
   { file: 'test_cov_app.py',                n: 65, of: 'the error branches of app.py, through the Flask test client' },
   { file: 'test_sample_frames.py',          n: 45, of: 'choosing sample frames, over a real video file' },
   { file: 'test_cov_remaining.py',          n: 42, of: 'the last branches of calibration, guidance, readout and recognition, and the gallery refresh count' },
-  { file: 'test_cov_build_static.py',       n: 39, of: 'the demo build against a stand-in browser: every refusal, --prove, and the published bundle byte for byte' },
+  { file: 'test_cov_build_static.py',       n: 40, of: 'the demo build against a stand-in browser: every refusal, --prove, and the published bundle byte for byte' },
   { file: 'test_camera_modes.py',           n: 37, of: 'registration and attendance, given a face rather than a camera' },
   { file: 'test_cov_seed_demo.py',          n: 37, of: 'the LFW demo seeder against a tiny corpus built at test time; nothing downloaded' },
   { file: 'test_cov_tools.py',              n: 37, of: 'the corpus scripts: sample frames, the gallery build, the scale and trial sweeps' },
   { file: 'test_camera_capture.py',         n: 33, of: 'the grab loop and its failure branches, against a synthetic camera' },
-  { file: 'test_cov_benchmark_loop.py',     n: 31, of: 'the benchmark loop a round at a time, on corpora built at test time' },
+  { file: 'test_cov_benchmark_loop.py',     n: 33, of: 'the benchmark loop a round at a time, on corpora built at test time' },
   { file: 'test_cov_cli_small.py',          n: 31, of: 'the small entry points, with every download mocked and the network refused' },
   { file: 'test_pure_helpers.py',           n: 31, of: 'the functions with no camera, no model and no database' },
   { file: 'test_cov_analytics.py',          n: 29, of: 'the pure parts of analytics.py, and the sample cache and dataset walk around them' },
@@ -484,7 +484,7 @@ var TESTS = [
   { file: 'test_cov_analytics_golden.py',   n:  2, of: 'that splitting summarize_user and lbph_analysis changed nothing, against output captured before the split' }
 ];
 
-var TEST_LINES = 14380;
+var TEST_LINES = 14406;
 
 /* Which interpreter produced the statement counts above. It matters: coverage
  * counts a `with` block or a multi-line call differently between versions, so

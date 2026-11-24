@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="theme-dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,13 +8,22 @@
      favicon and reporting the 404 as a console error on a page whose
      console is meant to be clean. -->
 <link rel="icon" href="data:,">
+<!-- Colours first: tokens.css holds the dark and light palettes, shared
+     with the Flask app. js/theme.js restores a saved theme before first
+     paint; without JavaScript the page is simply dark. -->
+<link rel="stylesheet" href="css/tokens.css">
+<script src="js/theme.js"></script>
 <link rel="stylesheet" href="css/camera.css">
 </head>
-<body class="viz-root">
+<body>
 
 <header class="pageHead">
   <h1>Live guidance<em>your webcam, a different engine&rsquo;s eyes, and this
     project&rsquo;s rules</em></h1>
+  <!-- Opens dark (class="theme-dark" above, no JavaScript needed); this
+       steps through THEMES in js/theme.js and remembers the choice. -->
+  <button type="button" id="themeBtn" class="themeBtn"
+          aria-label="Switch to light theme">Light</button>
 </header>
 
 <!-- The banner. Four things, said before anything moves, because a page with

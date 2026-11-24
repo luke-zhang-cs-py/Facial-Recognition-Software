@@ -175,6 +175,12 @@ async function openCamera() {
 
 // ----------------------------------------------------------------- drawing
 
+/* The overlay colours below are deliberately theme-independent and are not
+ * read from the CSS tokens. They are drawn into the video frame, which looks
+ * the same in either theme, so they are chosen against the picture rather
+ * than the page: a light theme does not make the camera image any lighter.
+ * Because nothing here reads a CSS colour, a theme switch needs no redraw. */
+
 /* The mesh, drawn with MediaPipe's own tesselation. Deliberately the same
  * shape of overlay as pipeline/landmarks.py draw() -- a faint mesh, brighter
  * feature outlines -- but these are MediaPipe's 478 points, not the LBF

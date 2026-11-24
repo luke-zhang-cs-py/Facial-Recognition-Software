@@ -81,7 +81,7 @@ def test_overlay_colours_match_the_stylesheet_palette():
     css = open("static/css/style.css", encoding="utf-8").read()
 
     def bgr_of(var):
-        m = re.search(rf"--{var}:#([0-9a-fA-F]{{6}})", css)
+        m = re.search(rf"--overlay-{var}:#([0-9a-fA-F]{{6}})", css)
         h = m.group(1)
         return (int(h[4:6], 16), int(h[2:4], 16), int(h[0:2], 16))
     assert camera.GREEN == bgr_of("good")

@@ -56,7 +56,10 @@ something else measured -- and they happen to be the two worth reading:
   tools/static_src/index.html         the markup, which the Flask app has no
                                       equivalent of -- its template is a
                                       camera console
-  tools/static_src/css/demo.css       the layout and the chart palette
+  tools/static_src/css/demo.css       the layout, reading colour tokens only
+  static/css/tokens.css               the dark and light palettes, and
+  static/js/theme.js                  the toggle: the Flask app's own two
+                                      files, copied so demo and app match
 
 The *numbers* are not ported. Every threshold guidance.py compares against,
 and every row of the measured false-match table, is exported from the Python
@@ -237,8 +240,14 @@ CHECKED_JS = ["js/constants.js", "js/guidance.js", "js/calibration.js"]
 # reimplemented, and asserted identical below, so there is exactly one ported
 # guidance implementation in the repository and it is the one the checks
 # above run against. A second copy that drifted would be a rule engine nobody
-# had compared to anything.
-SHARED_WITH_CAMERA = ["js/constants.js", "js/guidance.js"]
+# had compared to anything. The theme files ride along for the same reason:
+# one palette, so the two demos cannot drift into two looks.
+SHARED_WITH_CAMERA = ["js/constants.js", "js/guidance.js", "css/tokens.css",
+                      "js/theme.js"]
+
+# The theme: colour tokens and the toggle, taken from the Flask app's static/
+# so the app and both demos are one palette from one file. Same path in both.
+THEME_FILES = ["css/tokens.css", "js/theme.js"]
 
 
 def read(path):
@@ -1179,6 +1188,8 @@ def collect(constants):
     for name in ("guidance.js", "calibration.js", "demo.js"):
         written["js/" + name] = read(os.path.join(SRC, "js", name))
     written["css/demo.css"] = read(os.path.join(SRC, "css", "demo.css"))
+    for name in THEME_FILES:
+        written[name] = read(os.path.join(ROOT, "static", *name.split("/")))
     written["index.html"] = page_html(read(os.path.join(SRC, "index.html")))
     return written
 

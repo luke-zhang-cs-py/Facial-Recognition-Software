@@ -1,0 +1,72 @@
+/* tokens.css -- the colour tokens shared by the Flask app (static/css/style.css)
+ * and both browser demos (docs/app/, docs/camera/). One palette for the app
+ * and the pages that demonstrate it, so they stay one product.
+ *
+ * tools/build_static.py copies this file, byte for byte, into docs/app/css/
+ * and docs/camera/css/. Edit it here and rebuild; never edit those copies.
+ *
+ * ======================================================================
+ * 1. Colour tokens live in one block per theme, keyed on a class on <html>.
+ *    The class (theme-dark) is in the markup, so every page is themed with
+ *    no JavaScript at all.
+ * 2. Theme-independent tokens (spacing, type, radius) live on :root at the
+ *    top of each page's own stylesheet, because the app and the demos keep
+ *    their own type scales.
+ * 3. Components read semantic tokens only, never a raw colour.
+ *
+ * To add a theme: copy a theme block, rename it .theme-<name>, set every
+ * token in it, and add <name> to THEMES in static/js/theme.js. Nothing else
+ * changes, and tests/test_theming.py checks the new block is complete and
+ * that its pairings meet WCAG AA.
+ * ====================================================================== */
+
+/* :where(:root) has no specificity, so it is only the fallback for an <html>
+ * carrying no theme class or an unknown one; any .theme-* block wins over it.
+ * Dark is the app's own look since its first commit, and the default. */
+:where(:root), .theme-dark {
+  color-scheme: dark;
+  --color-bg: #0d1117;              /* the page */
+  --color-surface: #131820;         /* panels, cards, the sidebar */
+  --color-surface-subtle: #0d1117;  /* insets inside a panel: buttons, fields, the chosen row */
+  --color-border: #262d37;          /* panel edges and separators (decorative) */
+  --color-border-strong: #6a7585;   /* form-field and button edges: 3:1 on bg and surface */
+  --color-grid: #1f2630;            /* chart gridlines, table rules, progress tracks */
+  --color-text-primary: #e6edf3;
+  --color-text-muted: #b6c2d1;
+  --color-text-subtle: #8b96a5;     /* hints, ticks, footers */
+  --color-accent: #4da3ff;          /* links, the chart series, the go button */
+  --color-accent-hover: #7ab8ff;
+  --color-accent-subtle: #142538;   /* tinted backgrounds that carry text */
+  --color-text-on-accent: #0d1117;
+  --color-danger: #df6a5e;
+  --color-success: #5ec98a;
+  --color-warning: #e0c04a;         /* readable as text in this theme */
+  --color-danger-subtle: #2a1a1b;   /* tinted backgrounds under status text */
+  --color-success-subtle: #15291f;
+  --color-warning-subtle: #2b2717;
+  --color-text-on-status: #0d1117;  /* text on a solid success/warning/danger/subtle fill */
+}
+
+.theme-light {
+  color-scheme: light;
+  --color-bg: #f9f9f7;
+  --color-surface: #fcfcfb;
+  --color-surface-subtle: #f2f1ed;
+  --color-border: #e2e1dc;
+  --color-border-strong: #84827a;
+  --color-grid: #e1e0d9;
+  --color-text-primary: #0b0b0b;
+  --color-text-muted: #52514e;
+  --color-text-subtle: #6b6963;
+  --color-accent: #1f63b8;
+  --color-accent-hover: #174f94;
+  --color-accent-subtle: #dfe9f7;
+  --color-text-on-accent: #ffffff;
+  --color-danger: #b42f2f;
+  --color-success: #0a6e0a;
+  --color-warning: #8a6100;         /* amber darkened until it reads as text */
+  --color-danger-subtle: #f9e6e4;
+  --color-success-subtle: #e3f1e3;
+  --color-warning-subtle: #f8eed6;
+  --color-text-on-status: #ffffff;
+}

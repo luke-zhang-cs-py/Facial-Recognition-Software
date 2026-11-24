@@ -1,146 +1,149 @@
-/* One palette, and it is the app's. static/css/style.css has been dark since
- * the first commit, and these two pages -- which exist to show that app --
- * were light, so the demo looked like a different product from the thing it
- * demonstrates. The hues below are style.css's, re-expressed as the roles
- * this stylesheet uses. A visitor who genuinely wants light can set
- * data-theme="light"; nothing else switches it, because following the
- * operating system would mean the screenshots in the README match for some
- * readers and not others.
+/* The layout of the live camera demo (docs/camera/).
+ *
+ * Colours come from css/tokens.css, which this page loads first: the same
+ * file the Flask app uses (static/css/tokens.css, copied here by
+ * tools/build_static.py), so the demo and the app it demonstrates are one
+ * product. It opens dark, the app's own look, with class="theme-dark" in the
+ * markup; the toggle in the header switches to light. Nothing follows the
+ * operating system, so the screenshots in the README match for every reader.
+ * Everything below reads semantic tokens only.
+ *
+ * The theme-independent tokens -- spacing (--space-N is N x 4px), type and
+ * shape -- are this page's own, on :root here.
  */
-.viz-root {
-  color-scheme: dark;
-  --surface-1: #131820;
-  --plane: #0d1117;
-  --ink: #e6edf3;
-  --ink-2: #b6c2d1;
-  --muted: #8b96a5;
-  --grid: #1f2630;
-  --border: rgba(230, 237, 243, 0.10);
-  --series-1: #4da3ff;
-  --good: #5ec98a;
-  --warning: #e0c04a;
-  --critical: #df6a5e;
-}
-
-:root[data-theme="light"] .viz-root {
-  color-scheme: light;
-  --surface-1: #fcfcfb;
-  --plane: #f9f9f7;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --muted: #898781;
-  --grid: #e1e0d9;
-  --border: rgba(11, 11, 11, 0.10);
-  --series-1: #2a78d6;
-  --good: #0ca30c;
-  --warning: #fab219;
-  --critical: #d03b3b;
+:root {
+  /* Behind the video, in both themes: the camera frame and the overlay drawn on
+     it (js/camera.js) are the same picture whichever theme the page is in,
+     so this is not a theme colour. */
+  --stage-bg: #000;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-7: 28px; --space-8: 32px; --space-9: 36px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-1: 10px; --text-3: 11px; --text-5: 12px; --text-7: 13px; --text-9: 14px; --text-10: 15px; --text-11: 19px; --text-12: 21px; --text-13: 26px;
+  --leading-body: 1.55; --leading-tight: 1.15;
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600; --weight-heading: 620; --weight-display: 640; --weight-strong: 650; --weight-bold: 700;
+  --tracking-caps: 0.06em; --tracking-label: 0.05em;
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-full: 999px;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  padding: 0 20px 34px;
-  background: var(--plane);
-  color: var(--ink);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 0 var(--space-5) var(--space-9);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font: var(--text-10)/var(--leading-body) var(--font-sans);
 }
 
-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code { font-family: var(--font-mono); }
 
-.pageHead { max-width: 1180px; margin: 0 auto; padding: 20px 0 8px; }
-.pageHead h1 { font-size: 26px; margin: 0; font-weight: 650; }
+.pageHead {
+  max-width: 1180px; margin: 0 auto; padding: var(--space-5) 0 var(--space-2);
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: var(--space-4);
+}
+/* The theme toggle. Its label names where it takes you ("Light" while dark). */
+.themeBtn {
+  flex: none; font: inherit; font-size: var(--text-5); cursor: pointer;
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-subtle); color: var(--color-text-primary);
+}
+.themeBtn:hover { border-color: var(--color-accent); }
+.themeBtn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.pageHead h1 { font-size: var(--text-13); margin: 0; font-weight: var(--weight-strong); }
 .pageHead em {
-  display: block; font-style: normal; font-size: 15px;
-  color: var(--ink-2); font-weight: 400; margin-top: 4px;
+  display: block; font-style: normal; font-size: var(--text-10);
+  color: var(--color-text-muted); font-weight: var(--weight-regular); margin-top: var(--space-1);
 }
 
 /* ---------------------------------------------------------------- banner */
 .banner {
-  max-width: 1180px; margin: 0 auto 16px; padding: 14px 18px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--critical);
-  border-radius: 8px;
+  max-width: 1180px; margin: 0 auto var(--space-4); padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-danger);
+  border-radius: var(--radius-md);
 }
 /* Four bullets stacked made a wall of text as tall as the video beside
    it. Two by two on a wide screen says the same thing in half the height. */
 .honesty {
-  margin: 0 0 10px; padding-left: 20px;
-  display: grid; gap: 2px 30px; font-size: 14px;
+  margin: 0 0 var(--space-3); padding-left: var(--space-5);
+  display: grid; gap: 2px var(--space-8); font-size: var(--text-9);
 }
 @media (min-width: 900px) { .honesty { grid-template-columns: 1fr 1fr; } }
-.honesty li { margin: 0 0 7px; color: var(--ink-2); }
+.honesty li { margin: 0 0 var(--space-2); color: var(--color-text-muted); }
 .honesty li:last-child { margin-bottom: 0; }
-.honesty b { color: var(--ink); }
-.bannerLinks { font-size: 14px; margin: 0; color: var(--ink-2); }
-.bannerLinks a { color: var(--series-1); }
-.bannerLinks .sep { color: var(--muted); margin: 0 8px; }
+.honesty b { color: var(--color-text-primary); }
+.bannerLinks { font-size: var(--text-9); margin: 0; color: var(--color-text-muted); }
+.bannerLinks a { color: var(--color-accent); }
+.bannerLinks .sep { color: var(--color-text-subtle); margin: 0 var(--space-2); }
 
 /* ----------------------------------------------------------------- panels */
 main { max-width: 1180px; margin: 0 auto; }
 .panel {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 18px 16px;
-  margin: 0 0 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5) var(--space-4);
+  margin: 0 0 var(--space-4);
 }
-.panel h2 { font-size: 19px; margin: 0 0 6px; font-weight: 620; }
+.panel h2 { font-size: var(--text-11); margin: 0 0 var(--space-2); font-weight: var(--weight-heading); }
 .panel h3 {
-  font-size: 13px; margin: 14px 0 6px; font-weight: 620;
-  text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+  font-size: var(--text-7); margin: var(--space-4) 0 var(--space-2); font-weight: var(--weight-heading);
+  text-transform: uppercase; letter-spacing: var(--tracking-label); color: var(--color-text-subtle);
 }
 .panel h3 .src, .panel h2 .src {
-  text-transform: none; letter-spacing: 0; font-weight: 400;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: var(--muted); font-size: 11px; margin-left: 6px;
+  text-transform: none; letter-spacing: 0; font-weight: var(--weight-regular);
+  font-family: var(--font-mono);
+  color: var(--color-text-subtle); font-size: var(--text-3); margin-left: var(--space-2);
 }
-.lede { color: var(--ink-2); margin: 0 0 12px; max-width: 78ch; }
-.panel p { color: var(--ink-2); max-width: 82ch; margin: 0 0 10px; }
+.lede { color: var(--color-text-muted); margin: 0 0 var(--space-3); max-width: 78ch; }
+.panel p { color: var(--color-text-muted); max-width: 82ch; margin: 0 0 var(--space-3); }
 .panel p:last-child { margin-bottom: 0; }
 
 /* Prose set to 82ch inside a 1180px panel leaves a third of the panel
    empty. Two columns use it. */
-.cols2 { display: grid; gap: 4px 34px; }
+.cols2 { display: grid; gap: var(--space-1) var(--space-9); }
 @media (min-width: 900px) { .cols2 { grid-template-columns: 1fr 1fr; } }
 .cols2 > div > :first-child, .cols2 > p:first-child { margin-top: 0; }
 .cols2 h3:first-child { margin-top: 0; }
 
 /* --------------------------------------------------------------- controls */
 .controls {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 10px;
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  margin-bottom: var(--space-3);
 }
 .btn {
-  font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--plane); color: var(--ink);
+  font: inherit; padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid var(--color-border); background: var(--color-surface-subtle); color: var(--color-text-primary);
 }
-.btn--go { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.btn--go { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-text-on-accent); }
+.btn--go:hover:not(:disabled) { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.status { font-size: 14px; color: var(--ink-2); flex: 1 1 260px; }
-.status--good { color: var(--good); }
-.status--bad { color: var(--critical); }
-.status--busy { color: var(--warning); }
+.status { font-size: var(--text-9); color: var(--color-text-muted); flex: 1 1 260px; }
+.status--good { color: var(--color-success); }
+.status--bad { color: var(--color-danger); }
+.status--busy { color: var(--color-warning); }
 .fps {
-  font-size: 12px; color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--text-5); color: var(--color-text-subtle);
+  font-family: var(--font-mono);
 }
 
 /* ------------------------------------------------------------------- live */
-.live { display: grid; gap: 16px; align-items: start; }
+.live { display: grid; gap: var(--space-4); align-items: start; }
 @media (min-width: 880px) {
   .live { grid-template-columns: minmax(0, 1.55fr) minmax(290px, 1fr); }
 }
 .stageCol { min-width: 0; }
 .stageNote {
-  font-size: 12px; color: var(--muted); margin: 8px 0 0; max-width: 62ch;
+  font-size: var(--text-5); color: var(--color-text-subtle); margin: var(--space-2) 0 0; max-width: 62ch;
 }
 .stageWrap {
   min-width: 0;
-  background: #000; border-radius: 8px; overflow: hidden;
-  border: 1px solid var(--border);
+  background: var(--stage-bg); border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--color-border);
 }
 /* The video is a sink for the stream, never shown: everything on screen is
    the canvas, so what you see is exactly what was measured. */
@@ -150,112 +153,112 @@ main { max-width: 1180px; margin: 0 auto; }
 .sidebar { min-width: 0; }
 
 .verdict {
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 10px 12px; background: var(--plane);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-3); background: var(--color-surface-subtle);
 }
 .sev {
-  display: inline-block; font-size: 11px; letter-spacing: 0.06em;
-  text-transform: uppercase; font-weight: 650; padding: 2px 8px;
-  border-radius: 999px; color: #fff; background: var(--muted);
+  display: inline-block; font-size: var(--text-3); letter-spacing: var(--tracking-caps);
+  text-transform: uppercase; font-weight: var(--weight-strong); padding: 2px var(--space-2);
+  border-radius: var(--radius-full); color: var(--color-text-on-status); background: var(--color-text-subtle);
 }
-.sev--ok { background: var(--good); }
-.sev--warn { background: var(--warning); color: #241a00; }
-.sev--block { background: var(--critical); }
-.msg { font-size: 21px; font-weight: 640; margin: 8px 0 0; }
-.det { font-size: 13px; color: var(--ink-2); margin: 6px 0 0; }
+.sev--ok { background: var(--color-success); }
+.sev--warn { background: var(--color-warning); }
+.sev--block { background: var(--color-danger); }
+.msg { font-size: var(--text-12); font-weight: var(--weight-display); margin: var(--space-2) 0 0; }
+.det { font-size: var(--text-7); color: var(--color-text-muted); margin: var(--space-2) 0 0; }
 
 /* -------------------------------------------------------------- checklist */
 .checks { list-style: none; margin: 0; padding: 0; }
 .chk {
-  display: flex; gap: 8px; align-items: baseline;
-  padding: 4px 0; border-bottom: 1px solid var(--grid); font-size: 13px;
+  display: flex; gap: var(--space-2); align-items: baseline;
+  padding: var(--space-1) 0; border-bottom: 1px solid var(--color-grid); font-size: var(--text-7);
 }
 .chk:last-child { border-bottom: none; }
-.chk__mark { width: 14px; text-align: center; font-weight: 700; }
-.chk--ok .chk__mark { color: var(--good); }
-.chk--bad .chk__mark { color: var(--critical); }
-.chk--none .chk__mark { color: var(--muted); }
-.chk--none .chk__body b { color: var(--muted); }
+.chk__mark { width: 14px; text-align: center; font-weight: var(--weight-bold); }
+.chk--ok .chk__mark { color: var(--color-success); }
+.chk--bad .chk__mark { color: var(--color-danger); }
+.chk--none .chk__mark { color: var(--color-text-subtle); }
+.chk--none .chk__body b { color: var(--color-text-subtle); }
 .chk__body { flex: 1; }
-.chk__note { color: var(--muted); font-style: italic; font-size: 12px; }
-.chk__fix { display: block; color: var(--ink-2); font-size: 12px; }
+.chk__note { color: var(--color-text-subtle); font-style: italic; font-size: var(--text-5); }
+.chk__fix { display: block; color: var(--color-text-muted); font-size: var(--text-5); }
 
 /* ------------------------------------------------------------- rule chain */
 .rules {
   list-style: decimal inside; margin: 0; padding: 0;
-  columns: 2; column-gap: 16px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  columns: 2; column-gap: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-5);
 }
-.rule { padding: 2px 6px; border-radius: 4px; color: var(--muted); }
+.rule { padding: 2px var(--space-2); border-radius: var(--radius-xs); color: var(--color-text-subtle); }
 .rule code { color: inherit; }
-.rule--queued { color: var(--ink-2); }
+.rule--queued { color: var(--color-text-muted); }
 .rule--chosen {
-  color: var(--ink); font-weight: 650;
-  background: color-mix(in srgb, var(--series-1) 14%, transparent);
+  color: var(--color-text-primary); font-weight: var(--weight-strong);
+  background: var(--color-accent-subtle);
 }
 .rule__tag {
-  float: right; font-size: 10px; text-transform: uppercase;
-  letter-spacing: 0.05em; color: var(--muted);
+  float: right; font-size: var(--text-1); text-transform: uppercase;
+  letter-spacing: var(--tracking-label); color: var(--color-text-subtle);
 }
-.rule--clear { color: var(--good); }
+.rule--clear { color: var(--color-success); }
 
 /* -------------------------------------------------------- provenance table */
-.provTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.provTable { width: 100%; border-collapse: collapse; font-size: var(--text-7); }
 .provTable th, .provTable td {
-  text-align: left; padding: 7px 10px 7px 0;
-  border-bottom: 1px solid var(--grid); vertical-align: top;
+  text-align: left; padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: 1px solid var(--color-grid); vertical-align: top;
 }
 .provTable thead th {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
-  color: var(--muted); font-weight: 600;
+  font-size: var(--text-3); text-transform: uppercase; letter-spacing: var(--tracking-label);
+  color: var(--color-text-subtle); font-weight: var(--weight-semibold);
 }
 .provTable tbody th {
-  font-weight: 500; white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: var(--weight-medium); white-space: nowrap;
+  font-family: var(--font-mono);
 }
 .provTable .num {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.provTable .note { color: var(--ink-2); font-size: 12px; min-width: 24ch; }
+.provTable .note { color: var(--color-text-muted); font-size: var(--text-5); min-width: 24ch; }
 .tag {
-  display: inline-block; font-size: 10px; text-transform: uppercase;
-  letter-spacing: 0.05em; font-weight: 650; padding: 2px 7px;
-  border-radius: 999px; white-space: nowrap;
+  display: inline-block; font-size: var(--text-1); text-transform: uppercase;
+  letter-spacing: var(--tracking-label); font-weight: var(--weight-strong); padding: 2px var(--space-2);
+  border-radius: var(--radius-full); white-space: nowrap;
 }
-.tag--exact { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
-.tag--approximate { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--warning); }
-.tag--unavailable { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical); }
-/* Amber text on a light surface needs to be darkened to stay readable; on
-   the dark one it does not, so this override belongs with the light theme. */
-:root[data-theme="light"] .tag--approximate { color: #8a6100; }
+.tag--exact { background: var(--color-success-subtle); color: var(--color-success); }
+.tag--approximate { background: var(--color-warning-subtle); color: var(--color-warning); }
+.tag--unavailable { background: var(--color-danger-subtle); color: var(--color-danger); }
 
 @media (max-width: 720px) {
   .provTable .note { display: none; }
+  /* A phone is narrower than three unbreakable columns: the field names and
+     readings were pushing the page ~40px sideways at 390px. Let them wrap. */
+  .provTable tbody th, .provTable .num { white-space: normal; overflow-wrap: anywhere; }
 }
 
 /* ---------------------------------------------------------- feature list */
 /* Ten short blocks, so they tile rather than stack: a single column of these
    would be most of the page's height for something read a line at a time. */
 .features {
-  list-style: none; margin: 0 0 12px; padding: 0;
-  display: grid; gap: 12px 26px;
+  list-style: none; margin: 0 0 var(--space-3); padding: 0;
+  display: grid; gap: var(--space-3) var(--space-7);
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 .features li {
-  border-top: 1px solid var(--grid); padding-top: 9px;
+  border-top: 1px solid var(--color-grid); padding-top: var(--space-2);
 }
-.features b { display: block; font-size: 14px; font-weight: 640; }
+.features b { display: block; font-size: var(--text-9); font-weight: var(--weight-display); }
 .features p {
-  margin: 4px 0 0; font-size: 13px; color: var(--ink-2); max-width: none;
+  margin: var(--space-1) 0 0; font-size: var(--text-7); color: var(--color-text-muted); max-width: none;
 }
 .api {
-  display: block; margin-top: 2px; font-size: 11px; color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  display: block; margin-top: 2px; font-size: var(--text-3); color: var(--color-text-subtle);
+  font-family: var(--font-mono);
 }
 .featNote {
-  margin: 0; font-size: 13px; color: var(--ink-2);
-  border-top: 1px solid var(--grid); padding-top: 10px;
+  margin: 0; font-size: var(--text-7); color: var(--color-text-muted);
+  border-top: 1px solid var(--color-grid); padding-top: var(--space-3);
 }
-.featNote a { color: var(--series-1); }
+.featNote a { color: var(--color-accent); }

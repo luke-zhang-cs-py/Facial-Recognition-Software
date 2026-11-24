@@ -1,20 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Face Attendance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- tokens.css first: the dark and light palettes, the same file the
+     browser demos are built with. theme.js restores a saved theme before
+     first paint; without JavaScript the app is simply dark. -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+<script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <h1>Face Attendance<em>OpenCV + SQLite</em></h1>
-    <div class="sub">Register a face, train the recogniser, then run live attendance.
-      Everything runs on this machine &mdash; the camera, the model, and the database.</div>
+    <div>
+      <h1>Face Attendance<em>OpenCV + SQLite</em></h1>
+      <div class="sub">Register a face, train the recogniser, then run live attendance.
+        Everything runs on this machine &mdash; the camera, the model, and the database.</div>
+    </div>
+    <button type="button" id="themeBtn" class="themeBtn secondary"
+            aria-label="Switch to light theme">Light</button>
   </header>
 
   <div class="board">

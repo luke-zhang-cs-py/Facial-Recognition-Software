@@ -469,7 +469,7 @@ def test_the_camera_page_shares_the_checked_port(written):
     camera = bs.collect_camera(written)
     for name in bs.SHARED_WITH_CAMERA:
         assert camera[name] is written[name]
-    assert bs.check_camera_shares_the_checked_port(written, camera) == 2
+    assert bs.check_camera_shares_the_checked_port(written, camera) == 4
     assert "'%s'" % bs.VISION_MODULE in camera["js/camera.js"]
     assert "@MODEL_URL@" not in camera["js/camera.js"]
     assert '<script type="module" src="js/camera.js">' in camera["index.html"]
@@ -583,7 +583,7 @@ def test_a_proven_build_writes_exactly_the_published_demo(browser, tmp_path,
     assert "the 1% recommendation stops being reachable at 1,646 people" in out
     assert "all %d caught" % len(bs.SABOTAGE) in out
     assert "removed stale %s" % os.path.join("js", "renamed.js") in out
-    assert "2 files shared byte-for-byte with docs/app" in out
+    assert "4 files shared byte-for-byte with docs/app" in out
     assert "tasks-vision@%s" % bs.VISION_VERSION in out
     assert browser.closed
 

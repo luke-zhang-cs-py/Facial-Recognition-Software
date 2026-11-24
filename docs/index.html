@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,151 +10,177 @@
      page derives, so it is the first thing to go stale. -->
 <meta property="og:description" content="Webcam attendance with OpenCV, benchmarked against FairFace: what held up, what did not, and the defects that only appear at scale.">
 <meta property="og:type" content="website">
+<!-- Restores a theme picked before, ahead of first paint. Not needed to theme
+     the page: class="theme-dark" above already does that, with or without
+     JavaScript. The key 'theme' is shared by every page on this site. -->
+<script>
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem('theme'); } catch (e) { /* storage blocked */ }
+  if (/^[a-z]+$/.test(saved)) document.documentElement.classList.replace('theme-dark', 'theme-' + saved);
+})();
+</script>
 <style>
-/* The warm surface this family of pages uses. The marks on top come from the
- * validated palette and were re-run against *this* surface, because contrast
- * only means anything against the colour the chart actually sits on:
+/* ======================================================================
+ * DESIGN TOKENS
+ * 1. Colour tokens live in one block per theme, keyed on a class on <html>.
+ *    class="theme-dark" is in the markup, so the page is themed with no
+ *    JavaScript; nothing follows the operating system.
+ * 2. Theme-independent tokens (spacing, type, shape) live on :root.
+ * 3. Components read semantic tokens only, never a raw colour.
+ * To add a theme: copy a theme block, rename it .theme-<name>, set every
+ * token in it, and add <name> to THEMES in the script below. Nothing else
+ * changes, and tests/test_theming.py checks the new block's pairings for
+ * WCAG AA.
  *
- *   series  #2a78d6  on #fffdf7   all five checks PASS (light)
- *   series  #3987e5  on #1a1a19   all five checks PASS (dark)
- *   good    #0ca30c  3.30:1
- *   warning #fab219  1.80:1  sub-3:1 BY DESIGN -> always icon + label
- *   crit    #d03b3b  4.72:1
- *
- * Run as a categorical set the status colours fail on #fab219, and are meant
- * to: status is not a categorical palette, and amber is legal only with a
- * glyph and a word beside it. Every use of it here has both.
- *
- * The palette is static/css/style.css's, so the write-up, the two demos
- * and the app itself are one product. Light is still selectable with
- * data-theme="light" but nothing switches to it on its own. */
-.viz-root {
-  color-scheme: dark;
-  --plane:     #0d1117;
-  --surface:   #131820;
-  --ink:       #e6edf3;
-  --ink-2:     #b6c2d1;
-  --ink-muted: #8b96a5;
-  --grid:      #1f2630;
-  --ring:      #2f3b4a;
-  --code-bg:   #0b0e13;
-  --series:    #4da3ff;
-  --track:     #1f2630;
-  --good:      #5ec98a;
-  --warning:   #e0c04a;
-  --critical:  #df6a5e;
+ * The two theme blocks are the shared write-up template's, verbatim (every
+ * text pair at least 4.5:1, every UI pair at least 3:1, in both themes).
+ * --color-warning (amber) is a fill only, always beside a glyph and a word.
+ * The one addition is --color-warning-text: this page's "lowered" flags
+ * (glyph + word) are set in amber *text*, which #fab219 cannot carry on the
+ * light surface (1.8:1), so the flag reads a darker amber in light.
+ * ====================================================================== */
+:root {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
+  --space-6: 24px; --space-7: 28px; --space-9: 36px; --space-11: 44px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-1: 11px; --text-2: 11.5px; --text-3: 12px; --text-4: 12.5px; --text-5: 13px;
+  --text-6: 13.5px; --text-7: 14px; --text-8: 15px; --text-9: 23px; --text-10: 27px;
+  --leading-tight: 1.12; --leading-body: 1.55; --leading-code: 1.7;
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600;
+  --tracking-display: -0.2px; --tracking-mono: .02em; --tracking-caps: .06em; --tracking-label: .07em;
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px;
 }
-:root[data-theme="light"] .viz-root {
+
+:where(:root), .theme-dark {
+  color-scheme: dark;
+  --color-bg: #0d0d0d; --color-surface: #1a1a19; --color-surface-subtle: #21201e;
+  --color-border: #383835; --color-border-strong: #6e6c66;
+  --color-text-primary: #ffffff; --color-text-muted: #c3c2b7; --color-text-subtle: #959389;
+  --color-accent: #4b93ea; --color-accent-hover: #7ab0f0; --color-accent-subtle: #14263c; --color-text-on-accent: #0d0d0d;
+  --color-danger: #f06a6a; --color-success: #3cc13c; --color-warning: #fab219;
+  --color-grid: #2c2c2a; --color-track: #2c2c2a;
+  --color-warning-text: #fab219;
+}
+.theme-light {
   color-scheme: light;
-  --plane: #ece6d6; --surface: #fffdf7;
-  --ink: #12161d; --ink-2: #3c4453; --ink-muted: #8d7a52;
-  --grid: #ece6d6; --ring: #ded5bf; --code-bg: #f6f1e4;
-  --series: #2a78d6; --track: #ece6d6;
-  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --color-bg: #ece6d6; --color-surface: #fffdf7; --color-surface-subtle: #f6f1e4;
+  --color-border: #ded5bf; --color-border-strong: #7a7466;
+  --color-text-primary: #12161d; --color-text-muted: #3c4453; --color-text-subtle: #665632;
+  --color-accent: #1f63b8; --color-accent-hover: #174f94; --color-accent-subtle: #dfe9f7; --color-text-on-accent: #ffffff;
+  --color-danger: #b02e2e; --color-success: #0a6e0a; --color-warning: #fab219;
+  --color-grid: #ece6d6; --color-track: #ece6d6;
+  --color-warning-text: #855c00;
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-.viz-root {
-  --text: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  padding: 34px 24px 44px;
-  font: 15px/1.55 var(--text);
-  background: var(--plane); color: var(--ink);
+body {
+  padding: var(--space-9) var(--space-6) var(--space-11);
+  font: var(--text-8)/var(--leading-body) var(--font-sans);
+  background: var(--color-bg); color: var(--color-text-primary);
   min-height: 100vh;
 }
 main { max-width: 980px; margin: 0 auto; }
 
 .crumb {
-  margin: 0 0 6px; font: 400 12px var(--mono); color: var(--ink-muted);
-  letter-spacing: .02em;
+  margin: 0 0 var(--space-2); font: var(--weight-regular) var(--text-3) var(--font-mono); color: var(--color-text-subtle);
+  letter-spacing: var(--tracking-mono);
 }
-h1 { font-size: 23px; margin: 0 0 5px; letter-spacing: -0.2px; }
-.lede { color: var(--ink-2); margin: 0; font-size: 15px; max-width: 68ch; }
-.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
-.controls { display: flex; gap: 8px; flex-wrap: wrap; }
+h1 { font-size: var(--text-9); margin: 0 0 var(--space-1); letter-spacing: var(--tracking-display); }
+.lede { color: var(--color-text-muted); margin: 0; font-size: var(--text-8); max-width: 68ch; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-5); flex-wrap: wrap; }
+.controls { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 button, .btn {
-  font: 400 13px var(--text); cursor: pointer; text-decoration: none;
+  font: var(--weight-regular) var(--text-5) var(--font-sans); cursor: pointer; text-decoration: none;
   display: inline-block;
-  background: var(--surface); color: var(--ink);
-  border: 1px solid var(--ring); border-radius: 8px; padding: 7px 12px;
+  background: var(--color-surface); color: var(--color-text-primary);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3);
 }
-button:hover, .btn:hover { border-color: var(--ink-muted); }
-button[aria-pressed="true"] { border-color: var(--series); color: var(--series); }
+button:hover, .btn:hover { border-color: var(--color-text-subtle); }
+button:focus-visible, .btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+button[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); }
 
 /* ------------------------------------------------------------ stat tiles */
 /* A bare stat tile is the one form that ships without a hover layer: there is
  * no plot to interrogate, just the figure and what it counts. */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(156px, 1fr)); gap: 12px; margin: 26px 0 10px; }
-.tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; }
-.tile .k { display: block; color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
-.tile .v { display: block; margin-top: 3px; font: 600 27px/1.12 var(--text); font-variant-numeric: tabular-nums; }
-.tile .n { display: block; margin-top: 2px; color: var(--ink-muted); font-size: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(156px, 1fr)); gap: var(--space-3); margin: var(--space-7) 0 var(--space-3); }
+.tile { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-4); }
+.tile .k { display: block; color: var(--color-text-muted); font-size: var(--text-1); text-transform: uppercase; letter-spacing: var(--tracking-label); }
+.tile .v { display: block; margin-top: var(--space-1); font: var(--weight-semibold) var(--text-10)/var(--leading-tight) var(--font-sans); font-variant-numeric: tabular-nums; }
+.tile .n { display: block; margin-top: 2px; color: var(--color-text-subtle); font-size: var(--text-3); }
 
-.note { color: var(--ink-muted); font-size: 13px; max-width: 80ch; margin: 12px 0 0; }
+.note { color: var(--color-text-subtle); font-size: var(--text-5); max-width: 80ch; margin: var(--space-3) 0 0; }
 
 /* ---------------------------------------------------------------- panels */
-.panel { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 17px 19px; margin-top: 22px; }
-.panel h2 { margin: 0 0 2px; font-size: 15px; }
-.panel h3 { margin: 20px 0 6px; font-size: 13px; color: var(--ink-2); }
-.panel .sub { margin: 0 0 14px; color: var(--ink-2); font-size: 13px; max-width: 76ch; }
-.panel p { font-size: 14px; color: var(--ink-2); max-width: 76ch; }
-.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 22px; }
+.panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5); margin-top: var(--space-6); }
+.panel h2 { margin: 0 0 2px; font-size: var(--text-8); }
+.panel h3 { margin: var(--space-5) 0 var(--space-2); font-size: var(--text-5); color: var(--color-text-muted); }
+.panel .sub { margin: 0 0 var(--space-4); color: var(--color-text-muted); font-size: var(--text-5); max-width: 76ch; }
+.panel p { font-size: var(--text-7); color: var(--color-text-muted); max-width: 76ch; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: var(--space-6); }
 
 /* Thin marks on a recessive track, 4px rounding on the data end only so the
  * mark stays anchored flat to the baseline it grows from. */
-.bars { display: grid; gap: 9px; }
-.bar { display: grid; grid-template-columns: 140px 1fr 92px; gap: 12px; align-items: center; }
-.bar .lab { font: 400 12.5px var(--mono); color: var(--ink-2); }
-.bar .rail { position: relative; height: 12px; background: var(--track); border-radius: 3px; }
-.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--series); border-radius: 0 4px 4px 0; }
-.bar .val { text-align: right; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
-.bar:hover .rail { outline: 2px solid var(--ring); outline-offset: 2px; }
+.bars { display: grid; gap: var(--space-2); }
+.bar { display: grid; grid-template-columns: 140px 1fr 92px; gap: var(--space-3); align-items: center; }
+.bar .lab { font: var(--weight-regular) var(--text-4) var(--font-mono); color: var(--color-text-muted); }
+.bar .rail { position: relative; height: 12px; background: var(--color-track); border-radius: var(--radius-xs); }
+.bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--color-accent); border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
+.bar .val { text-align: right; font: var(--weight-medium) var(--text-3) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+.bar:hover .rail { outline: 2px solid var(--color-border); outline-offset: 2px; }
 
 /* ----------------------------------------------------------------- table */
 table { width: 100%; border-collapse: collapse; }
-caption { text-align: left; color: var(--ink-2); font-size: 13px; padding-bottom: 10px; }
-th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--grid); font-size: 13px; vertical-align: top; }
-th { color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
-td.mono { font-family: var(--mono); font-size: 12px; }
-tr.total td { border-bottom: none; font-weight: 600; }
+caption { text-align: left; color: var(--color-text-muted); font-size: var(--text-5); padding-bottom: var(--space-3); }
+th, td { text-align: left; padding: var(--space-2) var(--space-2); border-bottom: 1px solid var(--color-grid); font-size: var(--text-5); vertical-align: top; }
+th { color: var(--color-text-muted); font-size: var(--text-1); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+td.num, th.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+td.mono { font-family: var(--font-mono); font-size: var(--text-3); }
+tr.total td { border-bottom: none; font-weight: var(--weight-semibold); }
 [hidden] { display: none !important; }
+/* A phone: the gate table's four columns were pushing the page sideways at
+ * 390px, so tighten the cell and panel padding there. */
+@media (max-width: 480px) {
+  th, td { padding: var(--space-2) var(--space-1); }
+  .panel { padding: var(--space-4) var(--space-3); }
+}
 
-code { font-family: var(--mono); font-size: 12.5px; background: var(--code-bg); border: 1px solid var(--grid); border-radius: 4px; padding: 1px 5px; }
+code { font-family: var(--font-mono); font-size: var(--text-4); background: var(--color-surface-subtle); border: 1px solid var(--color-grid); border-radius: var(--radius-xs); padding: 1px var(--space-1); }
 pre {
-  background: var(--code-bg); border: 1px solid var(--grid); border-radius: 8px;
-  padding: 13px 15px; overflow-x: auto;
-  font: 12.5px/1.7 var(--mono); color: var(--ink); margin: 12px 0 0;
+  background: var(--color-surface-subtle); border: 1px solid var(--color-grid); border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4); overflow-x: auto;
+  font: var(--text-4)/var(--leading-code) var(--font-mono); color: var(--color-text-primary); margin: var(--space-3) 0 0;
 }
 
 /* Numbered steps. */
-.flow { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
-.flow li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 13.5px; color: var(--ink-2); }
+.flow { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-3); }
+.flow li { display: grid; grid-template-columns: 26px 1fr; gap: var(--space-3); font-size: var(--text-6); color: var(--color-text-muted); }
 .step {
-  font: 500 11px var(--mono); color: var(--series);
-  border: 1px solid var(--ring); border-radius: 5px;
+  font: var(--weight-medium) var(--text-1) var(--font-mono); color: var(--color-accent);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
   text-align: center; padding: 1px 0; height: 20px;
 }
 
 /* Status. Never colour alone: each carries a glyph and a word, which is what
  * makes the sub-3:1 amber legal. */
-.flag { display: inline-flex; align-items: center; gap: 5px; font: 500 11.5px var(--mono); white-space: nowrap; }
-.flag .g { font-size: 12px; }
-.flag.good { color: var(--good); }
-.flag.warn { color: var(--warning); }
-.flag.crit { color: var(--critical); }
+.flag { display: inline-flex; align-items: center; gap: var(--space-1); font: var(--weight-medium) var(--text-2) var(--font-mono); white-space: nowrap; }
+.flag .g { font-size: var(--text-3); }
+.flag.good { color: var(--color-success); }
+.flag.warn { color: var(--color-warning-text); }
+.flag.crit { color: var(--color-danger); }
 
-dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
-dl.kv dt { color: var(--ink-2); font-family: var(--mono); font-size: 12px; }
+dl.kv { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-4); margin: var(--space-3) 0 0; font-size: var(--text-5); }
+dl.kv dt { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-3); }
 dl.kv dd { margin: 0; }
 
-footer { margin-top: 28px; color: var(--ink-muted); font-size: 12.5px; max-width: 86ch; }
+footer { margin-top: var(--space-7); color: var(--color-text-subtle); font-size: var(--text-4); max-width: 86ch; }
 footer a { color: inherit; }
 </style>
 </head>
 
-<body class="viz-root" data-palette="#2a78d6">
+<body>
 <main>
 
 <div class="head">
@@ -172,7 +198,7 @@ footer a { color: inherit; }
     </p>
   </div>
   <div class="controls">
-    <button id="themeBtn" type="button">Theme</button>
+    <button id="themeBtn" type="button" aria-label="Switch to light theme">Light</button>
     <button id="tableBtn" type="button" aria-pressed="false">Table view</button>
     <a class="btn" href="https://github.com/luke-zhang-cs-py/Facial-Recognition-Software">Repository</a>
     <a class="btn" href="app/"
@@ -836,12 +862,29 @@ function drawLimits() {
 
 /* -------------------------------------------------------------- controls */
 
-el('themeBtn').addEventListener('click', function () {
-  var set = document.documentElement.getAttribute('data-theme');
-  var dark = set ? set === 'dark'
-    : window.matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
-});
+/* THEMES in order; each name needs a matching .theme-<name> block above, and
+ * the first is the one written into the markup. An unknown saved theme falls
+ * back to the first. */
+var THEMES = ['dark', 'light'];
+(function () {
+  var root = document.documentElement, button = el('themeBtn');
+  function current() {
+    return THEMES.filter(function (t) { return root.classList.contains('theme-' + t); })[0] || THEMES[0];
+  }
+  function next(name) { return THEMES[(THEMES.indexOf(name) + 1) % THEMES.length]; }
+  function apply(name) {
+    root.className = (root.className.replace(/(^|\s)theme-\S+/g, ' ').trim() + ' theme-' + name).trim();
+    var to = next(name);
+    button.setAttribute('aria-label', 'Switch to ' + to + ' theme');
+    button.textContent = to.charAt(0).toUpperCase() + to.slice(1);
+  }
+  apply(current());   // also drops a saved theme that no longer exists
+  button.addEventListener('click', function () {
+    var to = next(current());
+    try { localStorage.setItem('theme', to); } catch (e) { /* not remembered */ }
+    apply(to);
+  });
+})();
 
 el('tableBtn').addEventListener('click', function () {
   var showTable = el('tablePanel').hidden;

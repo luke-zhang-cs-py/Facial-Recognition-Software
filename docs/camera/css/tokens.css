@@ -57,7 +57,7 @@
   --color-grid: #e1e0d9;
   --color-text-primary: #0b0b0b;
   --color-text-muted: #52514e;
-  --color-text-subtle: #6b6963;
+  --color-text-subtle: #66645e;     /* 4.8:1 on accent-subtle, the tightest pair it sits on */
   --color-accent: #1f63b8;
   --color-accent-hover: #174f94;
   --color-accent-subtle: #dfe9f7;
